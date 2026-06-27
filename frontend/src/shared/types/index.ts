@@ -115,6 +115,24 @@ export interface Shift {
   timezone: string;
 }
 
+export interface UserRecord {
+  id: number;
+  tenant_id: number;
+  email: string;
+  full_name: string;
+  role: string;
+  portal: string;
+  is_active: boolean;
+  organization_id: number | null;
+}
+
+export interface Organization {
+  id: number;
+  tenant_id: number;
+  name: string;
+  type: string;
+}
+
 export interface AvailableStaff {
   id: number;
   full_name: string;
