@@ -150,9 +150,10 @@ export default function UsersManager() {
             <Input />
           </Form.Item>
           <Form.Item
-            name="password"
-            label="Password"
+            name="temp_password"
+            label="Temporary Password"
             rules={[{ required: true, min: 6 }]}
+            extra="User will be prompted to change this and set up MFA on first login."
           >
             <Input.Password />
           </Form.Item>

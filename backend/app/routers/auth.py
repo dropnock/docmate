@@ -1,45 +1,28 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import create_access_token, verify_password
-from app.models.user import User
-from app.schemas.auth import LoginRequest, TokenResponse
+from app.core.security import get_current_user
+from app.models.organization import Organization, OrgType
+from app.schemas.auth import CustomerRealm, MeResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
+@router.get("/me", response_model=MeResponse)
+async def get_me(current_user=Depends(get_current_user)):
+    return current_user
 
-    if not user or not verify_password(body.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
+
+@router.get("/customer-realms", response_model=list[CustomerRealm])
+async def list_customer_realms(db: AsyncSession = Depends(get_db)):
+    """Public endpoint — returns customer orgs that have a Keycloak realm."""
+    result = await db.execute(
+        select(Organization).where(
+            Organization.type == OrgType.customer,
+            Organization.realm_slug.isnot(None),
         )
-
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account disabled")
-
-    # Validate the user belongs to the requested portal
-    if user.portal.value != body.portal:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"This account does not have access to the '{body.portal}' portal",
-        )
-
-    token = create_access_token(
-        user_id=user.id,
-        tenant_id=user.tenant_id,
-        portal=user.portal.value,
-        role=user.role.value,
     )
-    return TokenResponse(
-        access_token=token,
-        user_id=user.id,
-        role=user.role.value,
-        portal=user.portal.value,
-        full_name=user.full_name,
-    )
+    orgs = result.scalars().all()
+    return [CustomerRealm(name=o.name, realm_slug=o.realm_slug) for o in orgs]

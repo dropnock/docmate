@@ -1,30 +1,11 @@
-import api, { PORTAL } from "./client";
 import type { AuthUser } from "../types";
+export { logout } from "./keycloak";
 
-export async function login(email: string, password: string): Promise<AuthUser> {
-  const { data } = await api.post<AuthUser>("/auth/login", { email, password, portal: PORTAL });
-  localStorage.setItem("docmate_token", data.access_token);
-  return data;
-}
-
-export function logout() {
-  localStorage.removeItem("docmate_token");
-  window.location.href = "/login";
+// Stub retained for backward compat with LoginPage (unused but must not break tsc)
+export async function login(_email: string, _password: string): Promise<AuthUser> {
+  throw new Error("Direct login disabled — authentication handled by Keycloak");
 }
 
 export function getStoredUser(): AuthUser | null {
-  const token = localStorage.getItem("docmate_token");
-  if (!token) return null;
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return {
-      user_id: parseInt(payload.sub),
-      role: payload.role,
-      portal: payload.portal,
-      full_name: "",
-      access_token: token,
-    };
-  } catch {
-    return null;
-  }
+  return null;
 }

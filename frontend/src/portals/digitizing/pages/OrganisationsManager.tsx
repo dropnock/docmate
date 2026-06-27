@@ -7,7 +7,6 @@ import api from "@shared/api/client";
 import type { Organization } from "@shared/types";
 
 const TYPE_OPTIONS = [
-  { value: "digitizing_entity", label: "Digitizing Entity" },
   { value: "customer", label: "Customer" },
 ];
 

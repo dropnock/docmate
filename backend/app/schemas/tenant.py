@@ -25,10 +25,10 @@ class OrgOut(BaseModel):
     tenant_id: int
     name: str
     type: str
+    realm_slug: str | None = None
 
 
 class ProjectCreate(BaseModel):
-    digitizing_org_id: int
     customer_org_id: int
     name: str
     description: str | None = None

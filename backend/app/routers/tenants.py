@@ -49,12 +49,31 @@ async def get_tenant(
 async def create_organization(
     body: OrgCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor", "customer_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
+    import logging
+    from app.services.keycloak_service import create_customer_realm, slugify
+
+    logger = logging.getLogger(__name__)
+    org_type = OrgType(body.type)
+
+    realm_slug = None
+    if org_type == OrgType.customer:
+        realm_slug = slugify(body.name)
+        try:
+            create_customer_realm(realm_slug, body.name)
+        except Exception as exc:
+            logger.error("Keycloak realm creation failed for %s: %s", realm_slug, exc)
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not provision Keycloak realm: {exc}",
+            )
+
     org = Organization(
         tenant_id=current_user._tenant_id,
         name=body.name,
-        type=OrgType(body.type),
+        type=org_type,
+        realm_slug=realm_slug,
     )
     db.add(org)
     await db.flush()
@@ -84,9 +103,21 @@ async def create_project(
     from app.services import s3_service
 
     tenant_id = current_user._tenant_id
+
+    # Auto-select the single digitizing entity org for this tenant
+    de_result = await db.execute(
+        select(Organization).where(
+            Organization.tenant_id == tenant_id,
+            Organization.type == OrgType.digitizing_entity,
+        ).limit(1)
+    )
+    de_org = de_result.scalar_one_or_none()
+    if not de_org:
+        raise HTTPException(status_code=400, detail="No digitizing organisation found")
+
     project = Project(
         tenant_id=tenant_id,
-        digitizing_org_id=body.digitizing_org_id,
+        digitizing_org_id=de_org.id,
         customer_org_id=body.customer_org_id,
         name=body.name,
         description=body.description,

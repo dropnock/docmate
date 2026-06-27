@@ -30,7 +30,6 @@ export default function ProjectsManager() {
     queryFn: () => api.get("/organizations").then((r) => r.data),
   });
 
-  const deOrgs = orgs.filter((o) => o.type === "digitizing_entity");
   const custOrgs = orgs.filter((o) => o.type === "customer");
 
   const create = useMutation({
@@ -102,16 +101,6 @@ export default function ProjectsManager() {
           </Form.Item>
           <Form.Item name="description" label="Description">
             <Input.TextArea rows={2} />
-          </Form.Item>
-          <Form.Item
-            name="digitizing_org_id"
-            label="Digitizing Organisation"
-            rules={[{ required: true }]}
-          >
-            <Select
-              options={deOrgs.map((o) => ({ value: o.id, label: o.name }))}
-              placeholder="Select digitizing org"
-            />
           </Form.Item>
           <Form.Item
             name="customer_org_id"

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Layout, Menu, Typography, Button, Select, Space } from "antd";
+import { useState, useEffect } from "react";
+import { Layout, Menu, Typography, Button, Select, Space, Spin } from "antd";
 import {
   ProjectOutlined,
   TeamOutlined,
@@ -14,7 +14,7 @@ import {
   CheckSquareOutlined,
 } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import LoginPage from "@shared/components/LoginPage";
+import { initKeycloak, logout } from "@shared/api/keycloak";
 import StaffProductivityDashboard from "./pages/StaffProductivityDashboard";
 import ProjectKPIDashboard from "./pages/ProjectKPIDashboard";
 import StaleTaskManager from "./pages/StaleTaskManager";
@@ -26,9 +26,8 @@ import StaffAssignment from "./pages/StaffAssignment";
 import OrganisationsManager from "./pages/OrganisationsManager";
 import BatchManager from "./pages/BatchManager";
 import MyTasks from "./pages/MyTasks";
-import { getStoredUser, logout } from "@shared/api/auth";
 import api from "@shared/api/client";
-import type { AuthUser, Project } from "@shared/types";
+import type { UserRecord, Project } from "@shared/types";
 
 const { Header, Sider, Content } = Layout;
 const qc = new QueryClient();
@@ -53,7 +52,6 @@ const ADMIN_PAGES = [
   { key: "staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
 ];
 
-// Pages that require a project to be selected
 const PROJECT_SCOPED_PAGES = new Set(["productivity", "kpi", "batches", "assign", "stale"]);
 
 function ProjectSelector({
@@ -67,7 +65,6 @@ function ProjectSelector({
     queryKey: ["projects"],
     queryFn: () => api.get("/projects").then((r) => r.data),
   });
-
   return (
     <Select
       placeholder="Select project"
@@ -80,12 +77,15 @@ function ProjectSelector({
 }
 
 function AppInner() {
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser);
   const [page, setPage] = useState("productivity");
   const [projectId, setProjectId] = useState<number | null>(null);
-  const [inspectRecordId] = useState<number>(1);
 
-  if (!user) return <LoginPage onLogin={setUser} portalLabel="Digitizing Entity" />;
+  const { data: user, isLoading } = useQuery<UserRecord>({
+    queryKey: ["me"],
+    queryFn: () => api.get("/users/me").then((r) => r.data),
+  });
+
+  if (isLoading || !user) return <Spin fullscreen tip="Loading profile..." />;
 
   const isAdmin = user.role === "admin";
   const isSupervisor = isAdmin || user.role === "de_supervisor";
@@ -107,15 +107,13 @@ function AppInner() {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Header
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-      >
+      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Typography.Title level={4} style={{ color: "white", margin: 0 }}>
           DocMate — Digitizing
         </Typography.Title>
         <Space>
           <Typography.Text style={{ color: "rgba(255,255,255,0.65)" }}>
-            {user.full_name || `User ${user.user_id}`}
+            {user.full_name}
           </Typography.Text>
           <Button onClick={logout} type="text" style={{ color: "white" }}>
             Sign Out
@@ -165,9 +163,7 @@ function AppInner() {
               {page === "stale" && projectId && (
                 <StaleTaskManager projectId={projectId} />
               )}
-              {page === "history" && (
-                <RecordHistory recordId={inspectRecordId} />
-              )}
+              {page === "history" && <RecordHistory recordId={1} />}
               {page === "mytasks" && <MyTasks />}
               {page === "projects" && isAdmin && <ProjectsManager />}
               {page === "organisations" && isAdmin && <OrganisationsManager />}
@@ -182,6 +178,16 @@ function AppInner() {
 }
 
 export default function App() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    initKeycloak("doc", "docmate-de")
+      .then(() => setReady(true))
+      .catch((err) => console.error("Keycloak init failed:", err));
+  }, []);
+
+  if (!ready) return <Spin fullscreen tip="Connecting..." />;
+
   return (
     <QueryClientProvider client={qc}>
       <AppInner />

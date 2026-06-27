@@ -1,16 +1,17 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 
 
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-    portal: str  # "digitizing" | "customer"
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user_id: int
+class MeResponse(BaseModel):
+    model_config = {"from_attributes": True}
+    id: int
+    email: str
+    full_name: str
     role: str
     portal: str
-    full_name: str
+    is_active: bool
+    organization_id: int | None
+
+
+class CustomerRealm(BaseModel):
+    name: str
+    realm_slug: str

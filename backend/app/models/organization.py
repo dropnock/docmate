@@ -18,6 +18,7 @@ class Organization(Base, TimestampMixin):
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[OrgType] = mapped_column(Enum(OrgType), nullable=False)
+    realm_slug: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="organizations")
     users: Mapped[list["User"]] = relationship(back_populates="organization")

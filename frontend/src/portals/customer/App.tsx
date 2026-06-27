@@ -1,17 +1,18 @@
-import { useState } from "react";
-import { Layout, Menu, Typography, Button, Select, Space } from "antd";
+import { useState, useEffect } from "react";
+import { Layout, Menu, Typography, Button, Select, Space, Spin, Card, List } from "antd";
 import { ProjectOutlined, CheckCircleOutlined, HistoryOutlined } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import LoginPage from "@shared/components/LoginPage";
+import { initKeycloak, logout } from "@shared/api/keycloak";
 import ProjectKPIDashboard from "../digitizing/pages/ProjectKPIDashboard";
 import RecordHistory from "../digitizing/pages/RecordHistory";
 import QCWorkspace from "./pages/QCWorkspace";
-import { getStoredUser, logout } from "@shared/api/auth";
 import api from "@shared/api/client";
-import type { AuthUser, Project } from "@shared/types";
+import type { Project, UserRecord } from "@shared/types";
 
 const { Header, Sider, Content } = Layout;
 const queryClient = new QueryClient();
+
+const CUSTOMER_REALM_KEY = "docmate_customer_realm";
 
 const NAV_ITEMS = [
   { key: "qc", label: "QC Workspace", icon: <CheckCircleOutlined /> },
@@ -21,18 +22,70 @@ const NAV_ITEMS = [
 
 const PROJECT_SCOPED = new Set(["kpi"]);
 
+interface CustomerRealm {
+  name: string;
+  realm_slug: string;
+}
+
+function OrgSelector({ onSelect }: { onSelect: (slug: string) => void }) {
+  const [realms, setRealms] = useState<CustomerRealm[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/auth/customer-realms")
+      .then((r) => r.json())
+      .then((data: CustomerRealm[]) => {
+        setRealms(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        minHeight: "100vh",
+        background: "#f0f2f5",
+      }}
+    >
+      <Card title="Select Your Organisation" style={{ width: 380 }} loading={loading}>
+        <List
+          dataSource={realms}
+          locale={{ emptyText: "No organisations available" }}
+          renderItem={(r) => (
+            <List.Item>
+              <Button
+                type="link"
+                block
+                style={{ textAlign: "left" }}
+                onClick={() => onSelect(r.realm_slug)}
+              >
+                {r.name}
+              </Button>
+            </List.Item>
+          )}
+        />
+      </Card>
+    </div>
+  );
+}
+
 function AppInner() {
-  const [user, setUser] = useState<AuthUser | null>(getStoredUser);
   const [page, setPage] = useState("qc");
   const [projectId, setProjectId] = useState<number | null>(null);
+
+  const { data: user } = useQuery<UserRecord>({
+    queryKey: ["me"],
+    queryFn: () => api.get("/users/me").then((r) => r.data),
+  });
 
   const { data: projects = [] } = useQuery<Project[]>({
     queryKey: ["projects"],
     queryFn: () => api.get("/projects").then((r) => r.data),
-    enabled: !!user,
   });
-
-  if (!user) return <LoginPage onLogin={setUser} portalLabel="Customer" />;
 
   const showProjectSelector = PROJECT_SCOPED.has(page);
 
@@ -42,9 +95,16 @@ function AppInner() {
         <Typography.Title level={4} style={{ color: "white", margin: 0 }}>
           DocMate — Customer Portal
         </Typography.Title>
-        <Button onClick={logout} type="text" style={{ color: "white" }}>
-          Sign Out
-        </Button>
+        <Space>
+          {user && (
+            <Typography.Text style={{ color: "rgba(255,255,255,0.65)" }}>
+              {user.full_name}
+            </Typography.Text>
+          )}
+          <Button onClick={logout} type="text" style={{ color: "white" }}>
+            Sign Out
+          </Button>
+        </Space>
       </Header>
       <Layout>
         <Sider width={220} theme="light">
@@ -85,6 +145,35 @@ function AppInner() {
 }
 
 export default function App() {
+  const [realm, setRealm] = useState<string | null>(
+    () => localStorage.getItem(CUSTOMER_REALM_KEY)
+  );
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (!realm) return;
+    initKeycloak(realm, "docmate-cust")
+      .then(() => setReady(true))
+      .catch((err) => {
+        console.error("Keycloak init failed:", err);
+        localStorage.removeItem(CUSTOMER_REALM_KEY);
+        setRealm(null);
+      });
+  }, [realm]);
+
+  if (!realm) {
+    return (
+      <OrgSelector
+        onSelect={(slug) => {
+          localStorage.setItem(CUSTOMER_REALM_KEY, slug);
+          setRealm(slug);
+        }}
+      />
+    );
+  }
+
+  if (!ready) return <Spin fullscreen tip="Connecting..." />;
+
   return (
     <QueryClientProvider client={queryClient}>
       <AppInner />
