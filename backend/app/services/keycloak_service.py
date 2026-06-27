@@ -101,7 +101,7 @@ def create_user_in_realm(
             "lastName": parts[1] if len(parts) > 1 else "",
             "enabled": True,
             "emailVerified": True,
-            "requiredActions": ["CONFIGURE_TOTP"],
+            "requiredActions": ["UPDATE_PASSWORD", "CONFIGURE_TOTP"],
             "credentials": [
                 {"type": "password", "value": temp_password, "temporary": True}
             ],
