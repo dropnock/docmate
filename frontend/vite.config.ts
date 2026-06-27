@@ -12,8 +12,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        digitizing: path.resolve(__dirname, "index-digitizing.html"),
-        customer: path.resolve(__dirname, "index-customer.html"),
+        digitizing: path.resolve(__dirname, "digitizing.html"),
+        customer: path.resolve(__dirname, "customer.html"),
       },
     },
   },
