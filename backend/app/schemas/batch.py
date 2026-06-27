@@ -14,6 +14,10 @@ class DocumentTypeOut(BaseModel):
     json_schema: dict
 
 
+class CreateRecordsRequest(BaseModel):
+    count: int = 1
+
+
 class BatchCreate(BaseModel):
     project_id: int
     document_type_id: int

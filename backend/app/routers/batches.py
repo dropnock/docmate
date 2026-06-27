@@ -11,8 +11,8 @@ from app.models.document_type import DocumentType
 from app.models.project import Project
 from app.models.record import Record, RecordStatus
 from app.schemas.batch import (
-    BatchCreate, BatchOut, ConfirmUploadRequest, DocumentTypeCreate,
-    DocumentTypeOut, RecordOut, UploadUrlResponse,
+    BatchCreate, BatchOut, ConfirmUploadRequest, CreateRecordsRequest,
+    DocumentTypeCreate, DocumentTypeOut, RecordOut, UploadUrlResponse,
 )
 from app.services import s3_service
 
@@ -80,6 +80,34 @@ async def list_records(
 ):
     result = await db.execute(select(Record).where(Record.batch_id == batch_id))
     return list(result.scalars().all())
+
+
+@router.get("/document-types/{doc_type_id}", response_model=DocumentTypeOut)
+async def get_document_type(
+    doc_type_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    dt = await db.get(DocumentType, doc_type_id)
+    if not dt:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    return dt
+
+
+@router.post("/batches/{batch_id}/records", response_model=list[RecordOut], status_code=201)
+async def create_records(
+    batch_id: int,
+    body: CreateRecordsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin", "de_supervisor")),
+):
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    records = [Record(batch_id=batch_id) for _ in range(max(1, min(body.count, 500)))]
+    db.add_all(records)
+    await db.flush()
+    return records
 
 
 @router.post("/records/{record_id}/upload-url", response_model=UploadUrlResponse)

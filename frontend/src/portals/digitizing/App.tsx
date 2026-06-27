@@ -10,6 +10,8 @@ import {
   UserOutlined,
   UsergroupAddOutlined,
   BankOutlined,
+  InboxOutlined,
+  CheckSquareOutlined,
 } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoginPage from "@shared/components/LoginPage";
@@ -22,6 +24,8 @@ import ProjectsManager from "./pages/ProjectsManager";
 import UsersManager from "./pages/UsersManager";
 import StaffAssignment from "./pages/StaffAssignment";
 import OrganisationsManager from "./pages/OrganisationsManager";
+import BatchManager from "./pages/BatchManager";
+import MyTasks from "./pages/MyTasks";
 import { getStoredUser, logout } from "@shared/api/auth";
 import api from "@shared/api/client";
 import type { AuthUser, Project } from "@shared/types";
@@ -32,9 +36,14 @@ const qc = new QueryClient();
 const SUPERVISOR_PAGES = [
   { key: "productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
   { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
+  { key: "batches", label: "Batch Manager", icon: <InboxOutlined /> },
   { key: "assign", label: "Assign Tasks", icon: <UnorderedListOutlined /> },
   { key: "stale", label: "Stale Tasks", icon: <WarningOutlined /> },
   { key: "history", label: "Record History", icon: <HistoryOutlined /> },
+];
+
+const AGENT_PAGES = [
+  { key: "mytasks", label: "My Tasks", icon: <CheckSquareOutlined /> },
 ];
 
 const ADMIN_PAGES = [
@@ -45,7 +54,7 @@ const ADMIN_PAGES = [
 ];
 
 // Pages that require a project to be selected
-const PROJECT_SCOPED_PAGES = new Set(["productivity", "kpi", "assign", "stale"]);
+const PROJECT_SCOPED_PAGES = new Set(["productivity", "kpi", "batches", "assign", "stale"]);
 
 function ProjectSelector({
   projectId,
@@ -79,12 +88,20 @@ function AppInner() {
   if (!user) return <LoginPage onLogin={setUser} portalLabel="Digitizing Entity" />;
 
   const isAdmin = user.role === "admin";
-  const navItems = isAdmin
-    ? [
-        { type: "group" as const, label: "Operations", children: SUPERVISOR_PAGES },
-        { type: "group" as const, label: "Admin", children: ADMIN_PAGES },
-      ]
-    : SUPERVISOR_PAGES;
+  const isSupervisor = isAdmin || user.role === "de_supervisor";
+  const isAgent = ["de_indexer", "de_qa_agent"].includes(user.role);
+
+  const navItems = [
+    ...(isSupervisor || isAgent
+      ? [{ type: "group" as const, label: "Operations", children: SUPERVISOR_PAGES }]
+      : []),
+    ...(isAgent
+      ? [{ type: "group" as const, label: "Workspace", children: AGENT_PAGES }]
+      : []),
+    ...(isAdmin
+      ? [{ type: "group" as const, label: "Admin", children: ADMIN_PAGES }]
+      : []),
+  ];
 
   const showProjectSelector = PROJECT_SCOPED_PAGES.has(page);
 
@@ -139,6 +156,9 @@ function AppInner() {
               {page === "kpi" && projectId && (
                 <ProjectKPIDashboard projectId={projectId} />
               )}
+              {page === "batches" && projectId && (
+                <BatchManager projectId={projectId} />
+              )}
               {page === "assign" && projectId && (
                 <TaskAssignment projectId={projectId} />
               )}
@@ -148,6 +168,7 @@ function AppInner() {
               {page === "history" && (
                 <RecordHistory recordId={inspectRecordId} />
               )}
+              {page === "mytasks" && <MyTasks />}
               {page === "projects" && isAdmin && <ProjectsManager />}
               {page === "organisations" && isAdmin && <OrganisationsManager />}
               {page === "users" && isAdmin && <UsersManager />}
