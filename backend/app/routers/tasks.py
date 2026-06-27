@@ -86,6 +86,24 @@ async def bulk_reassign(
     )
 
 
+@router.get("/mine", response_model=list[TaskOut])
+async def my_tasks(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Tasks assigned to the current user that are pending or in progress."""
+    from sqlalchemy import select
+    from app.models.task import Task, TaskStatus
+
+    result = await db.execute(
+        select(Task).where(
+            Task.assigned_to == current_user.id,
+            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+        )
+    )
+    return list(result.scalars().all())
+
+
 @router.get("/stale", response_model=list[TaskOut])
 async def stale_tasks(
     project_id: int,

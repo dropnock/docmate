@@ -5,13 +5,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoginPage from "@shared/components/LoginPage";
 import ProjectKPIDashboard from "../digitizing/pages/ProjectKPIDashboard";
 import RecordHistory from "../digitizing/pages/RecordHistory";
+import QCWorkspace from "./pages/QCWorkspace";
 import { getStoredUser, logout } from "@shared/api/auth";
 import type { AuthUser } from "@shared/types";
 
 const { Header, Sider, Content } = Layout;
-const qc = new QueryClient();
+const queryClient = new QueryClient();
 
 const NAV_ITEMS = [
+  { key: "qc", label: "QC Workspace", icon: <CheckCircleOutlined /> },
   { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
   { key: "history", label: "Record History", icon: <HistoryOutlined /> },
 ];
@@ -20,7 +22,7 @@ const DEMO_PROJECT_ID = 1;
 
 function AppInner() {
   const [user, setUser] = useState<AuthUser | null>(getStoredUser);
-  const [page, setPage] = useState("kpi");
+  const [page, setPage] = useState("qc");
 
   if (!user) return <LoginPage onLogin={setUser} portalLabel="Customer" />;
 
@@ -43,7 +45,8 @@ function AppInner() {
             onClick={({ key }) => setPage(key)}
           />
         </Sider>
-        <Content style={{ padding: 24 }}>
+        <Content style={{ padding: page === "qc" ? 0 : 24 }}>
+          {page === "qc" && <QCWorkspace />}
           {page === "kpi" && <ProjectKPIDashboard projectId={DEMO_PROJECT_ID} />}
           {page === "history" && <RecordHistory recordId={1} />}
         </Content>
@@ -54,7 +57,7 @@ function AppInner() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={qc}>
+    <QueryClientProvider client={queryClient}>
       <AppInner />
     </QueryClientProvider>
   );
