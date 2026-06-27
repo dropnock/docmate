@@ -13,6 +13,7 @@ from app.routers import (
     shifts,
     tasks,
     tenants,
+    users,
 )
 
 
@@ -43,6 +44,7 @@ app.include_router(records.router)
 app.include_router(tasks.router)
 app.include_router(aql.router)
 app.include_router(analytics.router)
+app.include_router(users.router)
 
 
 @app.get("/health")
