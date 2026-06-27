@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Layout, Menu, Typography, Button } from "antd";
 import {
-  DashboardOutlined,
   ProjectOutlined,
   TeamOutlined,
+  UnorderedListOutlined,
   WarningOutlined,
   HistoryOutlined,
 } from "@ant-design/icons";
@@ -13,6 +13,7 @@ import StaffProductivityDashboard from "./pages/StaffProductivityDashboard";
 import ProjectKPIDashboard from "./pages/ProjectKPIDashboard";
 import StaleTaskManager from "./pages/StaleTaskManager";
 import RecordHistory from "./pages/RecordHistory";
+import TaskAssignment from "./pages/TaskAssignment";
 import { getStoredUser, logout } from "@shared/api/auth";
 import type { AuthUser } from "@shared/types";
 
@@ -22,6 +23,7 @@ const qc = new QueryClient();
 const NAV_ITEMS = [
   { key: "productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
   { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
+  { key: "assign", label: "Assign Tasks", icon: <UnorderedListOutlined /> },
   { key: "stale", label: "Stale Tasks", icon: <WarningOutlined /> },
   { key: "history", label: "Record History", icon: <HistoryOutlined /> },
 ];
@@ -58,6 +60,7 @@ function AppInner() {
         <Content style={{ padding: 24 }}>
           {page === "productivity" && <StaffProductivityDashboard projectId={DEMO_PROJECT_ID} />}
           {page === "kpi" && <ProjectKPIDashboard projectId={DEMO_PROJECT_ID} />}
+          {page === "assign" && <TaskAssignment projectId={DEMO_PROJECT_ID} />}
           {page === "stale" && <StaleTaskManager projectId={DEMO_PROJECT_ID} />}
           {page === "history" && <RecordHistory recordId={inspectRecordId} />}
         </Content>
