@@ -9,6 +9,7 @@ import {
   FolderOpenOutlined,
   UserOutlined,
   UsergroupAddOutlined,
+  BankOutlined,
 } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LoginPage from "@shared/components/LoginPage";
@@ -20,6 +21,7 @@ import TaskAssignment from "./pages/TaskAssignment";
 import ProjectsManager from "./pages/ProjectsManager";
 import UsersManager from "./pages/UsersManager";
 import StaffAssignment from "./pages/StaffAssignment";
+import OrganisationsManager from "./pages/OrganisationsManager";
 import { getStoredUser, logout } from "@shared/api/auth";
 import api from "@shared/api/client";
 import type { AuthUser, Project } from "@shared/types";
@@ -37,6 +39,7 @@ const SUPERVISOR_PAGES = [
 
 const ADMIN_PAGES = [
   { key: "projects", label: "Projects", icon: <FolderOpenOutlined /> },
+  { key: "organisations", label: "Organisations", icon: <BankOutlined /> },
   { key: "users", label: "Users", icon: <UserOutlined /> },
   { key: "staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
 ];
@@ -146,6 +149,7 @@ function AppInner() {
                 <RecordHistory recordId={inspectRecordId} />
               )}
               {page === "projects" && isAdmin && <ProjectsManager />}
+              {page === "organisations" && isAdmin && <OrganisationsManager />}
               {page === "users" && isAdmin && <UsersManager />}
               {page === "staff-assignment" && isAdmin && <StaffAssignment />}
             </>
