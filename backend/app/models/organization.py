@@ -1,0 +1,23 @@
+import enum
+
+from sqlalchemy import Enum, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base, TimestampMixin
+
+
+class OrgType(str, enum.Enum):
+    digitizing_entity = "digitizing_entity"
+    customer = "customer"
+
+
+class Organization(Base, TimestampMixin):
+    __tablename__ = "organizations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    type: Mapped[OrgType] = mapped_column(Enum(OrgType), nullable=False)
+
+    tenant: Mapped["Tenant"] = relationship(back_populates="organizations")
+    users: Mapped[list["User"]] = relationship(back_populates="organization")
