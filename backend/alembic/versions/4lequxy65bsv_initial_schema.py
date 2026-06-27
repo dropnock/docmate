@@ -7,6 +7,7 @@ Create Date: 2026-06-27 00:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ENUM as PgEnum
 
 revision = "4lequxy65bsv"
 down_revision = None
@@ -41,37 +42,38 @@ def upgrade() -> None:
     for name, values in _enum_defs:
         sa.Enum(*values, name=name).create(op.get_bind(), checkfirst=True)
 
-    # --- Enum column refs (create_type=False — types already exist above) ---
-    orgtype_enum = sa.Enum("digitizing_entity", "customer", name="orgtype", create_type=False)
-    userrole_enum = sa.Enum(
+    # --- Enum column refs: use PgEnum directly so dialect_impl() returns self
+    #     and create_type=False is preserved (sa.Enum loses it via dialect_impl) ---
+    orgtype_enum = PgEnum("digitizing_entity", "customer", name="orgtype", create_type=False)
+    userrole_enum = PgEnum(
         "admin", "de_supervisor", "de_indexer", "de_qa_agent",
         "customer_supervisor", "customer_qc_agent", name="userrole", create_type=False,
     )
-    portal_enum = sa.Enum("digitizing", "customer", name="portal", create_type=False)
-    s3status_enum = sa.Enum("provisioning", "ready", "error", name="s3bucketstatus", create_type=False)
-    batchstatus_enum = sa.Enum(
+    portal_enum = PgEnum("digitizing", "customer", name="portal", create_type=False)
+    s3status_enum = PgEnum("provisioning", "ready", "error", name="s3bucketstatus", create_type=False)
+    batchstatus_enum = PgEnum(
         "draft", "submitted", "indexing", "qa_review", "customer_qc", "passed", "rejected",
         name="batchstatus", create_type=False,
     )
-    recordstatus_enum = sa.Enum(
+    recordstatus_enum = PgEnum(
         "pending", "indexing", "indexed",
         "qa_pending", "qa_passed", "qa_failed",
         "qc_pending", "qc_passed", "qc_failed",
         name="recordstatus", create_type=False,
     )
-    versionreason_enum = sa.Enum(
+    versionreason_enum = PgEnum(
         "initial_indexing", "rework_after_qa", "rework_after_customer_rejection",
         name="versionreason", create_type=False,
     )
-    tasktype_enum = sa.Enum("indexing", "qa", "qc", name="tasktype", create_type=False)
-    taskstatus_enum = sa.Enum(
+    tasktype_enum = PgEnum("indexing", "qa", "qc", name="tasktype", create_type=False)
+    taskstatus_enum = PgEnum(
         "pending", "in_progress", "completed", "failed", "stale", name="taskstatus", create_type=False,
     )
-    aqlstatus_enum = sa.Enum("normal", "tightened", "reduced", name="aqlstatus", create_type=False)
-    auditentity_enum = sa.Enum(
+    aqlstatus_enum = PgEnum("normal", "tightened", "reduced", name="aqlstatus", create_type=False)
+    auditentity_enum = PgEnum(
         "record", "task", "batch", "project", "user", name="auditentitytype", create_type=False,
     )
-    auditaction_enum = sa.Enum(
+    auditaction_enum = PgEnum(
         "created", "status_changed", "locked", "unlocked", "lock_expired",
         "assigned", "reassigned", "sampled", "indexing_submitted", "version_created",
         "qa_passed", "qa_failed", "qc_passed", "qc_rejected",
