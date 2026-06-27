@@ -112,13 +112,14 @@
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
       "redirectUris": [
+        "http://localhost:5173",
+        "http://localhost:5173/",
         "http://localhost:5173/*",
+        "http://localhost:80",
+        "http://localhost:80/",
         "http://localhost:80/*"
       ],
-      "webOrigins": [
-        "http://localhost:5173",
-        "http://localhost:80"
-      ],
+      "webOrigins": ["+"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:80/*"

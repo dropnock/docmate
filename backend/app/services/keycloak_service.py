@@ -19,8 +19,15 @@ _CUSTOMER_CLIENT = {
     "directAccessGrantsEnabled": False,
     "serviceAccountsEnabled": False,
     "protocol": "openid-connect",
-    "redirectUris": ["http://localhost:8080/*", "http://localhost:5174/*"],
-    "webOrigins": ["http://localhost:8080", "http://localhost:5174"],
+    "redirectUris": [
+        "http://localhost:8080",
+        "http://localhost:8080/",
+        "http://localhost:8080/*",
+        "http://localhost:5174",
+        "http://localhost:5174/",
+        "http://localhost:5174/*",
+    ],
+    "webOrigins": ["+"],
     "attributes": {
         "pkce.code.challenge.method": "S256",
         "post.logout.redirect.uris": "http://localhost:8080/*##http://localhost:5174/*",
