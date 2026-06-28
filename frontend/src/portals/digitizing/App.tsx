@@ -165,7 +165,11 @@ function AppInner() {
               )}
               {page === "history" && <RecordHistory recordId={1} />}
               {page === "mytasks" && <MyTasks />}
-              {page === "projects" && isAdmin && <ProjectsManager />}
+              {page === "projects" && isAdmin && (
+                <ProjectsManager
+                  onOpen={(id) => { setProjectId(id); setPage("batches"); }}
+                />
+              )}
               {page === "organisations" && isAdmin && <OrganisationsManager />}
               {page === "users" && isAdmin && <UsersManager />}
               {page === "staff-assignment" && isAdmin && <StaffAssignment />}

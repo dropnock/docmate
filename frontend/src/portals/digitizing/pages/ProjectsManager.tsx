@@ -4,8 +4,9 @@ import {
   Table, Button, Modal, Form, Input, InputNumber,
   DatePicker, Select, Tag, message, Space,
 } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, FolderOpenOutlined, EditOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
 import api from "@shared/api/client";
 import type { Project, Organization } from "@shared/types";
 
@@ -15,9 +16,16 @@ const STATUS_COLOR: Record<string, string> = {
   error: "red",
 };
 
-export default function ProjectsManager() {
-  const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
+interface Props {
+  onOpen?: (projectId: number) => void;
+}
+
+export default function ProjectsManager({ onOpen }: Props) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Project | null>(null);
+  const [createForm] = Form.useForm();
+  const [editForm] = Form.useForm();
   const qc = useQueryClient();
 
   const { data: projects = [], isLoading } = useQuery<Project[]>({
@@ -43,14 +51,46 @@ export default function ProjectsManager() {
     onSuccess: () => {
       message.success("Project created");
       qc.invalidateQueries({ queryKey: ["projects"] });
-      setOpen(false);
-      form.resetFields();
+      setCreateOpen(false);
+      createForm.resetFields();
     },
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { detail?: string } } };
       message.error(err.response?.data?.detail ?? "Failed to create project");
     },
   });
+
+  const edit = useMutation({
+    mutationFn: (values: Record<string, unknown>) =>
+      api.patch(`/projects/${editTarget!.id}`, {
+        ...values,
+        proposed_end_date:
+          (values.proposed_end_date as { format?: (s: string) => string } | null)
+            ?.format?.("YYYY-MM-DD") ?? null,
+      }).then((r) => r.data),
+    onSuccess: () => {
+      message.success("Project updated");
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      setEditOpen(false);
+      setEditTarget(null);
+      editForm.resetFields();
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail ?? "Failed to update project");
+    },
+  });
+
+  const openEdit = (project: Project) => {
+    setEditTarget(project);
+    editForm.setFieldsValue({
+      name: project.name,
+      description: project.description,
+      proposed_end_date: project.proposed_end_date ? dayjs(project.proposed_end_date) : null,
+      stale_threshold_hours: project.stale_threshold_hours,
+    });
+    setEditOpen(true);
+  };
 
   const columns: ColumnsType<Project> = [
     { title: "Name", dataIndex: "name", key: "name" },
@@ -65,13 +105,39 @@ export default function ProjectsManager() {
       dataIndex: "proposed_end_date",
       key: "proposed_end_date",
       render: (v: string | null) => v ?? "—",
+      width: 130,
     },
     {
-      title: "S3 Status",
+      title: "S3",
       dataIndex: "s3_bucket_status",
       key: "s3_bucket_status",
-      render: (v: string) => (
-        <Tag color={STATUS_COLOR[v] ?? "default"}>{v}</Tag>
+      width: 100,
+      render: (v: string) => <Tag color={STATUS_COLOR[v] ?? "default"}>{v}</Tag>,
+    },
+    {
+      title: "",
+      key: "actions",
+      width: 160,
+      render: (_: unknown, project: Project) => (
+        <Space>
+          {onOpen && (
+            <Button
+              size="small"
+              type="primary"
+              icon={<FolderOpenOutlined />}
+              onClick={() => onOpen(project.id)}
+            >
+              Open
+            </Button>
+          )}
+          <Button
+            size="small"
+            icon={<EditOutlined />}
+            onClick={() => openEdit(project)}
+          >
+            Edit
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -80,33 +146,30 @@ export default function ProjectsManager() {
     <>
       <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Projects</span>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           New Project
         </Button>
       </Space>
 
       <Table dataSource={projects} columns={columns} rowKey="id" loading={isLoading} />
 
+      {/* Create project modal */}
       <Modal
         title="Create Project"
-        open={open}
-        onOk={() => form.submit()}
-        onCancel={() => { setOpen(false); form.resetFields(); }}
+        open={createOpen}
+        onOk={() => createForm.submit()}
+        onCancel={() => { setCreateOpen(false); createForm.resetFields(); }}
         confirmLoading={create.isPending}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={create.mutate} style={{ marginTop: 12 }}>
+        <Form form={createForm} layout="vertical" onFinish={create.mutate} style={{ marginTop: 12 }}>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="description" label="Description">
             <Input.TextArea rows={2} />
           </Form.Item>
-          <Form.Item
-            name="customer_org_id"
-            label="Customer Organisation"
-            rules={[{ required: true }]}
-          >
+          <Form.Item name="customer_org_id" label="Customer Organisation" rules={[{ required: true }]}>
             <Select
               options={custOrgs.map((o) => ({ value: o.id, label: o.name }))}
               placeholder="Select customer org"
@@ -115,11 +178,32 @@ export default function ProjectsManager() {
           <Form.Item name="proposed_end_date" label="Proposed End Date">
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item
-            name="stale_threshold_hours"
-            label="Stale Threshold (hours)"
-            initialValue={8}
-          >
+          <Form.Item name="stale_threshold_hours" label="Stale Threshold (hours)" initialValue={8}>
+            <InputNumber min={1} style={{ width: "100%" }} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit project modal */}
+      <Modal
+        title={`Edit — ${editTarget?.name}`}
+        open={editOpen}
+        onOk={() => editForm.submit()}
+        onCancel={() => { setEditOpen(false); setEditTarget(null); editForm.resetFields(); }}
+        confirmLoading={edit.isPending}
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical" onFinish={edit.mutate} style={{ marginTop: 12 }}>
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item name="proposed_end_date" label="Proposed End Date">
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
+          <Form.Item name="stale_threshold_hours" label="Stale Threshold (hours)">
             <InputNumber min={1} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
