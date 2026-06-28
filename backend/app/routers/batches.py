@@ -110,6 +110,35 @@ async def create_records(
     return records
 
 
+@router.delete("/records/{record_id}", status_code=204)
+async def delete_record(
+    record_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin", "de_supervisor")),
+):
+    record = await db.get(Record, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if record.status != RecordStatus.pending:
+        raise HTTPException(status_code=409, detail="Only pending records with no indexed data can be deleted")
+    await db.delete(record)
+
+
+@router.patch("/document-types/{doc_type_id}", response_model=DocumentTypeOut)
+async def update_document_type(
+    doc_type_id: int,
+    body: DocumentTypeCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin", "de_supervisor")),
+):
+    dt = await db.get(DocumentType, doc_type_id)
+    if not dt:
+        raise HTTPException(status_code=404, detail="Document type not found")
+    dt.name = body.name
+    dt.json_schema = body.json_schema
+    return dt
+
+
 @router.post("/records/{record_id}/upload-url", response_model=UploadUrlResponse)
 async def get_upload_url(
     record_id: int,

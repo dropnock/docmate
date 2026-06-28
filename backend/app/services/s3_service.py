@@ -23,6 +23,20 @@ def _get_client():
     return boto3.client("s3", **kwargs)
 
 
+def _get_presigned_client():
+    """Client used only for generating presigned URLs — uses the public-facing endpoint
+    so the URLs are resolvable by browsers rather than internal Docker hostnames."""
+    public_url = settings.aws_public_endpoint_url or settings.aws_endpoint_url
+    kwargs = dict(
+        region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
+    )
+    if public_url:
+        kwargs["endpoint_url"] = public_url
+    return boto3.client("s3", **kwargs)
+
+
 def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9-]", "-", name.lower())[:40].strip("-")
 
@@ -76,7 +90,7 @@ async def provision_bucket(db: AsyncSession, *, project: "Project") -> None:
 
 
 def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
-    client = _get_client()
+    client = _get_presigned_client()
     return client.generate_presigned_url(
         "put_object",
         Params={"Bucket": bucket, "Key": key},
@@ -85,7 +99,7 @@ def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
 
 
 def get_presigned_view_url(bucket: str, key: str, expires: int = 3600) -> str:
-    client = _get_client()
+    client = _get_presigned_client()
     return client.generate_presigned_url(
         "get_object",
         Params={"Bucket": bucket, "Key": key},

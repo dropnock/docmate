@@ -7,7 +7,7 @@ import {
 } from "antd";
 import type { UploadRequestOption } from "rc-upload/lib/interface";
 import {
-  PlusOutlined, RightOutlined, UploadOutlined,
+  PlusOutlined, RightOutlined, UploadOutlined, EditOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
@@ -103,6 +103,10 @@ export default function BatchManager({ projectId }: Props) {
   const [addRecordsForm] = Form.useForm();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [schemaEditOpen, setSchemaEditOpen] = useState(false);
+  const [schemaEditTarget, setSchemaEditTarget] = useState<DocumentType | null>(null);
+  const [schemaEditForm] = Form.useForm();
+  const [schemaEditError, setSchemaEditError] = useState<string | null>(null);
 
   const { data: batches = [], isLoading: batchesLoading } = useQuery<Batch[]>({
     queryKey: ["batches", projectId],
@@ -162,14 +166,47 @@ export default function BatchManager({ projectId }: Props) {
     },
   });
 
+  const updateDocType = useMutation({
+    mutationFn: (values: { name: string; schema_text: string }) => {
+      const json_schema = JSON.parse(values.schema_text);
+      return api
+        .patch(`/document-types/${schemaEditTarget!.id}`, { name: values.name, json_schema })
+        .then((r) => r.data);
+    },
+    onSuccess: () => {
+      message.success("Document type updated");
+      qc.invalidateQueries({ queryKey: ["doc-types", projectId] });
+      setSchemaEditOpen(false);
+      setSchemaEditTarget(null);
+      schemaEditForm.resetFields();
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail ?? "Failed to update document type");
+    },
+  });
+
+  const openSchemaEdit = (dt: DocumentType) => {
+    setSchemaEditTarget(dt);
+    schemaEditForm.setFieldsValue({
+      name: dt.name,
+      schema_text: JSON.stringify(dt.json_schema, null, 2),
+    });
+    setSchemaEditError(null);
+    setSchemaEditOpen(true);
+  };
+
   // Upload each file: create record → get presigned URL → PUT to S3 → confirm
+  // On any failure, delete the orphaned record so it doesn't persist.
   const handleCustomUpload = async (opts: UploadRequestOption) => {
     const { file, onProgress, onSuccess, onError } = opts;
+    let recordId: number | null = null;
     try {
       // 1. Create a single blank record in this batch
       const [record] = await api
         .post(`/batches/${selectedBatch!.id}/records`, { count: 1 })
         .then((r) => r.data as DocRecord[]);
+      recordId = record.id;
 
       // 2. Get a presigned upload URL
       const { upload_url, s3_key } = await api
@@ -195,6 +232,10 @@ export default function BatchManager({ projectId }: Props) {
 
       onSuccess?.({ record_id: record.id });
     } catch (err) {
+      // Clean up the orphaned record so it doesn't appear as a stale pending entry
+      if (recordId !== null) {
+        api.delete(`/records/${recordId}`).catch(() => {});
+      }
       onError?.(err as Error);
     }
   };
@@ -277,6 +318,16 @@ export default function BatchManager({ projectId }: Props) {
       },
     },
     { title: "ID", dataIndex: "id", width: 60 },
+    {
+      title: "",
+      key: "actions",
+      width: 120,
+      render: (_: unknown, dt: DocumentType) => (
+        <Button size="small" icon={<EditOutlined />} onClick={() => openSchemaEdit(dt)}>
+          Edit Schema
+        </Button>
+      ),
+    },
   ];
 
   const canModify = selectedBatch?.status === "draft";
@@ -488,6 +539,51 @@ export default function BatchManager({ projectId }: Props) {
           <Typography.Text type="secondary">
             Records created without files. Use "Upload Images" to attach files per record later.
           </Typography.Text>
+        </Form>
+      </Modal>
+
+      {/* Edit document type / schema modal */}
+      <Modal
+        title={`Edit Schema — ${schemaEditTarget?.name}`}
+        open={schemaEditOpen}
+        onOk={() => schemaEditForm.submit()}
+        onCancel={() => {
+          setSchemaEditOpen(false);
+          setSchemaEditTarget(null);
+          schemaEditForm.resetFields();
+          setSchemaEditError(null);
+        }}
+        confirmLoading={updateDocType.isPending}
+        destroyOnClose
+        width={620}
+      >
+        <Form
+          form={schemaEditForm}
+          layout="vertical"
+          style={{ marginTop: 12 }}
+          onFinish={(v) => {
+            try {
+              JSON.parse(v.schema_text);
+              setSchemaEditError(null);
+              updateDocType.mutate(v);
+            } catch {
+              setSchemaEditError("Invalid JSON — please fix before saving.");
+            }
+          }}
+        >
+          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="schema_text" label="JSON Schema" rules={[{ required: true }]}>
+            <Input.TextArea
+              rows={16}
+              style={{ fontFamily: "monospace", fontSize: 12 }}
+              onChange={() => setSchemaEditError(null)}
+            />
+          </Form.Item>
+          {schemaEditError && (
+            <Typography.Text type="danger">{schemaEditError}</Typography.Text>
+          )}
         </Form>
       </Modal>
 

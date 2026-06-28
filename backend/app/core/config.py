@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     aws_access_key_id: str = "minioadmin"
     aws_secret_access_key: str = "minioadmin"
     aws_endpoint_url: str | None = None
+    aws_public_endpoint_url: str | None = None  # public-facing URL for presigned URLs
     aws_region: str = "us-east-1"
     s3_force_path_style: bool = True
 
