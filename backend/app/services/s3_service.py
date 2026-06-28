@@ -2,6 +2,7 @@ import re
 from typing import TYPE_CHECKING
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,12 +26,14 @@ def _get_client():
 
 def _get_presigned_client():
     """Client used only for generating presigned URLs — uses the public-facing endpoint
-    so the URLs are resolvable by browsers rather than internal Docker hostnames."""
+    so the URLs are resolvable by browsers rather than internal Docker hostnames.
+    Forces Signature V4 (required by MinIO; V2 is not accepted)."""
     public_url = settings.aws_public_endpoint_url or settings.aws_endpoint_url
     kwargs = dict(
         region_name=settings.aws_region,
         aws_access_key_id=settings.aws_access_key_id,
         aws_secret_access_key=settings.aws_secret_access_key,
+        config=Config(signature_version="s3v4"),
     )
     if public_url:
         kwargs["endpoint_url"] = public_url
