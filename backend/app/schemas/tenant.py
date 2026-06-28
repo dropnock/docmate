@@ -26,6 +26,8 @@ class OrgOut(BaseModel):
     name: str
     type: str
     realm_slug: str | None = None
+    s3_bucket_name: str | None = None
+    s3_bucket_status: str | None = None
 
 
 class ProjectCreate(BaseModel):

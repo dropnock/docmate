@@ -77,6 +77,11 @@ async def create_organization(
     )
     db.add(org)
     await db.flush()
+
+    if org_type == OrgType.customer:
+        from app.services import s3_service
+        await s3_service.provision_org_bucket(db, org=org)
+
     return org
 
 

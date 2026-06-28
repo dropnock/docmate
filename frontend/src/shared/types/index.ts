@@ -131,6 +131,9 @@ export interface Organization {
   tenant_id: number;
   name: string;
   type: string;
+  realm_slug: string | null;
+  s3_bucket_name: string | null;
+  s3_bucket_status: string | null;
 }
 
 export interface AvailableStaff {
