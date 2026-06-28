@@ -216,9 +216,12 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
         .then((r) => r.data as { upload_url: string; s3_key: string });
 
       // 3. PUT directly to S3/MinIO (no Authorization header — presigned URL handles auth)
+      const fileObj = file as File;
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open("PUT", upload_url);
+        // Store content-type so view-url can detect PDF vs image
+        if (fileObj.type) xhr.setRequestHeader("Content-Type", fileObj.type);
         xhr.upload.addEventListener("progress", (e) => {
           if (e.lengthComputable) {
             onProgress?.({ percent: Math.round((e.loaded / e.total) * 100) });
@@ -226,7 +229,7 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
         });
         xhr.onload = () => (xhr.status < 400 ? resolve() : reject(new Error(`S3 PUT failed: ${xhr.status}`)));
         xhr.onerror = () => reject(new Error("Network error during upload"));
-        xhr.send(file as File);
+        xhr.send(fileObj);
       });
 
       // 4. Confirm the upload so the record's file_reference is set

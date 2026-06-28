@@ -74,14 +74,14 @@ export function RangeArrayField({
   return (
     <div style={{ marginBottom: 16 }}>
       <label
-        htmlFor={idSchema.$id}
+        htmlFor={idSchema?.$id}
         style={{ display: "block", marginBottom: 4, fontWeight: 500, color: hasError ? "#ff4d4f" : undefined }}
       >
         {title}
         {required && <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>}
       </label>
       <Input.TextArea
-        id={idSchema.$id}
+        id={idSchema?.$id}
         status={hasError ? "error" : undefined}
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}

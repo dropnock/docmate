@@ -101,6 +101,22 @@ def get_object_content_type(bucket: str, key: str) -> str:
         return "application/octet-stream"
 
 
+def sniff_content_type(bucket: str, key: str) -> str:
+    """Read the first 8 bytes of an object to detect file type by magic bytes."""
+    try:
+        resp = _get_client().get_object(Bucket=bucket, Key=key, Range="bytes=0-7")
+        header = resp["Body"].read(8)
+        if header[:5] == b"%PDF-":
+            return "application/pdf"
+        if header[:4] in (b"\x89PNG", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1"):
+            return "image/jpeg" if header[:3] == b"\xff\xd8\xff" else "image/png"
+        if header[:4] == b"II*\x00" or header[:4] == b"MM\x00*":
+            return "image/tiff"
+    except Exception:
+        pass
+    return "application/octet-stream"
+
+
 def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
     client = _get_presigned_client()
     return client.generate_presigned_url(
@@ -110,10 +126,9 @@ def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
     )
 
 
-def get_presigned_view_url(bucket: str, key: str, expires: int = 3600) -> str:
+def get_presigned_view_url(bucket: str, key: str, expires: int = 3600, content_type: str | None = None) -> str:
     client = _get_presigned_client()
-    return client.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=expires,
-    )
+    params: dict = {"Bucket": bucket, "Key": key, "ResponseContentDisposition": "inline"}
+    if content_type:
+        params["ResponseContentType"] = content_type
+    return client.generate_presigned_url("get_object", Params=params, ExpiresIn=expires)

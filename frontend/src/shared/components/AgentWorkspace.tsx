@@ -18,7 +18,10 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const [localStatus, setLocalStatus] = useState(task.status);
   const formId = `task-form-${task.id}`;
 
-  // Fetch view URL + content_type once task is in_progress
+  // Fetch view URL + content_type once task is in_progress.
+  // staleTime: Infinity + refetchOnWindowFocus: false prevent a new presigned URL from
+  // being generated while the image is loading, which would destroy the OSD viewer
+  // mid-flight and produce NS_BINDING_ABORTED.
   const { data: viewData, isLoading: viewLoading } = useQuery({
     queryKey: ["record-view-url", task.record_id],
     queryFn: () =>
@@ -26,6 +29,9 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
         .get<{ view_url: string; content_type: string }>(`/records/${task.record_id}/view-url`)
         .then((r) => r.data),
     enabled: localStatus === "in_progress",
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   // Fetch record for lock info and existing indexed data
