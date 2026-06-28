@@ -92,6 +92,15 @@ async def provision_bucket(db: AsyncSession, *, project: "Project") -> None:
         project.s3_bucket_status = S3BucketStatus.error
 
 
+def get_object_content_type(bucket: str, key: str) -> str:
+    """Return the stored Content-Type for an object (via HeadObject)."""
+    try:
+        resp = _get_client().head_object(Bucket=bucket, Key=key)
+        return resp.get("ContentType", "application/octet-stream")
+    except Exception:
+        return "application/octet-stream"
+
+
 def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
     client = _get_presigned_client()
     return client.generate_presigned_url(

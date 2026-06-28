@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Spin, Typography } from "antd";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@shared/api/client";
 import type { DocumentType, Task } from "@shared/types";
@@ -16,11 +16,11 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const qc = useQueryClient();
   const [localStatus, setLocalStatus] = useState(task.status);
 
-  // Fetch image URL — enabled once task is in_progress (either from prop or after start)
+  // Fetch view URL + content_type — enabled once task is in_progress
   const { data: viewData, isLoading: viewLoading } = useQuery({
     queryKey: ["record-view-url", task.record_id],
     queryFn: () =>
-      api.get<{ view_url: string }>(`/records/${task.record_id}/view-url`).then((r) => r.data),
+      api.get<{ view_url: string; content_type: string }>(`/records/${task.record_id}/view-url`).then((r) => r.data),
     enabled: localStatus === "in_progress",
   });
 
@@ -102,11 +102,19 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
         <SplitWorkspace
           left={
             viewLoading ? (
-              <Spin />
+              <Spin style={{ margin: 40 }} />
             ) : viewData?.view_url ? (
-              <OpenSeadragonViewer imageUrl={viewData.view_url} />
+              viewData.content_type === "application/pdf" ? (
+                <iframe
+                  src={viewData.view_url}
+                  style={{ width: "100%", height: "100%", border: "none" }}
+                  title={`Record ${task.record_id}`}
+                />
+              ) : (
+                <OpenSeadragonViewer imageUrl={viewData.view_url} />
+              )
             ) : (
-              <div style={{ padding: 24, color: "#ccc" }}>No image available</div>
+              <div style={{ padding: 24, color: "#888" }}>No file attached to this record</div>
             )
           }
           right={

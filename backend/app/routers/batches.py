@@ -199,4 +199,5 @@ async def get_view_url(
     batch = await db.get(Batch, record.batch_id)
     project = await db.get(Project, batch.project_id)
     url = s3_service.get_presigned_view_url(project.s3_bucket_name, record.file_reference)
-    return {"view_url": url}
+    content_type = s3_service.get_object_content_type(project.s3_bucket_name, record.file_reference)
+    return {"view_url": url, "content_type": content_type}
