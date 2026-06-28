@@ -12,6 +12,7 @@ import {
   BankOutlined,
   InboxOutlined,
   CheckSquareOutlined,
+  ClockCircleOutlined,
 } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { initKeycloak, logout } from "@shared/api/keycloak";
@@ -25,6 +26,7 @@ import UsersManager from "./pages/UsersManager";
 import StaffAssignment from "./pages/StaffAssignment";
 import OrganisationsManager from "./pages/OrganisationsManager";
 import BatchManager from "./pages/BatchManager";
+import ShiftsManager from "./pages/ShiftsManager";
 import MyTasks from "./pages/MyTasks";
 import api from "@shared/api/client";
 import type { UserRecord, Project } from "@shared/types";
@@ -33,11 +35,12 @@ const { Header, Sider, Content } = Layout;
 const qc = new QueryClient();
 
 const SUPERVISOR_PAGES = [
-  { key: "productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
-  { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
   { key: "batches", label: "Batch Manager", icon: <InboxOutlined /> },
+  { key: "staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
   { key: "assign", label: "Assign Tasks", icon: <UnorderedListOutlined /> },
   { key: "stale", label: "Stale Tasks", icon: <WarningOutlined /> },
+  { key: "productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
+  { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
   { key: "history", label: "Record History", icon: <HistoryOutlined /> },
 ];
 
@@ -48,11 +51,11 @@ const AGENT_PAGES = [
 const ADMIN_PAGES = [
   { key: "projects", label: "Projects", icon: <FolderOpenOutlined /> },
   { key: "organisations", label: "Organisations", icon: <BankOutlined /> },
+  { key: "shifts", label: "Shifts", icon: <ClockCircleOutlined /> },
   { key: "users", label: "Users", icon: <UserOutlined /> },
-  { key: "staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
 ];
 
-const PROJECT_SCOPED_PAGES = new Set(["productivity", "kpi", "batches", "assign", "stale"]);
+const PROJECT_SCOPED_PAGES = new Set(["batches", "staff-assignment", "assign", "stale", "productivity", "kpi"]);
 
 function ProjectSelector({
   projectId,
@@ -92,7 +95,7 @@ function AppInner() {
   const isAgent = ["de_indexer", "de_qa_agent"].includes(user.role);
 
   const navItems = [
-    ...(isSupervisor || isAgent
+    ...(isSupervisor
       ? [{ type: "group" as const, label: "Operations", children: SUPERVISOR_PAGES }]
       : []),
     ...(isAgent
@@ -148,31 +151,34 @@ function AppInner() {
             </div>
           ) : (
             <>
-              {page === "productivity" && projectId && (
-                <StaffProductivityDashboard projectId={projectId} />
-              )}
-              {page === "kpi" && projectId && (
-                <ProjectKPIDashboard projectId={projectId} />
-              )}
               {page === "batches" && projectId && (
-                <BatchManager projectId={projectId} />
+                <BatchManager projectId={projectId} isAdmin={isAdmin} />
               )}
-              {page === "assign" && projectId && (
+              {page === "staff-assignment" && projectId && isSupervisor && (
+                <StaffAssignment />
+              )}
+              {page === "assign" && projectId && isSupervisor && (
                 <TaskAssignment projectId={projectId} />
               )}
-              {page === "stale" && projectId && (
+              {page === "stale" && projectId && isSupervisor && (
                 <StaleTaskManager projectId={projectId} />
               )}
-              {page === "history" && <RecordHistory recordId={1} />}
-              {page === "mytasks" && <MyTasks />}
+              {page === "productivity" && projectId && isSupervisor && (
+                <StaffProductivityDashboard projectId={projectId} />
+              )}
+              {page === "kpi" && projectId && isSupervisor && (
+                <ProjectKPIDashboard projectId={projectId} />
+              )}
+              {page === "history" && isSupervisor && <RecordHistory recordId={1} />}
+              {page === "mytasks" && isAgent && <MyTasks />}
               {page === "projects" && isAdmin && (
                 <ProjectsManager
                   onOpen={(id) => { setProjectId(id); setPage("batches"); }}
                 />
               )}
               {page === "organisations" && isAdmin && <OrganisationsManager />}
+              {page === "shifts" && isAdmin && <ShiftsManager />}
               {page === "users" && isAdmin && <UsersManager />}
-              {page === "staff-assignment" && isAdmin && <StaffAssignment />}
             </>
           )}
         </Content>

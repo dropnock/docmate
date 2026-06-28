@@ -24,7 +24,7 @@ async def create_document_type(
     body: DocumentTypeCreate,
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
     dt = DocumentType(project_id=project_id, name=body.name, json_schema=body.json_schema)
     db.add(dt)
@@ -99,7 +99,7 @@ async def create_records(
     batch_id: int,
     body: CreateRecordsRequest,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
     batch = await db.get(Batch, batch_id)
     if not batch:
@@ -114,7 +114,7 @@ async def create_records(
 async def delete_record(
     record_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
     record = await db.get(Record, record_id)
     if not record:
@@ -129,7 +129,7 @@ async def update_document_type(
     doc_type_id: int,
     body: DocumentTypeCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
     dt = await db.get(DocumentType, doc_type_id)
     if not dt:
@@ -143,7 +143,7 @@ async def update_document_type(
 async def get_upload_url(
     record_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_roles("admin")),
 ):
     record = await db.get(Record, record_id)
     if not record:
@@ -165,7 +165,7 @@ async def confirm_upload(
     record_id: int,
     body: ConfirmUploadRequest,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_roles("admin")),
 ):
     record = await db.get(Record, record_id)
     if not record:

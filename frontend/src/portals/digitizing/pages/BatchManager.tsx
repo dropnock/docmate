@@ -63,9 +63,9 @@ const BATCH_NEXT_ACTION: Record<string, { label: string; endpoint: string } | nu
   rejected: null,
 };
 
-interface Props { projectId: number }
+interface Props { projectId: number; isAdmin?: boolean }
 
-export default function BatchManager({ projectId }: Props) {
+export default function BatchManager({ projectId, isAdmin = false }: Props) {
   const qc = useQueryClient();
 
   // --- Document Types ---
@@ -318,7 +318,7 @@ export default function BatchManager({ projectId }: Props) {
       },
     },
     { title: "ID", dataIndex: "id", width: 60 },
-    {
+    ...(isAdmin ? [{
       title: "",
       key: "actions",
       width: 120,
@@ -327,7 +327,7 @@ export default function BatchManager({ projectId }: Props) {
           Edit Schema
         </Button>
       ),
-    },
+    }] : []),
   ];
 
   const canModify = selectedBatch?.status === "draft";
@@ -371,21 +371,25 @@ export default function BatchManager({ projectId }: Props) {
                     }
                     extra={
                       <Space>
-                        <Button
-                          icon={<UploadOutlined />}
-                          onClick={() => setUploadOpen(true)}
-                          disabled={!canModify}
-                          type="primary"
-                        >
-                          Upload Images
-                        </Button>
-                        <Button
-                          icon={<PlusOutlined />}
-                          onClick={() => setAddRecordsOpen(true)}
-                          disabled={!canModify}
-                        >
-                          Add Blank Records
-                        </Button>
+                        {isAdmin && (
+                          <>
+                            <Button
+                              icon={<UploadOutlined />}
+                              onClick={() => setUploadOpen(true)}
+                              disabled={!canModify}
+                              type="primary"
+                            >
+                              Upload Images
+                            </Button>
+                            <Button
+                              icon={<PlusOutlined />}
+                              onClick={() => setAddRecordsOpen(true)}
+                              disabled={!canModify}
+                            >
+                              Add Blank Records
+                            </Button>
+                          </>
+                        )}
                         <Button size="small" onClick={() => setSelectedBatch(null)}>
                           Close
                         </Button>
@@ -428,9 +432,11 @@ export default function BatchManager({ projectId }: Props) {
               <>
                 <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 16, fontWeight: 600 }}>Document Types</span>
-                  <Button type="primary" icon={<PlusOutlined />} onClick={() => setDtOpen(true)}>
-                    New Document Type
-                  </Button>
+                  {isAdmin && (
+                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setDtOpen(true)}>
+                      New Document Type
+                    </Button>
+                  )}
                 </Space>
                 <Table dataSource={docTypes} columns={dtColumns} rowKey="id" size="middle" />
               </>

@@ -23,7 +23,7 @@ router = APIRouter(prefix="/api", tags=["shifts"])
 async def create_shift(
     body: ShiftCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
     shift = Shift(
         tenant_id=current_user._tenant_id,
@@ -53,7 +53,7 @@ async def assign_shift_to_project(
     project_id: int,
     body: AssignShiftToProject,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
     ps = ProjectShift(project_id=project_id, shift_id=body.shift_id)
     db.add(ps)

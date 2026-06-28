@@ -102,7 +102,7 @@ async def list_organizations(
 async def create_project(
     body: ProjectCreate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin", "de_supervisor")),
+    current_user=Depends(require_roles("admin")),
 ):
     from app.models.aql import AQLConfig
     from app.services import s3_service

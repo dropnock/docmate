@@ -2,20 +2,27 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Table, Button, Modal, Form, Select,
-  Tag, message, Space, Empty, Divider,
+  Tag, message, Space, Empty,
 } from "antd";
-import { UserAddOutlined, PlusOutlined } from "@ant-design/icons";
+import { UserAddOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
 import type { Project, Shift, AvailableStaff, UserRecord } from "@shared/types";
+
+const ROLE_COLOR: Record<string, string> = {
+  de_indexer: "blue",
+  de_qa_agent: "gold",
+  de_supervisor: "green",
+  customer_supervisor: "purple",
+  customer_qc_agent: "orange",
+  admin: "red",
+};
 
 export default function StaffAssignment() {
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [shiftOpen, setShiftOpen] = useState(false);
   const [assignForm] = Form.useForm();
-  const [shiftForm] = Form.useForm();
   const qc = useQueryClient();
 
   const { data: projects = [] } = useQuery<Project[]>({
@@ -57,21 +64,6 @@ export default function StaffAssignment() {
     },
   });
 
-  const createShift = useMutation({
-    mutationFn: (values: Record<string, unknown>) =>
-      api.post("/shifts", values).then((r) => r.data),
-    onSuccess: () => {
-      message.success("Shift created");
-      qc.invalidateQueries({ queryKey: ["shifts"] });
-      setShiftOpen(false);
-      shiftForm.resetFields();
-    },
-    onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail ?? "Failed to create shift");
-    },
-  });
-
   const staffColumns: ColumnsType<AvailableStaff> = [
     { title: "Name", dataIndex: "full_name", key: "full_name" },
     { title: "Email", dataIndex: "email", key: "email" },
@@ -79,49 +71,22 @@ export default function StaffAssignment() {
       title: "Role",
       dataIndex: "role",
       key: "role",
-      render: (v: string) => <Tag>{v}</Tag>,
+      render: (v: string) => (
+        <Tag color={ROLE_COLOR[v] ?? "default"}>{v.replace(/_/g, " ")}</Tag>
+      ),
     },
   ];
 
   const canViewStaff = !!selectedProjectId && !!selectedShiftId;
 
+  const projectShifts = selectedProjectId
+    ? shifts  // show all shifts; backend validates shift belongs to project
+    : [];
+
   return (
     <>
-      <span style={{ fontSize: 20, fontWeight: 600 }}>Staff Assignment</span>
-
-      <Space style={{ marginTop: 16, marginBottom: 16 }} wrap>
-        <Select
-          placeholder="Select project"
-          style={{ width: 240 }}
-          options={projects.map((p) => ({ value: p.id, label: p.name }))}
-          onChange={(v) => { setSelectedProjectId(v); setSelectedShiftId(null); }}
-          value={selectedProjectId}
-        />
-        <Select
-          placeholder="Select shift"
-          style={{ width: 200 }}
-          options={shifts.map((s) => ({
-            value: s.id,
-            label: `${s.name} (${s.start_time}–${s.end_time})`,
-          }))}
-          onChange={setSelectedShiftId}
-          value={selectedShiftId}
-          disabled={!selectedProjectId}
-          dropdownRender={(menu) => (
-            <>
-              {menu}
-              <Divider style={{ margin: "4px 0" }} />
-              <Button
-                type="link"
-                icon={<PlusOutlined />}
-                style={{ padding: "4px 8px" }}
-                onClick={() => setShiftOpen(true)}
-              >
-                Create new shift
-              </Button>
-            </>
-          )}
-        />
+      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 20, fontWeight: 600 }}>Staff Assignment</span>
         {canViewStaff && (
           <Button
             type="primary"
@@ -136,13 +101,34 @@ export default function StaffAssignment() {
         )}
       </Space>
 
+      <Space style={{ marginBottom: 16 }} wrap>
+        <Select
+          placeholder="Select project"
+          style={{ width: 240 }}
+          options={projects.map((p) => ({ value: p.id, label: p.name }))}
+          onChange={(v) => { setSelectedProjectId(v); setSelectedShiftId(null); }}
+          value={selectedProjectId}
+        />
+        <Select
+          placeholder="Select shift"
+          style={{ width: 220 }}
+          options={projectShifts.map((s) => ({
+            value: s.id,
+            label: `${s.name} (${s.start_time}–${s.end_time})`,
+          }))}
+          onChange={setSelectedShiftId}
+          value={selectedShiftId}
+          disabled={!selectedProjectId}
+        />
+      </Space>
+
       {canViewStaff ? (
         <Table
           dataSource={assignedStaff}
           columns={staffColumns}
           rowKey="id"
           loading={staffLoading}
-          locale={{ emptyText: "No staff assigned to this project / shift yet" }}
+          locale={{ emptyText: "No staff assigned to this project / shift yet. Use Add Staff above." }}
         />
       ) : (
         <Empty description="Select a project and shift to view assigned staff" />
@@ -169,89 +155,15 @@ export default function StaffAssignment() {
               optionFilterProp="label"
               placeholder="Search users"
               options={users
-                .filter((u) => u.is_active)
+                .filter((u) => u.is_active && u.portal === "digitizing")
                 .map((u) => ({
                   value: u.id,
-                  label: `${u.full_name} — ${u.role} (${u.email})`,
+                  label: `${u.full_name} — ${u.role.replace(/_/g, " ")} (${u.email})`,
                 }))}
             />
           </Form.Item>
           <Form.Item name="shift_id" label="Shift" rules={[{ required: true }]}>
-            <Select
-              options={shifts.map((s) => ({ value: s.id, label: s.name }))}
-            />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* Create shift modal */}
-      <Modal
-        title="Create Shift"
-        open={shiftOpen}
-        onOk={() => shiftForm.submit()}
-        onCancel={() => { setShiftOpen(false); shiftForm.resetFields(); }}
-        confirmLoading={createShift.isPending}
-        destroyOnClose
-      >
-        <Form
-          form={shiftForm}
-          layout="vertical"
-          onFinish={createShift.mutate}
-          style={{ marginTop: 12 }}
-          initialValues={{ timezone: "UTC" }}
-        >
-          <Form.Item name="name" label="Shift Name" rules={[{ required: true }]}>
-            <Select
-              options={[
-                { value: "Morning", label: "Morning" },
-                { value: "Afternoon", label: "Afternoon" },
-                { value: "Night", label: "Night" },
-              ]}
-              mode={undefined}
-              allowClear={false}
-              showSearch
-              // allow free-form input via the search box
-              filterOption={false}
-              onSearch={(v) => shiftForm.setFieldValue("name", v)}
-            />
-          </Form.Item>
-          <Form.Item
-            name="start_time"
-            label="Start Time (HH:MM)"
-            rules={[{ required: true, pattern: /^\d{2}:\d{2}$/, message: "Use HH:MM format" }]}
-          >
-            <Select
-              options={["06:00","07:00","08:00","09:00","14:00","22:00"].map((t) => ({
-                value: t, label: t,
-              }))}
-              showSearch
-              filterOption={false}
-              onSearch={(v) => shiftForm.setFieldValue("start_time", v)}
-              allowClear={false}
-            />
-          </Form.Item>
-          <Form.Item
-            name="end_time"
-            label="End Time (HH:MM)"
-            rules={[{ required: true, pattern: /^\d{2}:\d{2}$/, message: "Use HH:MM format" }]}
-          >
-            <Select
-              options={["14:00","15:00","16:00","17:00","18:00","22:00","06:00"].map((t) => ({
-                value: t, label: t,
-              }))}
-              showSearch
-              filterOption={false}
-              onSearch={(v) => shiftForm.setFieldValue("end_time", v)}
-              allowClear={false}
-            />
-          </Form.Item>
-          <Form.Item name="timezone" label="Timezone" rules={[{ required: true }]}>
-            <Select
-              options={["UTC","America/New_York","America/Chicago","America/Los_Angeles","Europe/London","Europe/Paris","Asia/Tokyo"].map(
-                (tz) => ({ value: tz, label: tz })
-              )}
-              showSearch
-            />
+            <Select options={shifts.map((s) => ({ value: s.id, label: `${s.name} (${s.start_time}–${s.end_time})` }))} />
           </Form.Item>
         </Form>
       </Modal>
