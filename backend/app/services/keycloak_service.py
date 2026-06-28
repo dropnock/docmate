@@ -71,7 +71,7 @@ def create_customer_realm(realm_slug: str, display_name: str) -> None:
                     "name": "Configure OTP",
                     "providerId": "CONFIGURE_TOTP",
                     "enabled": True,
-                    "defaultAction": True,
+                    "defaultAction": False,
                     "priority": 10,
                     "config": {},
                 }
@@ -101,7 +101,7 @@ def create_user_in_realm(
             "lastName": parts[1] if len(parts) > 1 else "",
             "enabled": True,
             "emailVerified": True,
-            "requiredActions": ["UPDATE_PASSWORD", "CONFIGURE_TOTP"],
+            "requiredActions": ["UPDATE_PASSWORD"],
             "credentials": [
                 {"type": "password", "value": temp_password, "temporary": True}
             ],

@@ -15,6 +15,8 @@ import type { Batch, DocRecord, DocumentType } from "@shared/types";
 
 const SCHEMA_TEMPLATE = JSON.stringify(
   {
+    title: "Document",
+    type: "object",
     properties: {
       title: { type: "string", title: "Document Title" },
       date: { type: "string", format: "date", title: "Document Date" },
@@ -310,11 +312,52 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
   const dtColumns: ColumnsType<DocumentType> = [
     { title: "Name", dataIndex: "name", key: "name" },
     {
+      title: "Schema Title",
+      key: "schema_title",
+      render: (_: unknown, dt: DocumentType) => {
+        const schema = dt.json_schema as { title?: string; type?: string };
+        return (
+          <Space>
+            {schema.title && <Typography.Text strong>{schema.title}</Typography.Text>}
+            {schema.type && <Tag color="blue">{schema.type}</Tag>}
+          </Space>
+        );
+      },
+    },
+    {
       title: "Fields",
       key: "fields",
       render: (_: unknown, dt: DocumentType) => {
-        const props = (dt.json_schema as { properties?: Record<string, unknown> }).properties ?? {};
-        return Object.keys(props).map((f) => <Tag key={f}>{f}</Tag>);
+        const schema = dt.json_schema as {
+          properties?: Record<string, { type?: string; title?: string; format?: string; enum?: unknown[] }>;
+        };
+        const props = schema.properties ?? {};
+        return (
+          <Space wrap>
+            {Object.entries(props).map(([key, def]) => {
+              const label = def.title ?? key;
+              const typeTag = def.enum ? "enum" : def.format ?? def.type ?? "any";
+              return (
+                <Tag key={key} style={{ marginBottom: 2 }}>
+                  {label} <Typography.Text type="secondary" style={{ fontSize: 11 }}>({typeTag})</Typography.Text>
+                </Tag>
+              );
+            })}
+          </Space>
+        );
+      },
+    },
+    {
+      title: "Required",
+      key: "required",
+      width: 160,
+      render: (_: unknown, dt: DocumentType) => {
+        const req = (dt.json_schema as { required?: string[] }).required ?? [];
+        return req.length ? (
+          <Space wrap>{req.map((f) => <Tag key={f} color="orange">{f}</Tag>)}</Space>
+        ) : (
+          <Typography.Text type="secondary">none</Typography.Text>
+        );
       },
     },
     { title: "ID", dataIndex: "id", width: 60 },
@@ -569,7 +612,11 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
           style={{ marginTop: 12 }}
           onFinish={(v) => {
             try {
-              JSON.parse(v.schema_text);
+              const parsed = JSON.parse(v.schema_text);
+              if (parsed.type !== "object") {
+                setSchemaEditError('Schema must have "type": "object" at root for rjsf to render the form.');
+                return;
+              }
               setSchemaEditError(null);
               updateDocType.mutate(v);
             } catch {
@@ -580,7 +627,18 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="schema_text" label="JSON Schema" rules={[{ required: true }]}>
+          <Form.Item
+            name="schema_text"
+            label={
+              <Space>
+                <span>JSON Schema</span>
+                <Tooltip title='Must be a valid JSON Schema with "type": "object" at root. Fields go inside "properties".'>
+                  <Typography.Text type="secondary" style={{ cursor: "help" }}>(?)</Typography.Text>
+                </Tooltip>
+              </Space>
+            }
+            rules={[{ required: true }]}
+          >
             <Input.TextArea
               rows={16}
               style={{ fontFamily: "monospace", fontSize: 12 }}
@@ -609,7 +667,11 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
           style={{ marginTop: 12 }}
           onFinish={(v) => {
             try {
-              JSON.parse(v.schema_text);
+              const parsed = JSON.parse(v.schema_text);
+              if (parsed.type !== "object") {
+                setSchemaError('Schema must have "type": "object" at root for rjsf to render the form.');
+                return;
+              }
               setSchemaError(null);
               createDt.mutate(v);
             } catch {
