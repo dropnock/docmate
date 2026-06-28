@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Table, Button, Modal, Form, Input, InputNumber,
   Select, Tag, Tabs, Space, message, Popconfirm,
-  Typography, Card, Descriptions, Row, Col, Tooltip,
+  Typography, Card, Descriptions, Row, Col, Tooltip, Upload,
 } from "antd";
+import type { UploadRequestOption } from "rc-upload/lib/interface";
 import {
-  PlusOutlined, RightOutlined,
+  PlusOutlined, RightOutlined, UploadOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
@@ -52,7 +53,6 @@ const RECORD_STATUS_COLOR: Record<string, string> = {
   qc_failed: "red",
 };
 
-// Next valid action for a batch
 const BATCH_NEXT_ACTION: Record<string, { label: string; endpoint: string } | null> = {
   draft: { label: "Submit for Indexing", endpoint: "submit" },
   submitted: { label: "Advance → Indexing", endpoint: "advance-indexing" },
@@ -101,6 +101,8 @@ export default function BatchManager({ projectId }: Props) {
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
   const [addRecordsOpen, setAddRecordsOpen] = useState(false);
   const [addRecordsForm] = Form.useForm();
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const { data: batches = [], isLoading: batchesLoading } = useQuery<Batch[]>({
     queryKey: ["batches", projectId],
@@ -160,6 +162,43 @@ export default function BatchManager({ projectId }: Props) {
     },
   });
 
+  // Upload each file: create record → get presigned URL → PUT to S3 → confirm
+  const handleCustomUpload = async (opts: UploadRequestOption) => {
+    const { file, onProgress, onSuccess, onError } = opts;
+    try {
+      // 1. Create a single blank record in this batch
+      const [record] = await api
+        .post(`/batches/${selectedBatch!.id}/records`, { count: 1 })
+        .then((r) => r.data as DocRecord[]);
+
+      // 2. Get a presigned upload URL
+      const { upload_url, s3_key } = await api
+        .post(`/records/${record.id}/upload-url`)
+        .then((r) => r.data as { upload_url: string; s3_key: string });
+
+      // 3. PUT directly to S3/MinIO (no Authorization header — presigned URL handles auth)
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("PUT", upload_url);
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            onProgress?.({ percent: Math.round((e.loaded / e.total) * 100) });
+          }
+        });
+        xhr.onload = () => (xhr.status < 400 ? resolve() : reject(new Error(`S3 PUT failed: ${xhr.status}`)));
+        xhr.onerror = () => reject(new Error("Network error during upload"));
+        xhr.send(file as File);
+      });
+
+      // 4. Confirm the upload so the record's file_reference is set
+      await api.patch(`/records/${record.id}/confirm-upload`, { s3_key });
+
+      onSuccess?.({ record_id: record.id });
+    } catch (err) {
+      onError?.(err as Error);
+    }
+  };
+
   const batchColumns: ColumnsType<Batch> = [
     { title: "Name", dataIndex: "name", key: "name" },
     {
@@ -215,7 +254,9 @@ export default function BatchManager({ projectId }: Props) {
     {
       title: "File",
       dataIndex: "file_reference",
-      render: (v: string | null) => v ? <Typography.Text ellipsis style={{ maxWidth: 200 }}>{v.split("/").pop()}</Typography.Text> : <Tag>No file</Tag>,
+      render: (v: string | null) => v
+        ? <Typography.Text ellipsis style={{ maxWidth: 200 }}>{v.split("/").pop()}</Typography.Text>
+        : <Tag>No file</Tag>,
     },
     {
       title: "Lock",
@@ -237,6 +278,8 @@ export default function BatchManager({ projectId }: Props) {
     },
     { title: "ID", dataIndex: "id", width: 60 },
   ];
+
+  const canModify = selectedBatch?.status === "draft";
 
   return (
     <>
@@ -278,11 +321,19 @@ export default function BatchManager({ projectId }: Props) {
                     extra={
                       <Space>
                         <Button
+                          icon={<UploadOutlined />}
+                          onClick={() => setUploadOpen(true)}
+                          disabled={!canModify}
+                          type="primary"
+                        >
+                          Upload Images
+                        </Button>
+                        <Button
                           icon={<PlusOutlined />}
                           onClick={() => setAddRecordsOpen(true)}
-                          disabled={selectedBatch.status !== "draft"}
+                          disabled={!canModify}
                         >
-                          Add Records
+                          Add Blank Records
                         </Button>
                         <Button size="small" onClick={() => setSelectedBatch(null)}>
                           Close
@@ -292,8 +343,11 @@ export default function BatchManager({ projectId }: Props) {
                   >
                     <Row gutter={16} style={{ marginBottom: 16 }}>
                       <Col>
-                        <Descriptions size="small" column={3}>
+                        <Descriptions size="small" column={4}>
                           <Descriptions.Item label="Total">{records.length}</Descriptions.Item>
+                          <Descriptions.Item label="With file">
+                            {records.filter((r) => r.file_reference).length}
+                          </Descriptions.Item>
                           <Descriptions.Item label="Pending">
                             {records.filter((r) => r.status === "pending").length}
                           </Descriptions.Item>
@@ -334,6 +388,58 @@ export default function BatchManager({ projectId }: Props) {
         ]}
       />
 
+      {/* Upload images modal */}
+      <Modal
+        title={`Upload Images — ${selectedBatch?.name}`}
+        open={uploadOpen}
+        footer={
+          <Button
+            onClick={() => {
+              setUploadOpen(false);
+              setUploading(false);
+              qc.invalidateQueries({ queryKey: ["records", selectedBatch?.id] });
+            }}
+          >
+            Done
+          </Button>
+        }
+        onCancel={() => {
+          if (uploading) return;
+          setUploadOpen(false);
+          qc.invalidateQueries({ queryKey: ["records", selectedBatch?.id] });
+        }}
+        destroyOnClose
+        width={560}
+      >
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+          Each file creates one record. Files are uploaded directly to S3 and linked to their record automatically.
+          Accepted formats: JPEG, PNG, TIFF, PDF, BMP, WebP.
+        </Typography.Paragraph>
+        <Upload.Dragger
+          multiple
+          accept=".jpg,.jpeg,.png,.tif,.tiff,.pdf,.bmp,.webp"
+          customRequest={handleCustomUpload}
+          onChange={(info) => {
+            const inProgress = info.fileList.some((f) => f.status === "uploading");
+            setUploading(inProgress);
+            if (info.file.status === "done") {
+              message.success(`${info.file.name} uploaded`);
+            } else if (info.file.status === "error") {
+              message.error(`${info.file.name} failed — ${info.file.error?.message ?? "unknown error"}`);
+            }
+          }}
+          style={{ padding: "24px 0" }}
+        >
+          <p className="ant-upload-drag-icon">
+            <UploadOutlined style={{ fontSize: 40, color: "#1677ff" }} />
+          </p>
+          <p className="ant-upload-text">Click or drag files here to upload</p>
+          <p className="ant-upload-hint">
+            Drop multiple files at once. Each file = one record in this batch.
+          </p>
+        </Upload.Dragger>
+      </Modal>
+
       {/* Create batch modal */}
       <Modal
         title="Create Batch"
@@ -356,9 +462,9 @@ export default function BatchManager({ projectId }: Props) {
         </Form>
       </Modal>
 
-      {/* Add records modal */}
+      {/* Add blank records modal */}
       <Modal
-        title={`Add Records to "${selectedBatch?.name}"`}
+        title={`Add Blank Records to "${selectedBatch?.name}"`}
         open={addRecordsOpen}
         onOk={() => addRecordsForm.submit()}
         onCancel={() => { setAddRecordsOpen(false); addRecordsForm.resetFields(); }}
@@ -374,13 +480,13 @@ export default function BatchManager({ projectId }: Props) {
         >
           <Form.Item
             name="count"
-            label="Number of records to add"
+            label="Number of blank records to add"
             rules={[{ required: true, type: "number", min: 1, max: 500 }]}
           >
             <InputNumber min={1} max={500} style={{ width: "100%" }} />
           </Form.Item>
           <Typography.Text type="secondary">
-            Records will be created without files. Files can be uploaded per-record later.
+            Records created without files. Use "Upload Images" to attach files per record later.
           </Typography.Text>
         </Form>
       </Modal>
