@@ -10,18 +10,22 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "antd": "^5.22.3",
     "@ant-design/charts": "^2.2.4",
     "@ant-design/icons": "^5.5.2",
+    "@rjsf/antd": "^6.6.2",
+    "@rjsf/core": "^6.6.2",
+    "@rjsf/utils": "^6.6.2",
+    "@rjsf/validator-ajv8": "^6.6.2",
+    "@tanstack/react-query": "^5.62.8",
+    "antd": "^5.22.3",
+    "axios": "^1.7.9",
+    "dayjs": "^1.11.13",
+    "keycloak-js": "^24.0.3",
+    "openseadragon": "^5.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",
-    "@tanstack/react-query": "^5.62.8",
-    "axios": "^1.7.9",
-    "keycloak-js": "^24.0.3",
-    "openseadragon": "^5.0.1",
-    "react-split": "^2.0.14",
-    "dayjs": "^1.11.13"
+    "react-split": "^2.0.14"
   },
   "devDependencies": {
     "@types/openseadragon": "^3.0.10",
