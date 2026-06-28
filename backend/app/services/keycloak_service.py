@@ -70,7 +70,7 @@ def create_customer_realm(realm_slug: str, display_name: str) -> None:
                     "alias": "CONFIGURE_TOTP",
                     "name": "Configure OTP",
                     "providerId": "CONFIGURE_TOTP",
-                    "enabled": True,
+                    "enabled": False,
                     "defaultAction": False,
                     "priority": 10,
                     "config": {},
