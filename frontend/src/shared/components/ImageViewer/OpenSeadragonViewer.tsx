@@ -19,6 +19,7 @@ export default function OpenSeadragonViewer({ imageUrl }: Props) {
         type: "image",
         url: imageUrl,
       },
+      crossOriginPolicy: "Anonymous",
       showNavigationControl: false, // we render our own toolbar
       gestureSettingsMouse: {
         clickToZoom: false,

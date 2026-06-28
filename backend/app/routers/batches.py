@@ -72,6 +72,18 @@ async def list_batches(
     return list(result.scalars().all())
 
 
+@router.get("/batches/{batch_id}", response_model=BatchOut)
+async def get_batch(
+    batch_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    return batch
+
+
 @router.get("/batches/{batch_id}/records", response_model=list[RecordOut])
 async def list_records(
     batch_id: int,
