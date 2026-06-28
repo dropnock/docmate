@@ -82,6 +82,7 @@ function ProjectSelector({
 function AppInner() {
   const [page, setPage] = useState("productivity");
   const [projectId, setProjectId] = useState<number | null>(null);
+  const [siderCollapsed, setSiderCollapsed] = useState(false);
 
   const { data: user, isLoading } = useQuery<UserRecord>({
     queryKey: ["me"],
@@ -108,9 +109,12 @@ function AppInner() {
 
   const showProjectSelector = PROJECT_SCOPED_PAGES.has(page);
 
+  // When an agent is in the workspace, give the full area to the split-pane
+  const isWorkspacePage = isAgent && page === "mytasks";
+
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+    <Layout style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <Typography.Title level={4} style={{ color: "white", margin: 0 }}>
           DocMate — Digitizing
         </Typography.Title>
@@ -124,8 +128,16 @@ function AppInner() {
         </Space>
       </Header>
 
-      <Layout>
-        <Sider width={220} theme="light">
+      <Layout style={{ flex: 1, overflow: "hidden" }}>
+        <Sider
+          width={220}
+          collapsedWidth={64}
+          collapsible
+          collapsed={siderCollapsed}
+          onCollapse={(v) => setSiderCollapsed(v)}
+          theme="light"
+          style={{ overflow: "auto" }}
+        >
           <Menu
             mode="inline"
             selectedKeys={[page]}
@@ -135,7 +147,14 @@ function AppInner() {
           />
         </Sider>
 
-        <Content style={{ padding: 24 }}>
+        <Content
+          style={{
+            padding: isWorkspacePage ? 0 : 24,
+            overflow: isWorkspacePage ? "hidden" : "auto",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           {showProjectSelector && (
             <div style={{ marginBottom: 20 }}>
               <Space>

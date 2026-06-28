@@ -28,8 +28,15 @@ export default function MyTasks() {
 
   if (activeTask) {
     return (
-      <div style={{ height: "calc(100vh - 64px)", display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "8px 16px", borderBottom: "1px solid #f0f0f0", background: "#fff" }}>
+      <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+        <div
+          style={{
+            padding: "6px 16px",
+            borderBottom: "1px solid #f0f0f0",
+            background: "#fff",
+            flexShrink: 0,
+          }}
+        >
           <Button
             icon={<ArrowLeftOutlined />}
             onClick={() => {

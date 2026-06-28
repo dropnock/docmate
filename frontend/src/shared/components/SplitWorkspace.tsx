@@ -15,7 +15,7 @@ export default function SplitWorkspace({ left, right, initialSizes = [50, 50] }:
       style={{ display: "flex", height: "100%", overflow: "hidden" }}
     >
       <div style={{ overflow: "hidden", height: "100%" }}>{left}</div>
-      <div style={{ overflow: "auto", height: "100%" }}>{right}</div>
+      <div style={{ overflow: "hidden", height: "100%" }}>{right}</div>
     </Split>
   );
 }

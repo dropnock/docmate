@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch
 from app.models.project import Project
-from app.models.record import RecordStatus
+from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.services import audit_service
 from app.services.lock_service import acquire_lock, release_lock
@@ -63,8 +63,6 @@ async def start_task(
     user_id: int,
     tenant_id: int,
 ) -> Task:
-    from app.models.record import Record
-
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -76,6 +74,7 @@ async def start_task(
     record = await db.get(Record, task.record_id)
     await acquire_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
 
+    record.status = RecordStatus.indexing
     task.status = TaskStatus.in_progress
     task.started_at = datetime.utcnow()
     await audit_service.write_event(
@@ -99,7 +98,6 @@ async def complete_task(
     tenant_id: int,
     indexed_data: dict | None = None,
 ) -> Task:
-    from app.models.record import Record
     from app.models.record_version import VersionReason
     from app.services.version_service import create_version
 
@@ -131,6 +129,7 @@ async def complete_task(
 
     await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
 
+    record.status = RecordStatus.indexed
     now = datetime.utcnow()
     task.status = TaskStatus.completed
     task.completed_at = now
@@ -158,8 +157,6 @@ async def reassign_task(
     supervisor_id: int,
     tenant_id: int,
 ) -> Task:
-    from app.models.record import Record
-
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
