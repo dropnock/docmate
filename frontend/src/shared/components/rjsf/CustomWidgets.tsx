@@ -152,23 +152,29 @@ export function DateTextWidget({ value, onChange, id, required, rawErrors }: Wid
 // Scans top-level properties and injects custom ui:field / ui:widget hints
 // so no stored schema changes are required.
 export function buildAutoUiSchema(schema: RJSFSchema): Record<string, unknown> {
-  if (schema.type !== "object" || !schema.properties) return {};
-  const ui: Record<string, unknown> = {};
-  for (const [key, rawField] of Object.entries(schema.properties)) {
-    const field = rawField as RJSFSchema;
-    if (
-      field.type === "array" &&
-      typeof field.items === "object" &&
-      field.items !== null &&
-      !Array.isArray(field.items) &&
-      ["string", "integer", "number"].includes(
-        (field.items as RJSFSchema).type as string
-      )
-    ) {
-      ui[key] = { "ui:field": "RangeArray" };
-    } else if (field.type === "string" && field.format === "date") {
-      ui[key] = { "ui:widget": "DateText" };
+  try {
+    if (schema.type !== "object" || !schema.properties) return {};
+    const ui: Record<string, unknown> = {};
+    for (const [key, rawField] of Object.entries(schema.properties)) {
+      if (typeof rawField !== "object" || rawField === null) continue;
+      const field = rawField as RJSFSchema;
+      if (
+        field.type === "array" &&
+        typeof field.items === "object" &&
+        field.items !== null &&
+        !Array.isArray(field.items) &&
+        !("$ref" in (field.items as object)) &&  // skip $ref items — handled by rjsf default
+        ["string", "integer", "number"].includes(
+          (field.items as RJSFSchema).type as string
+        )
+      ) {
+        ui[key] = { "ui:field": "RangeArray" };
+      } else if (field.type === "string" && field.format === "date") {
+        ui[key] = { "ui:widget": "DateText" };
+      }
     }
+    return ui;
+  } catch {
+    return {};
   }
-  return ui;
 }

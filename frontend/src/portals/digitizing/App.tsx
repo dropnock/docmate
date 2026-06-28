@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WorkspaceErrorBoundary } from "@shared/components/WorkspaceErrorBoundary";
 import { Layout, Menu, Typography, Button, Select, Space, Spin } from "antd";
 import {
   ProjectOutlined,
@@ -113,8 +114,8 @@ function AppInner() {
   const isWorkspacePage = isAgent && page === "mytasks";
 
   return (
-    <Layout style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+    <Layout style={{ height: "100vh" }}>
+      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Typography.Title level={4} style={{ color: "white", margin: 0 }}>
           DocMate — Digitizing
         </Typography.Title>
@@ -128,7 +129,7 @@ function AppInner() {
         </Space>
       </Header>
 
-      <Layout style={{ flex: 1, overflow: "hidden" }}>
+      <Layout style={{ height: "calc(100vh - 64px)" }}>
         <Sider
           width={220}
           collapsedWidth={64}
@@ -149,10 +150,10 @@ function AppInner() {
 
         <Content
           style={{
+            height: "100%",
             padding: isWorkspacePage ? 0 : 24,
             overflow: isWorkspacePage ? "hidden" : "auto",
-            display: "flex",
-            flexDirection: "column",
+            boxSizing: "border-box",
           }}
         >
           {showProjectSelector && (
@@ -189,7 +190,11 @@ function AppInner() {
                 <ProjectKPIDashboard projectId={projectId} />
               )}
               {page === "history" && isSupervisor && <RecordHistory recordId={1} />}
-              {page === "mytasks" && isAgent && <MyTasks />}
+              {page === "mytasks" && isAgent && (
+                <WorkspaceErrorBoundary>
+                  <MyTasks />
+                </WorkspaceErrorBoundary>
+              )}
               {page === "projects" && isAdmin && (
                 <ProjectsManager
                   onOpen={(id) => { setProjectId(id); setPage("batches"); }}
