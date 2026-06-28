@@ -14,13 +14,14 @@ interface Props {
 
 export default function AgentWorkspace({ task, onComplete }: Props) {
   const qc = useQueryClient();
+  const [localStatus, setLocalStatus] = useState(task.status);
 
-  // Fetch image URL
+  // Fetch image URL — enabled once task is in_progress (either from prop or after start)
   const { data: viewData, isLoading: viewLoading } = useQuery({
     queryKey: ["record-view-url", task.record_id],
     queryFn: () =>
       api.get<{ view_url: string }>(`/records/${task.record_id}/view-url`).then((r) => r.data),
-    enabled: task.status === "in_progress",
+    enabled: localStatus === "in_progress",
   });
 
   // Fetch record for locked_by info and existing data
@@ -43,10 +44,13 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     enabled: !!batchData?.document_type_id,
   });
 
-  // Start task (acquires lock)
+  // Start task (acquires lock) — update localStatus so the workspace transitions immediately
   const startMutation = useMutation({
     mutationFn: () => api.post(`/tasks/${task.id}/start`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["record", task.record_id] }),
+    onSuccess: () => {
+      setLocalStatus("in_progress");
+      qc.invalidateQueries({ queryKey: ["record", task.record_id] });
+    },
   });
 
   // Complete task
@@ -60,9 +64,9 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   });
 
   const isLockedByOther = record?.locked_by && record.locked_by !== task.assigned_to;
-  const isMyTask = task.status === "in_progress";
+  const isMyTask = localStatus === "in_progress";
 
-  if (task.status === "pending") {
+  if (localStatus === "pending") {
     return (
       <div style={{ padding: 24 }}>
         <Typography.Title level={4}>Record #{task.record_id}</Typography.Title>
