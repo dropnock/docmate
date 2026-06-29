@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Button, Input, Typography } from "antd";
+import { AutoComplete, Button, Input, Typography } from "antd";
 import type { FieldProps, WidgetProps, RJSFSchema } from "@rjsf/utils";
 
 // ─── Range Array Field ───────────────────────────────────────────────────────
@@ -313,6 +313,81 @@ export function DateTextWidget({ value, onChange, id, required, rawErrors }: Wid
   );
 }
 
+// ─── Country Widget ──────────────────────────────────────────────────────────
+// Editable autocomplete dropdown for any field named "country" (or *_country).
+// The user can type to filter the list or enter a free-form value not in the list.
+const COUNTRIES = [
+  "Afghanistan", "Albania", "Algeria", "Andorra", "Angola",
+  "Antigua and Barbuda", "Argentina", "Armenia", "Australia", "Austria",
+  "Azerbaijan", "Bahamas", "Bahrain", "Bangladesh", "Barbados",
+  "Belarus", "Belgium", "Belize", "Benin", "Bhutan",
+  "Bolivia", "Bosnia and Herzegovina", "Botswana", "Brazil", "Brunei",
+  "Bulgaria", "Burkina Faso", "Burundi", "Cabo Verde", "Cambodia",
+  "Cameroon", "Canada", "Central African Republic", "Chad", "Chile",
+  "China", "Colombia", "Comoros", "Congo", "Costa Rica",
+  "Croatia", "Cuba", "Cyprus", "Czechia", "Democratic Republic of the Congo",
+  "Denmark", "Djibouti", "Dominica", "Dominican Republic", "Ecuador",
+  "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea", "Estonia",
+  "Eswatini", "Ethiopia", "Fiji", "Finland", "France",
+  "Gabon", "Gambia", "Georgia", "Germany", "Ghana",
+  "Greece", "Grenada", "Guatemala", "Guinea", "Guinea-Bissau",
+  "Guyana", "Haiti", "Honduras", "Hungary", "Iceland",
+  "India", "Indonesia", "Iran", "Iraq", "Ireland",
+  "Israel", "Italy", "Jamaica", "Japan", "Jordan",
+  "Kazakhstan", "Kenya", "Kiribati", "Kuwait", "Kyrgyzstan",
+  "Laos", "Latvia", "Lebanon", "Lesotho", "Liberia",
+  "Libya", "Liechtenstein", "Lithuania", "Luxembourg", "Madagascar",
+  "Malawi", "Malaysia", "Maldives", "Mali", "Malta",
+  "Marshall Islands", "Mauritania", "Mauritius", "Mexico", "Micronesia",
+  "Moldova", "Monaco", "Mongolia", "Montenegro", "Morocco",
+  "Mozambique", "Myanmar", "Namibia", "Nauru", "Nepal",
+  "Netherlands", "New Zealand", "Nicaragua", "Niger", "Nigeria",
+  "North Korea", "North Macedonia", "Norway", "Oman", "Pakistan",
+  "Palau", "Palestine", "Panama", "Papua New Guinea", "Paraguay",
+  "Peru", "Philippines", "Poland", "Portugal", "Qatar",
+  "Romania", "Russia", "Rwanda", "Saint Kitts and Nevis", "Saint Lucia",
+  "Saint Vincent and the Grenadines", "Samoa", "San Marino", "Sao Tome and Principe", "Saudi Arabia",
+  "Senegal", "Serbia", "Seychelles", "Sierra Leone", "Singapore",
+  "Slovakia", "Slovenia", "Solomon Islands", "Somalia", "South Africa",
+  "South Korea", "South Sudan", "Spain", "Sri Lanka", "Sudan",
+  "Suriname", "Sweden", "Switzerland", "Syria", "Taiwan",
+  "Tajikistan", "Tanzania", "Thailand", "Timor-Leste", "Togo",
+  "Tonga", "Trinidad and Tobago", "Tunisia", "Turkey", "Turkmenistan",
+  "Tuvalu", "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom",
+  "United States", "Uruguay", "Uzbekistan", "Vanuatu", "Vatican City",
+  "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
+];
+
+export function CountryWidget({ value, onChange, id, required, rawErrors }: WidgetProps) {
+  const [inputValue, setInputValue] = useState<string>(value ?? "");
+
+  useEffect(() => {
+    setInputValue(value ?? "");
+  }, [value]);
+
+  const hasError = rawErrors && rawErrors.length > 0;
+
+  const filtered = COUNTRIES.filter((c) =>
+    c.toLowerCase().includes(inputValue.toLowerCase())
+  ).map((c) => ({ value: c, label: c }));
+
+  return (
+    <AutoComplete
+      id={id}
+      value={inputValue}
+      options={filtered}
+      onChange={(val: string) => {
+        setInputValue(val);
+        onChange(val || undefined);
+      }}
+      placeholder="Select or type a country"
+      style={{ width: "100%" }}
+      status={hasError ? "error" : undefined}
+      allowClear
+    />
+  );
+}
+
 // ─── Auto uiSchema ───────────────────────────────────────────────────────────
 // Recursively builds uiSchema hints from the schema so no stored changes are needed.
 // Handles nested objects and array-of-object items.
@@ -324,6 +399,12 @@ function isTextarea(key: string, field: RJSFSchema): boolean {
   if (field.type !== "string" || field.enum || field.format) return false;
   const lower = key.toLowerCase();
   return TEXTAREA_KEYS.some((k) => lower === k || lower.endsWith(`_${k}`) || lower.startsWith(`${k}_`));
+}
+
+function isCountry(key: string, field: RJSFSchema): boolean {
+  if (field.type !== "string" || field.enum || field.format) return false;
+  const lower = key.toLowerCase();
+  return lower === "country" || lower.endsWith("_country") || lower.startsWith("country_");
 }
 
 function hasVolumeFolioPair(itemSchema: RJSFSchema): boolean {
@@ -357,6 +438,8 @@ function buildUiForProperties(props: Record<string, unknown>): Record<string, un
       }
     } else if (field.type === "string" && field.format === "date") {
       ui[key] = { "ui:widget": "DateText" };
+    } else if (isCountry(key, field)) {
+      ui[key] = { "ui:widget": "Country" };
     } else if (isTextarea(key, field)) {
       ui[key] = { "ui:widget": "textarea", "ui:options": { rows: 3 } };
     } else if (field.type === "object" && field.properties) {
