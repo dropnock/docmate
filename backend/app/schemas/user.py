@@ -1,8 +1,23 @@
-from pydantic import BaseModel, EmailStr
+import re
+from typing import Annotated
+
+from pydantic import BaseModel, field_validator
+
+# Accepts any syntactically valid email including internal domains (.local, .internal, etc.)
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", re.IGNORECASE)
+EmailLike = Annotated[str, ...]
 
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _EMAIL_RE.match(v):
+            raise ValueError("Enter a valid email address")
+        return v
     temp_password: str
     full_name: str
     role: str       # UserRole value

@@ -1,11 +1,11 @@
-import { Alert, Badge, Button, Spin, Typography, message } from "antd";
-import { useState } from "react";
+import { Alert, Badge, Button, Space, Spin, Typography, message } from "antd";
+import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
 import type { DocumentType, Task } from "@shared/types";
 import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
-import SchemaForm from "./SchemaForm";
+import SchemaForm, { type SchemaFormHandle } from "./SchemaForm";
 import SplitWorkspace from "./SplitWorkspace";
 
 interface Props {
@@ -17,6 +17,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const qc = useQueryClient();
   const [localStatus, setLocalStatus] = useState(task.status);
   const formId = `task-form-${task.id}`;
+  const formRef = useRef<SchemaFormHandle>(null);
 
   // Fetch view URL + content_type once task is in_progress.
   // staleTime: Infinity + refetchOnWindowFocus: false prevent a new presigned URL from
@@ -65,6 +66,20 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { detail?: string } } };
       message.error(err.response?.data?.detail ?? "Failed to start task");
+    },
+  });
+
+  // Save draft — persists indexed_data without completing or releasing the lock
+  const saveMutation = useMutation({
+    mutationFn: (indexed_data: Record<string, unknown>) =>
+      api.patch(`/records/${task.record_id}/draft`, { indexed_data }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["record", task.record_id] });
+      message.success("Progress saved");
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail ?? "Save failed — please try again");
     },
   });
 
@@ -168,6 +183,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
               <div style={{ flex: 1, overflow: "auto", padding: "8px 14px" }}>
                 {docType ? (
                   <SchemaForm
+                    ref={formRef}
                     schema={docType.json_schema as RJSFSchema}
                     initialValues={record?.indexed_data ?? undefined}
                     onSubmit={(values) => completeMutation.mutate(values)}
@@ -196,16 +212,28 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                       ?.response?.data?.detail ?? "Submission failed — please try again"}
                   </Typography.Text>
                 )}
-                <Button
-                  type="primary"
-                  block
-                  loading={completeMutation.isPending}
-                  onClick={() =>
-                    document.getElementById(`${formId}-submit`)?.click()
-                  }
-                >
-                  Submit &amp; Complete
-                </Button>
+                <Space.Compact block>
+                  <Button
+                    style={{ width: "35%" }}
+                    loading={saveMutation.isPending}
+                    onClick={() => {
+                      const values = formRef.current?.getValues();
+                      if (values) saveMutation.mutate(values);
+                    }}
+                  >
+                    Save Progress
+                  </Button>
+                  <Button
+                    type="primary"
+                    style={{ width: "65%" }}
+                    loading={completeMutation.isPending}
+                    onClick={() =>
+                      document.getElementById(`${formId}-submit`)?.click()
+                    }
+                  >
+                    Submit &amp; Complete
+                  </Button>
+                </Space.Compact>
               </div>
             </div>
           }

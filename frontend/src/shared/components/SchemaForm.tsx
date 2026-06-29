@@ -1,9 +1,13 @@
 import Form from "@rjsf/antd";
 import validator from "@rjsf/validator-ajv8";
 import { getDefaultFormState, type RJSFSchema } from "@rjsf/utils";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
 import { RangeArrayField, DateTextWidget, buildAutoUiSchema } from "./rjsf/CustomWidgets";
 import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
+
+export interface SchemaFormHandle {
+  getValues: () => Record<string, unknown>;
+}
 
 interface Props {
   schema: RJSFSchema;
@@ -87,7 +91,10 @@ function initialFormData(schema: RJSFSchema, values?: Record<string, unknown>): 
   return isObjectRecord(defaults) ? defaults : {};
 }
 
-export default function SchemaForm({ schema, initialValues, onSubmit, formId }: Props) {
+const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
+  { schema, initialValues, onSubmit, formId }: Props,
+  ref,
+) {
   const processedSchema = useMemo(() => preprocessSchema(schema), [schema]);
   const uiSchema = useMemo(() => buildAutoUiSchema(processedSchema), [processedSchema]);
 
@@ -96,6 +103,8 @@ export default function SchemaForm({ schema, initialValues, onSubmit, formId }: 
     initialFormData(processedSchema, initialValues)
   );
   const seenInitial = useRef(initialValues !== undefined);
+
+  useImperativeHandle(ref, () => ({ getValues: () => formData }), [formData]);
 
   useEffect(() => {
     // Pre-fill only once when initialValues first becomes available (rework case)
@@ -130,4 +139,6 @@ export default function SchemaForm({ schema, initialValues, onSubmit, formId }: 
       </Form>
     </WorkspaceErrorBoundary>
   );
-}
+});
+
+export default SchemaForm;

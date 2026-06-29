@@ -39,6 +39,7 @@ export default function ProjectsManager({ onOpen }: Props) {
   });
 
   const custOrgs = orgs.filter((o) => o.type === "customer");
+  const orgById = Object.fromEntries(orgs.map((o) => [o.id, o]));
 
   const create = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
@@ -94,6 +95,14 @@ export default function ProjectsManager({ onOpen }: Props) {
 
   const columns: ColumnsType<Project> = [
     { title: "Name", dataIndex: "name", key: "name" },
+    {
+      title: "Customer Organisation",
+      key: "customer_org",
+      render: (_: unknown, project: Project) => {
+        const org = orgById[project.customer_org_id];
+        return org ? org.name : "—";
+      },
+    },
     {
       title: "Description",
       dataIndex: "description",

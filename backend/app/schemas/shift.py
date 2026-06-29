@@ -19,6 +19,13 @@ class ShiftOut(BaseModel):
     timezone: str
 
 
+class ShiftUpdate(BaseModel):
+    name: str | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    timezone: str | None = None
+
+
 class AssignShiftToProject(BaseModel):
     shift_id: int
 

@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Table, Button, Modal, Form, Input, Select, Tag, Space, message, Badge } from "antd";
-import { PlusOutlined, DatabaseOutlined } from "@ant-design/icons";
+import {
+  Table, Button, Modal, Form, Input, Select,
+  Tag, Space, message, Badge, Drawer, Typography,
+} from "antd";
+import { PlusOutlined, DatabaseOutlined, FolderOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Organization } from "@shared/types";
+import type { Organization, Project } from "@shared/types";
 
 const TYPE_OPTIONS = [
   { value: "customer", label: "Customer" },
@@ -21,8 +24,15 @@ const BUCKET_STATUS_BADGE: Record<string, "success" | "processing" | "error" | "
   error: "error",
 };
 
+const PROJECT_STATUS_COLOR: Record<string, string> = {
+  ready: "green",
+  provisioning: "gold",
+  error: "red",
+};
+
 export default function OrganisationsManager() {
   const [open, setOpen] = useState(false);
+  const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [form] = Form.useForm();
   const qc = useQueryClient();
 
@@ -31,6 +41,11 @@ export default function OrganisationsManager() {
     queryFn: () => api.get("/organizations").then((r) => r.data),
     refetchInterval: (query) =>
       query.state.data?.some((o) => o.s3_bucket_status === "provisioning") ? 5000 : false,
+  });
+
+  const { data: allProjects = [] } = useQuery<Project[]>({
+    queryKey: ["projects"],
+    queryFn: () => api.get("/projects").then((r) => r.data),
   });
 
   const create = useMutation({
@@ -47,6 +62,34 @@ export default function OrganisationsManager() {
       message.error(err.response?.data?.detail ?? "Failed to create organisation");
     },
   });
+
+  const orgProjects = selectedOrg
+    ? allProjects.filter((p) => p.customer_org_id === selectedOrg.id)
+    : [];
+
+  const projectColumns: ColumnsType<Project> = [
+    { title: "Name", dataIndex: "name", key: "name" },
+    {
+      title: "Description",
+      dataIndex: "description",
+      key: "description",
+      render: (v: string | null) => v ?? "—",
+    },
+    {
+      title: "Proposed End",
+      dataIndex: "proposed_end_date",
+      key: "proposed_end_date",
+      render: (v: string | null) => v ?? "—",
+      width: 130,
+    },
+    {
+      title: "S3",
+      dataIndex: "s3_bucket_status",
+      key: "s3_bucket_status",
+      width: 100,
+      render: (v: string) => <Tag color={PROJECT_STATUS_COLOR[v] ?? "default"}>{v}</Tag>,
+    },
+  ];
 
   const columns: ColumnsType<Organization> = [
     { title: "Name", dataIndex: "name", key: "name" },
@@ -90,7 +133,20 @@ export default function OrganisationsManager() {
           <Tag>—</Tag>
         ),
     },
-    { title: "ID", dataIndex: "id", key: "id", width: 60 },
+    {
+      title: "",
+      key: "actions",
+      width: 110,
+      render: (_: unknown, org: Organization) => (
+        <Button
+          size="small"
+          icon={<FolderOutlined />}
+          onClick={(e) => { e.stopPropagation(); setSelectedOrg(org); }}
+        >
+          Projects
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -102,8 +158,40 @@ export default function OrganisationsManager() {
         </Button>
       </Space>
 
-      <Table dataSource={orgs} columns={columns} rowKey="id" loading={isLoading} />
+      <Table
+        dataSource={orgs}
+        columns={columns}
+        rowKey="id"
+        loading={isLoading}
+        onRow={(org) => ({ onClick: () => setSelectedOrg(org), style: { cursor: "pointer" } })}
+      />
 
+      {/* Projects drawer */}
+      <Drawer
+        title={
+          <Space>
+            <FolderOutlined />
+            <span>Projects — {selectedOrg?.name}</span>
+          </Space>
+        }
+        open={!!selectedOrg}
+        onClose={() => setSelectedOrg(null)}
+        width={640}
+      >
+        {orgProjects.length === 0 ? (
+          <Typography.Text type="secondary">No projects assigned to this organisation.</Typography.Text>
+        ) : (
+          <Table
+            dataSource={orgProjects}
+            columns={projectColumns}
+            rowKey="id"
+            size="small"
+            pagination={false}
+          />
+        )}
+      </Drawer>
+
+      {/* Create organisation modal */}
       <Modal
         title="Create Organisation"
         open={open}

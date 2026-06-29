@@ -4,7 +4,7 @@ import {
   Table, Button, Modal, Form, Input, Select,
   Tag, message, Badge, Space, Popconfirm,
 } from "antd";
-import { PlusOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
 import type { Organization, UserRecord } from "@shared/types";
@@ -32,9 +32,23 @@ const ROLE_COLOR: Record<string, string> = {
   customer_qc_agent: "magenta",
 };
 
+function formatDetail(detail: unknown): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0] as { msg?: string; loc?: (string | number)[] };
+    const loc = first.loc ?? [];
+    const field = loc[loc.length - 1];
+    return field ? `${field}: ${first.msg ?? "invalid value"}` : (first.msg ?? "Request failed");
+  }
+  return "Request failed";
+}
+
 export default function UsersManager() {
-  const [open, setOpen] = useState(false);
-  const [form] = Form.useForm();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<UserRecord | null>(null);
+  const [createForm] = Form.useForm();
+  const [editForm] = Form.useForm();
   const qc = useQueryClient();
 
   const { data: users = [], isLoading } = useQuery<UserRecord[]>({
@@ -53,12 +67,28 @@ export default function UsersManager() {
     onSuccess: () => {
       message.success("User created");
       qc.invalidateQueries({ queryKey: ["users"] });
-      setOpen(false);
-      form.resetFields();
+      setCreateOpen(false);
+      createForm.resetFields();
     },
     onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail ?? "Failed to create user");
+      const err = e as { response?: { data?: { detail?: unknown } } };
+      message.error(formatDetail(err.response?.data?.detail) ?? "Failed to create user");
+    },
+  });
+
+  const update = useMutation({
+    mutationFn: (values: Record<string, unknown>) =>
+      api.patch(`/users/${editTarget!.id}`, values).then((r) => r.data),
+    onSuccess: () => {
+      message.success("User updated");
+      qc.invalidateQueries({ queryKey: ["users"] });
+      setEditOpen(false);
+      setEditTarget(null);
+      editForm.resetFields();
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { detail?: unknown } } };
+      message.error(formatDetail(err.response?.data?.detail) ?? "Failed to update user");
     },
   });
 
@@ -72,6 +102,16 @@ export default function UsersManager() {
     onError: () => message.error("Failed to update user"),
   });
 
+  const openEdit = (user: UserRecord) => {
+    setEditTarget(user);
+    editForm.setFieldsValue({
+      full_name: user.full_name,
+      role: user.role,
+      organization_id: user.organization_id ?? undefined,
+    });
+    setEditOpen(true);
+  };
+
   const columns: ColumnsType<UserRecord> = [
     { title: "Name", dataIndex: "full_name", key: "full_name" },
     { title: "Email", dataIndex: "email", key: "email" },
@@ -79,7 +119,7 @@ export default function UsersManager() {
       title: "Role",
       dataIndex: "role",
       key: "role",
-      render: (v: string) => <Tag color={ROLE_COLOR[v] ?? "default"}>{v}</Tag>,
+      render: (v: string) => <Tag color={ROLE_COLOR[v] ?? "default"}>{v.replace(/_/g, " ")}</Tag>,
     },
     { title: "Portal", dataIndex: "portal", key: "portal" },
     {
@@ -96,26 +136,35 @@ export default function UsersManager() {
     {
       title: "Actions",
       key: "actions",
-      render: (_: unknown, record: UserRecord) =>
-        record.is_active ? (
-          <Popconfirm
-            title="Deactivate this user?"
-            onConfirm={() => toggleActive.mutate({ id: record.id, is_active: false })}
-            okText="Deactivate"
-            okType="danger"
-          >
-            <Button size="small" danger>
-              Deactivate
-            </Button>
-          </Popconfirm>
-        ) : (
+      width: 180,
+      render: (_: unknown, record: UserRecord) => (
+        <Space>
           <Button
             size="small"
-            onClick={() => toggleActive.mutate({ id: record.id, is_active: true })}
+            icon={<EditOutlined />}
+            onClick={() => openEdit(record)}
           >
-            Reactivate
+            Edit
           </Button>
-        ),
+          {record.is_active ? (
+            <Popconfirm
+              title="Deactivate this user?"
+              onConfirm={() => toggleActive.mutate({ id: record.id, is_active: false })}
+              okText="Deactivate"
+              okType="danger"
+            >
+              <Button size="small" danger>Deactivate</Button>
+            </Popconfirm>
+          ) : (
+            <Button
+              size="small"
+              onClick={() => toggleActive.mutate({ id: record.id, is_active: true })}
+            >
+              Reactivate
+            </Button>
+          )}
+        </Space>
+      ),
     },
   ];
 
@@ -123,22 +172,23 @@ export default function UsersManager() {
     <>
       <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Users</span>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           New User
         </Button>
       </Space>
 
       <Table dataSource={users} columns={columns} rowKey="id" loading={isLoading} />
 
+      {/* Create user modal */}
       <Modal
         title="Create User"
-        open={open}
-        onOk={() => form.submit()}
-        onCancel={() => { setOpen(false); form.resetFields(); }}
+        open={createOpen}
+        onOk={() => createForm.submit()}
+        onCancel={() => { setCreateOpen(false); createForm.resetFields(); }}
         confirmLoading={create.isPending}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" onFinish={create.mutate} style={{ marginTop: 12 }}>
+        <Form form={createForm} layout="vertical" onFinish={create.mutate} style={{ marginTop: 12 }}>
           <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -153,7 +203,7 @@ export default function UsersManager() {
             name="temp_password"
             label="Temporary Password"
             rules={[{ required: true, min: 6 }]}
-            extra="User will be prompted to change this and set up MFA on first login."
+            extra="User will be prompted to change this on first login."
           >
             <Input.Password />
           </Form.Item>
@@ -162,6 +212,35 @@ export default function UsersManager() {
           </Form.Item>
           <Form.Item name="portal" label="Portal" rules={[{ required: true }]}>
             <Select options={PORTALS} />
+          </Form.Item>
+          <Form.Item name="organization_id" label="Organisation">
+            <Select
+              allowClear
+              placeholder="None"
+              options={orgs.map((o) => ({
+                value: o.id,
+                label: `${o.name} (${o.type})`,
+              }))}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit user modal */}
+      <Modal
+        title={`Edit — ${editTarget?.full_name}`}
+        open={editOpen}
+        onOk={() => editForm.submit()}
+        onCancel={() => { setEditOpen(false); setEditTarget(null); editForm.resetFields(); }}
+        confirmLoading={update.isPending}
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical" onFinish={update.mutate} style={{ marginTop: 12 }}>
+          <Form.Item name="full_name" label="Full Name" rules={[{ required: true }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="role" label="Role" rules={[{ required: true }]}>
+            <Select options={ROLES} />
           </Form.Item>
           <Form.Item name="organization_id" label="Organisation">
             <Select

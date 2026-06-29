@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,10 @@ from app.models.record import Record
 from app.models.record_version import RecordVersion
 from app.schemas.batch import AuditEventOut, RecordOut, RecordVersionOut
 from app.services import audit_service
+
+
+class SaveDraftRequest(BaseModel):
+    indexed_data: dict
 
 router = APIRouter(prefix="/api/records", tags=["records"])
 
@@ -22,6 +27,22 @@ async def get_record(
     record = await db.get(Record, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
+    return record
+
+
+@router.patch("/{record_id}/draft", response_model=RecordOut)
+async def save_draft(
+    record_id: int,
+    body: SaveDraftRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    record = await db.get(Record, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if record.locked_by != current_user.id:
+        raise HTTPException(status_code=403, detail="You do not hold the lock on this record")
+    record.indexed_data = body.indexed_data
     return record
 
 

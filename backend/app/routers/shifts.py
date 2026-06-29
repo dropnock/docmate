@@ -14,6 +14,7 @@ from app.schemas.shift import (
     AvailableStaffOut,
     ShiftCreate,
     ShiftOut,
+    ShiftUpdate,
     StaffAssignmentOut,
 )
 
@@ -47,6 +48,33 @@ async def list_shifts(
         select(Shift).where(Shift.tenant_id == current_user._tenant_id)
     )
     return list(result.scalars().all())
+
+
+@router.patch("/shifts/{shift_id}", response_model=ShiftOut)
+async def update_shift(
+    shift_id: int,
+    body: ShiftUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin")),
+):
+    shift = await db.get(Shift, shift_id)
+    if not shift or shift.tenant_id != current_user._tenant_id:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(shift, field, value)
+    return shift
+
+
+@router.delete("/shifts/{shift_id}", status_code=204)
+async def delete_shift(
+    shift_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin")),
+):
+    shift = await db.get(Shift, shift_id)
+    if not shift or shift.tenant_id != current_user._tenant_id:
+        raise HTTPException(status_code=404, detail="Shift not found")
+    await db.delete(shift)
 
 
 @router.post("/projects/{project_id}/shifts", response_model=StaffAssignmentOut, status_code=201)
