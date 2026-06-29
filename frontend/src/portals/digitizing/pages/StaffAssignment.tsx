@@ -7,7 +7,7 @@ import {
 import { UserAddOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Project, Shift, AvailableStaff, UserRecord } from "@shared/types";
+import type { Shift, AvailableStaff, UserRecord } from "@shared/types";
 
 const ROLE_COLOR: Record<string, string> = {
   de_indexer: "blue",
@@ -18,21 +18,19 @@ const ROLE_COLOR: Record<string, string> = {
   admin: "red",
 };
 
-export default function StaffAssignment() {
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+interface Props {
+  projectId: number;
+}
+
+export default function StaffAssignment({ projectId }: Props) {
   const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignForm] = Form.useForm();
   const qc = useQueryClient();
 
-  const { data: projects = [] } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
-
   const { data: shifts = [] } = useQuery<Shift[]>({
-    queryKey: ["shifts"],
-    queryFn: () => api.get("/shifts").then((r) => r.data),
+    queryKey: ["project-shifts", projectId],
+    queryFn: () => api.get(`/projects/${projectId}/shifts`).then((r) => r.data),
   });
 
   const { data: users = [] } = useQuery<UserRecord[]>({
@@ -41,17 +39,17 @@ export default function StaffAssignment() {
   });
 
   const { data: assignedStaff = [], isLoading: staffLoading } = useQuery<AvailableStaff[]>({
-    queryKey: ["available-staff", selectedProjectId, selectedShiftId],
+    queryKey: ["available-staff", projectId, selectedShiftId],
     queryFn: () =>
       api
-        .get(`/projects/${selectedProjectId}/available-staff?shift_id=${selectedShiftId}`)
+        .get(`/projects/${projectId}/available-staff?shift_id=${selectedShiftId}`)
         .then((r) => r.data),
-    enabled: !!selectedProjectId && !!selectedShiftId,
+    enabled: !!selectedShiftId,
   });
 
   const assignStaff = useMutation({
     mutationFn: (values: { user_id: number; shift_id: number }) =>
-      api.post(`/projects/${selectedProjectId}/staff`, values).then((r) => r.data),
+      api.post(`/projects/${projectId}/staff`, values).then((r) => r.data),
     onSuccess: () => {
       message.success("Staff assigned to project");
       qc.invalidateQueries({ queryKey: ["available-staff"] });
@@ -77,11 +75,7 @@ export default function StaffAssignment() {
     },
   ];
 
-  const canViewStaff = !!selectedProjectId && !!selectedShiftId;
-
-  const projectShifts = selectedProjectId
-    ? shifts  // show all shifts; backend validates shift belongs to project
-    : [];
+  const canViewStaff = !!selectedShiftId;
 
   return (
     <>
@@ -103,22 +97,14 @@ export default function StaffAssignment() {
 
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
-          placeholder="Select project"
-          style={{ width: 240 }}
-          options={projects.map((p) => ({ value: p.id, label: p.name }))}
-          onChange={(v) => { setSelectedProjectId(v); setSelectedShiftId(null); }}
-          value={selectedProjectId}
-        />
-        <Select
           placeholder="Select shift"
           style={{ width: 220 }}
-          options={projectShifts.map((s) => ({
+          options={shifts.map((s) => ({
             value: s.id,
             label: `${s.name} (${s.start_time}–${s.end_time})`,
           }))}
           onChange={setSelectedShiftId}
           value={selectedShiftId}
-          disabled={!selectedProjectId}
         />
       </Space>
 
@@ -131,7 +117,7 @@ export default function StaffAssignment() {
           locale={{ emptyText: "No staff assigned to this project / shift yet. Use Add Staff above." }}
         />
       ) : (
-        <Empty description="Select a project and shift to view assigned staff" />
+        <Empty description="Select a shift assigned to this project to view staff" />
       )}
 
       {/* Assign staff modal */}

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,7 @@ async def acquire_lock(
         )
     if record.locked_by != user_id:
         record.locked_by = user_id
-        record.locked_at = datetime.utcnow()
+        record.locked_at = datetime.now(timezone.utc)
         await audit_service.write_event(
             db,
             tenant_id=tenant_id,

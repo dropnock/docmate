@@ -47,8 +47,8 @@ export default function TaskAssignment({ projectId }: Props) {
   });
 
   const { data: shifts } = useQuery<Shift[]>({
-    queryKey: ["shifts"],
-    queryFn: () => api.get("/shifts").then((r) => r.data),
+    queryKey: ["project-shifts", projectId],
+    queryFn: () => api.get(`/projects/${projectId}/shifts`).then((r) => r.data),
   });
 
   const { data: records, isLoading: recLoading } = useQuery<DocRecord[]>({

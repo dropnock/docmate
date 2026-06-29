@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,7 +25,7 @@ async def write_event(
         entity_id=entity_id,
         action=action,
         performed_by=performed_by,
-        performed_at=datetime.utcnow(),
+        performed_at=datetime.now(timezone.utc),
         old_value=old_value,
         new_value=new_value,
         metadata_=metadata,

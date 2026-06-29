@@ -15,7 +15,14 @@ export function RangeArrayField({
   required,
   idSchema,
   rawErrors,
+  ...rest
 }: FieldProps) {
+  // rjsf passes fieldPathId through ...props (untyped); it holds the correct root-relative
+  // path to this field, e.g. ['volume_numbers']. Without it, passing [] as path tells rjsf
+  // to replace the entire formData with just this array value, wiping other fields.
+  const fieldPath =
+    ((rest as Record<string, unknown>).fieldPathId as { path: (string | number)[] } | undefined)
+      ?.path ?? [name];
   const itemSchema = (schema as RJSFSchema).items as RJSFSchema | undefined;
   const isInt = itemSchema?.type === "integer";
   const isNum = itemSchema?.type === "number";
@@ -64,8 +71,7 @@ export function RangeArrayField({
     const parsed = parse(inputValue);
     setInputValue(toDisplay(parsed));
     setCount(parsed.length);
-    // rjsf 6 FieldProps.onChange requires (value, path, errorSchema?, id?)
-    onChange(parsed as never, []);
+    onChange(parsed as never, fieldPath);
   };
 
   const title = (schema.title as string | undefined) ?? name;
@@ -149,31 +155,53 @@ export function DateTextWidget({ value, onChange, id, required, rawErrors }: Wid
 }
 
 // ─── Auto uiSchema ───────────────────────────────────────────────────────────
-// Scans top-level properties and injects custom ui:field / ui:widget hints
-// so no stored schema changes are required.
+// Recursively builds uiSchema hints from the schema so no stored changes are needed.
+// Handles nested objects and array-of-object items.
+
+const TEXTAREA_KEYS = ["description", "notes", "note", "comment", "comments",
+  "remarks", "details", "reason", "summary", "narrative", "text"];
+
+function isTextarea(key: string, field: RJSFSchema): boolean {
+  if (field.type !== "string" || field.enum || field.format) return false;
+  const lower = key.toLowerCase();
+  return TEXTAREA_KEYS.some((k) => lower === k || lower.endsWith(`_${k}`) || lower.startsWith(`${k}_`));
+}
+
+function buildUiForProperties(props: Record<string, unknown>): Record<string, unknown> {
+  const ui: Record<string, unknown> = {};
+  for (const [key, rawField] of Object.entries(props)) {
+    if (!rawField || typeof rawField !== "object" || Array.isArray(rawField)) continue;
+    const field = rawField as RJSFSchema;
+
+    if (
+      field.type === "array" &&
+      typeof field.items === "object" &&
+      field.items !== null &&
+      !Array.isArray(field.items)
+    ) {
+      const items = field.items as RJSFSchema;
+      if (["string", "integer", "number"].includes(items.type as string)) {
+        ui[key] = { "ui:field": "RangeArray" };
+      } else if (items.type === "object" && items.properties) {
+        const itemsUi = buildUiForProperties(items.properties as Record<string, unknown>);
+        if (Object.keys(itemsUi).length > 0) ui[key] = { items: itemsUi };
+      }
+    } else if (field.type === "string" && field.format === "date") {
+      ui[key] = { "ui:widget": "DateText" };
+    } else if (isTextarea(key, field)) {
+      ui[key] = { "ui:widget": "textarea", "ui:options": { rows: 3 } };
+    } else if (field.type === "object" && field.properties) {
+      const nested = buildUiForProperties(field.properties as Record<string, unknown>);
+      if (Object.keys(nested).length > 0) ui[key] = nested;
+    }
+  }
+  return ui;
+}
+
 export function buildAutoUiSchema(schema: RJSFSchema): Record<string, unknown> {
   try {
     if (schema.type !== "object" || !schema.properties) return {};
-    const ui: Record<string, unknown> = {};
-    for (const [key, rawField] of Object.entries(schema.properties)) {
-      if (typeof rawField !== "object" || rawField === null) continue;
-      const field = rawField as RJSFSchema;
-      if (
-        field.type === "array" &&
-        typeof field.items === "object" &&
-        field.items !== null &&
-        !Array.isArray(field.items) &&
-        !("$ref" in (field.items as object)) &&  // skip $ref items — handled by rjsf default
-        ["string", "integer", "number"].includes(
-          (field.items as RJSFSchema).type as string
-        )
-      ) {
-        ui[key] = { "ui:field": "RangeArray" };
-      } else if (field.type === "string" && field.format === "date") {
-        ui[key] = { "ui:widget": "DateText" };
-      }
-    }
-    return ui;
+    return buildUiForProperties(schema.properties as Record<string, unknown>);
   } catch {
     return {};
   }

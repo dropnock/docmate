@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
@@ -37,7 +37,7 @@ async def assign_task(
         assigned_to=agent_id,
         assigned_by=supervisor_id,
         status=TaskStatus.pending,
-        due_at=datetime.utcnow() + timedelta(hours=stale_hours),
+        due_at=datetime.now(timezone.utc) + timedelta(hours=stale_hours),
     )
     db.add(task)
     await db.flush()
@@ -76,7 +76,7 @@ async def start_task(
 
     record.status = RecordStatus.indexing
     task.status = TaskStatus.in_progress
-    task.started_at = datetime.utcnow()
+    task.started_at = datetime.now(timezone.utc)
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
@@ -130,7 +130,7 @@ async def complete_task(
     await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
 
     record.status = RecordStatus.indexed
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     task.status = TaskStatus.completed
     task.completed_at = now
     if task.started_at:
@@ -173,7 +173,7 @@ async def reassign_task(
     task.assigned_to = new_agent_id
     task.assigned_by = supervisor_id
     task.status = TaskStatus.pending
-    task.due_at = datetime.utcnow() + timedelta(hours=stale_hours)
+    task.due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
 
     await audit_service.write_event(
         db,
@@ -220,7 +220,7 @@ async def get_stale_tasks(
         .where(
             Batch.project_id == project_id,
             Task.status.in_([TaskStatus.pending, TaskStatus.in_progress, TaskStatus.stale]),
-            Task.due_at <= datetime.utcnow(),
+            Task.due_at <= datetime.now(timezone.utc),
         )
     )
     return list(result.scalars().all())

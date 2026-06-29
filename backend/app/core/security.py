@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -22,7 +22,7 @@ _JWKS_TTL = timedelta(minutes=10)
 
 
 async def _get_jwks(realm_slug: str) -> dict:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if realm_slug in _jwks_cache:
         cached_jwks, expires_at = _jwks_cache[realm_slug]
         if now < expires_at:

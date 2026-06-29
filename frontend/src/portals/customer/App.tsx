@@ -20,7 +20,7 @@ const NAV_ITEMS = [
   { key: "history", label: "Record History", icon: <HistoryOutlined /> },
 ];
 
-const PROJECT_SCOPED = new Set(["kpi"]);
+const PROJECT_SCOPED = new Set(["kpi", "history"]);
 
 interface CustomerRealm {
   name: string;
@@ -132,12 +132,12 @@ function AppInner() {
           )}
           {page === "qc" && <QCWorkspace />}
           {page === "kpi" && projectId && <ProjectKPIDashboard projectId={projectId} />}
-          {page === "kpi" && !projectId && (
+          {showProjectSelector && !projectId && (
             <div style={{ color: "#8c8c8c", textAlign: "center", marginTop: 40 }}>
-              Select a project above to view KPIs.
+              Select a project above to continue.
             </div>
           )}
-          {page === "history" && <RecordHistory recordId={1} />}
+          {page === "history" && projectId && <RecordHistory projectId={projectId} />}
         </Content>
       </Layout>
     </Layout>

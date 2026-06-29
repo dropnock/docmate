@@ -1,6 +1,6 @@
 """APScheduler job: marks overdue tasks as stale and releases their locks."""
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -16,7 +16,7 @@ async def _run_stale_check() -> None:
         result = await db.execute(
             select(Task).where(
                 Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
-                Task.due_at <= datetime.utcnow(),
+                Task.due_at <= datetime.now(timezone.utc),
             )
         )
         tasks = list(result.scalars().all())

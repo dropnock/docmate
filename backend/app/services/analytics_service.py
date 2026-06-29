@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -142,7 +142,7 @@ async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
     completion_pct = round(complete / total * 100, 1) if total else 0.0
 
     # Throughput: records completed in last 7 days
-    week_ago = datetime.utcnow() - timedelta(days=7)
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     throughput_q = await db.execute(
         select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
             Batch.project_id == project_id,
@@ -160,7 +160,7 @@ async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
 
     if daily_rate > 0 and remaining > 0:
         days_needed = remaining / daily_rate
-        projected_end_date = (datetime.utcnow() + timedelta(days=days_needed)).date().isoformat()
+        projected_end_date = (datetime.now(timezone.utc) + timedelta(days=days_needed)).date().isoformat()
     elif remaining == 0:
         projected_end_date = date.today().isoformat()
 

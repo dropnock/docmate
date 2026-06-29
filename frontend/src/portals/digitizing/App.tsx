@@ -56,7 +56,7 @@ const ADMIN_PAGES = [
   { key: "users", label: "Users", icon: <UserOutlined /> },
 ];
 
-const PROJECT_SCOPED_PAGES = new Set(["batches", "staff-assignment", "assign", "stale", "productivity", "kpi"]);
+const PROJECT_SCOPED_PAGES = new Set(["batches", "staff-assignment", "assign", "stale", "productivity", "kpi", "history"]);
 
 function ProjectSelector({
   projectId,
@@ -175,7 +175,7 @@ function AppInner() {
                 <BatchManager projectId={projectId} isAdmin={isAdmin} />
               )}
               {page === "staff-assignment" && projectId && isSupervisor && (
-                <StaffAssignment />
+                <StaffAssignment projectId={projectId} />
               )}
               {page === "assign" && projectId && isSupervisor && (
                 <TaskAssignment projectId={projectId} />
@@ -189,7 +189,7 @@ function AppInner() {
               {page === "kpi" && projectId && isSupervisor && (
                 <ProjectKPIDashboard projectId={projectId} />
               )}
-              {page === "history" && isSupervisor && <RecordHistory recordId={1} />}
+              {page === "history" && projectId && isSupervisor && <RecordHistory projectId={projectId} />}
               {page === "mytasks" && isAgent && (
                 <WorkspaceErrorBoundary>
                   <MyTasks />
