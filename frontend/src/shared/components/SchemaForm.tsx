@@ -2,7 +2,7 @@ import Form from "@rjsf/antd";
 import validator from "@rjsf/validator-ajv8";
 import { getDefaultFormState, type RJSFSchema } from "@rjsf/utils";
 import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
-import { RangeArrayField, DateTextWidget, buildAutoUiSchema } from "./rjsf/CustomWidgets";
+import { RangeArrayField, ParcelArrayField, DateTextWidget, buildAutoUiSchema } from "./rjsf/CustomWidgets";
 import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
 
 export interface SchemaFormHandle {
@@ -127,7 +127,7 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
         liveValidate={false}
         widgets={{ DateText: DateTextWidget }}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fields={{ RangeArray: RangeArrayField } as any}
+        fields={{ RangeArray: RangeArrayField, ParcelArray: ParcelArrayField } as any}
       >
         <button
           id={`${formId}-submit`}

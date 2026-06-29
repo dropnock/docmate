@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Input, Typography } from "antd";
+import { Button, Input, Typography } from "antd";
 import type { FieldProps, WidgetProps, RJSFSchema } from "@rjsf/utils";
 
 // ─── Range Array Field ───────────────────────────────────────────────────────
@@ -112,6 +112,165 @@ export function RangeArrayField({
   );
 }
 
+// ─── Parcel Array Field ──────────────────────────────────────────────────────
+// Handles arrays of objects that contain a volume-like and folio-like property.
+// Accepts range notation in the Folio input: "400-450" expands to 51 individual
+// {volume_number, folio_number} items. Volume is kept after Add so the user can
+// quickly add further folio ranges for the same volume.
+export function ParcelArrayField({
+  schema,
+  formData,
+  onChange,
+  name,
+  required,
+  idSchema,
+  rawErrors,
+  ...rest
+}: FieldProps) {
+  const fieldPath =
+    ((rest as Record<string, unknown>).fieldPathId as { path: (string | number)[] } | undefined)
+      ?.path ?? [name];
+
+  const itemSchema = (schema as RJSFSchema).items as RJSFSchema | undefined;
+  const itemProps = (itemSchema?.properties ?? {}) as Record<string, unknown>;
+  const volumeKey = Object.keys(itemProps).find((k) => /volume/i.test(k)) ?? "volume_number";
+  const folioKey = Object.keys(itemProps).find((k) => /folio/i.test(k)) ?? "folio_number";
+
+  const currentItems = (formData ?? []) as Record<string, string>[];
+  const [volumeInput, setVolumeInput] = useState("");
+  const [folioInput, setFolioInput] = useState("");
+
+  // Parse folio input — supports single values, comma-separated, and ranges (400-450).
+  const parseFolios = (text: string): string[] => {
+    const result: string[] = [];
+    for (const part of text.split(",")) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      const rangeMatch = trimmed.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (rangeMatch) {
+        const start = parseInt(rangeMatch[1], 10);
+        const end = parseInt(rangeMatch[2], 10);
+        if (!isNaN(start) && !isNaN(end) && end >= start && end - start < 1000) {
+          for (let i = start; i <= end; i++) result.push(String(i));
+        }
+      } else {
+        result.push(trimmed);
+      }
+    }
+    return result;
+  };
+
+  const handleAdd = () => {
+    if (!volumeInput.trim() || !folioInput.trim()) return;
+    const folios = parseFolios(folioInput);
+    const newItems = folios.map((folio) => ({
+      [volumeKey]: volumeInput.trim(),
+      [folioKey]: folio,
+    }));
+    onChange([...currentItems, ...newItems] as never, fieldPath);
+    // Keep volume so the user can add more folio ranges for the same volume.
+    setFolioInput("");
+  };
+
+  const handleRemove = (idx: number) => {
+    onChange(currentItems.filter((_, i) => i !== idx) as never, fieldPath);
+  };
+
+  const title = (schema.title as string | undefined) ?? name;
+  const hasError = rawErrors && rawErrors.length > 0;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <label
+        htmlFor={idSchema?.$id}
+        style={{ display: "block", marginBottom: 6, fontWeight: 500, color: hasError ? "#ff4d4f" : undefined }}
+      >
+        {title}
+        {required && <span style={{ color: "#ff4d4f", marginLeft: 2 }}>*</span>}
+      </label>
+
+      {/* Input row */}
+      <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+        <Input
+          placeholder="Volume"
+          value={volumeInput}
+          onChange={(e) => setVolumeInput(e.target.value)}
+          style={{ width: 110, fontFamily: "monospace" }}
+        />
+        <Input
+          placeholder="Folio — e.g. 400-450, 800"
+          value={folioInput}
+          onChange={(e) => setFolioInput(e.target.value)}
+          onPressEnter={handleAdd}
+          style={{ flex: 1, fontFamily: "monospace" }}
+        />
+        <Button
+          onClick={handleAdd}
+          disabled={!volumeInput.trim() || !folioInput.trim()}
+        >
+          Add
+        </Button>
+      </div>
+      <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 6 }}>
+        Range notation: <code>400-450</code> creates one entry per folio. Comma-separated values also supported.
+      </Typography.Text>
+
+      {/* Current items */}
+      {currentItems.length > 0 && (
+        <div style={{ border: "1px solid #d9d9d9", borderRadius: 4, padding: "4px 8px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {currentItems.length} parcel{currentItems.length !== 1 ? "s" : ""}
+            </Typography.Text>
+            <Button
+              size="small"
+              type="link"
+              danger
+              onClick={() => onChange([] as never, fieldPath)}
+            >
+              Clear all
+            </Button>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+            {currentItems.map((item, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "2px 0",
+                  borderTop: i > 0 ? "1px solid #f5f5f5" : undefined,
+                }}
+              >
+                <Typography.Text style={{ fontSize: 12, fontFamily: "monospace" }}>
+                  Vol {item[volumeKey]} · Folio {item[folioKey]}
+                </Typography.Text>
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  onClick={() => handleRemove(i)}
+                  style={{ padding: "0 6px", height: "auto", lineHeight: 1.4 }}
+                >
+                  ×
+                </Button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasError &&
+        rawErrors!.map((e, i) => (
+          <div key={i} style={{ color: "#ff4d4f", fontSize: 12, marginTop: 2 }}>
+            {e}
+          </div>
+        ))}
+    </div>
+  );
+}
+
 // ─── Date Text Widget ────────────────────────────────────────────────────────
 // Plain text input for date fields — allows free typing.
 // Normalizes to YYYY-MM-DD on blur (accepts most date strings).
@@ -167,6 +326,12 @@ function isTextarea(key: string, field: RJSFSchema): boolean {
   return TEXTAREA_KEYS.some((k) => lower === k || lower.endsWith(`_${k}`) || lower.startsWith(`${k}_`));
 }
 
+function hasVolumeFolioPair(itemSchema: RJSFSchema): boolean {
+  if (itemSchema.type !== "object" || !itemSchema.properties) return false;
+  const keys = Object.keys(itemSchema.properties as Record<string, unknown>);
+  return keys.some((k) => /volume/i.test(k)) && keys.some((k) => /folio/i.test(k));
+}
+
 function buildUiForProperties(props: Record<string, unknown>): Record<string, unknown> {
   const ui: Record<string, unknown> = {};
   for (const [key, rawField] of Object.entries(props)) {
@@ -183,8 +348,12 @@ function buildUiForProperties(props: Record<string, unknown>): Record<string, un
       if (["string", "integer", "number"].includes(items.type as string)) {
         ui[key] = { "ui:field": "RangeArray" };
       } else if (items.type === "object" && items.properties) {
-        const itemsUi = buildUiForProperties(items.properties as Record<string, unknown>);
-        if (Object.keys(itemsUi).length > 0) ui[key] = { items: itemsUi };
+        if (hasVolumeFolioPair(items)) {
+          ui[key] = { "ui:field": "ParcelArray" };
+        } else {
+          const itemsUi = buildUiForProperties(items.properties as Record<string, unknown>);
+          if (Object.keys(itemsUi).length > 0) ui[key] = { items: itemsUi };
+        }
       }
     } else if (field.type === "string" && field.format === "date") {
       ui[key] = { "ui:widget": "DateText" };
