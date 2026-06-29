@@ -74,7 +74,11 @@ async def start_task(
     record = await db.get(Record, task.record_id)
     await acquire_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
 
-    record.status = RecordStatus.indexing
+    # Only mark the record as "indexing" for actual indexing tasks.
+    # QA and QC tasks leave the record in its current qa_pending / qc_pending state
+    # so the status accurately reflects the workflow phase.
+    if task.task_type == TaskType.indexing:
+        record.status = RecordStatus.indexing
     task.status = TaskStatus.in_progress
     task.started_at = datetime.now(timezone.utc)
     await audit_service.write_event(
@@ -129,7 +133,12 @@ async def complete_task(
 
     await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
 
-    record.status = RecordStatus.indexed
+    _COMPLETE_STATUS: dict[TaskType, RecordStatus] = {
+        TaskType.indexing: RecordStatus.indexed,
+        TaskType.qa: RecordStatus.qa_passed,
+        TaskType.qc: RecordStatus.qc_passed,
+    }
+    record.status = _COMPLETE_STATUS.get(task.task_type, RecordStatus.indexed)
     now = datetime.now(timezone.utc)
     task.status = TaskStatus.completed
     task.completed_at = now

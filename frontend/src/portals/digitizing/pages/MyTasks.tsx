@@ -16,6 +16,12 @@ const STATUS_COLOR: Record<string, string> = {
   stale: "warning",
 };
 
+const TASK_TYPE_LABEL: Record<string, string> = {
+  indexing: "Indexing",
+  qa: "Quality Check",
+  qc: "Quality Control",
+};
+
 export default function MyTasks() {
   const qc = useQueryClient();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -88,7 +94,7 @@ export default function MyTasks() {
                   <Typography.Text strong>
                     Record #{task.record_id}
                     <Badge
-                      count={task.task_type.toUpperCase()}
+                      count={TASK_TYPE_LABEL[task.task_type] ?? task.task_type}
                       style={{ background: "#108ee9", marginLeft: 8 }}
                     />
                   </Typography.Text>

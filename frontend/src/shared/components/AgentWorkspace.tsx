@@ -101,6 +101,16 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const isLockedByOther = record?.locked_by && record.locked_by !== task.assigned_to;
   const isMyTask = localStatus === "in_progress";
 
+  const startLabel =
+    task.task_type === "qa" ? "Start Quality Check"
+    : task.task_type === "qc" ? "Start Quality Control"
+    : "Start Indexing";
+
+  const workspaceLabel =
+    task.task_type === "qa" ? "Quality Check"
+    : task.task_type === "qc" ? "Quality Control"
+    : "Data Entry";
+
   // ─── Pending: show start button ─────────────────────────────────────────
   if (localStatus === "pending") {
     return (
@@ -111,7 +121,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
           onClick={() => startMutation.mutate()}
           loading={startMutation.isPending}
         >
-          Start Indexing
+          {startLabel}
         </Button>
       </div>
     );
@@ -171,7 +181,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                 }}
               >
                 <Typography.Text strong style={{ fontSize: 13 }}>
-                  Data Entry — Record #{task.record_id}&nbsp;
+                  {workspaceLabel} — Record #{task.record_id}&nbsp;
                 </Typography.Text>
                 <Badge
                   count={`v${record?.current_version ?? 1}`}
