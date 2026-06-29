@@ -31,6 +31,7 @@ const PROJECT_STATUS_COLOR: Record<string, string> = {
 };
 
 export default function OrganisationsManager() {
+  const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [form] = Form.useForm();
@@ -62,6 +63,12 @@ export default function OrganisationsManager() {
       message.error(err.response?.data?.detail ?? "Failed to create organisation");
     },
   });
+
+  const q = search.toLowerCase();
+  const filteredOrgs = orgs.filter((o) =>
+    o.name.toLowerCase().includes(q) ||
+    o.type.toLowerCase().includes(q)
+  );
 
   const orgProjects = selectedOrg
     ? allProjects.filter((p) => p.customer_org_id === selectedOrg.id)
@@ -151,15 +158,22 @@ export default function OrganisationsManager() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Organisations</span>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
           New Organisation
         </Button>
       </Space>
 
+      <Input.Search
+        placeholder="Search by name or type…"
+        allowClear
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 16, maxWidth: 360 }}
+      />
+
       <Table
-        dataSource={orgs}
+        dataSource={filteredOrgs}
         columns={columns}
         rowKey="id"
         loading={isLoading}

@@ -70,6 +70,10 @@ interface Props { projectId: number; isAdmin?: boolean }
 export default function BatchManager({ projectId, isAdmin = false }: Props) {
   const qc = useQueryClient();
 
+  const [batchSearch, setBatchSearch] = useState("");
+  const [recordSearch, setRecordSearch] = useState("");
+  const [dtSearch, setDtSearch] = useState("");
+
   // --- Document Types ---
   const [dtOpen, setDtOpen] = useState(false);
   const [dtForm] = Form.useForm();
@@ -245,6 +249,28 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
     }
   };
 
+  const filteredBatches = batches.filter((b) => {
+    const q = batchSearch.toLowerCase();
+    return (
+      b.name.toLowerCase().includes(q) ||
+      b.status.toLowerCase().includes(q) ||
+      (docTypes.find((d) => d.id === b.document_type_id)?.name ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const filteredRecords = records.filter((r) => {
+    const q = recordSearch.toLowerCase();
+    return (
+      r.status.toLowerCase().includes(q) ||
+      (r.file_reference?.split("/").pop() ?? "").toLowerCase().includes(q) ||
+      String(r.id).includes(q)
+    );
+  });
+
+  const filteredDtypes = docTypes.filter((dt) =>
+    dt.name.toLowerCase().includes(dtSearch.toLowerCase())
+  );
+
   const batchColumns: ColumnsType<Batch> = [
     { title: "Name", dataIndex: "name", key: "name" },
     {
@@ -388,15 +414,22 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
             label: "Batches",
             children: (
               <>
-                <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+                <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 16, fontWeight: 600 }}>Batches for this project</span>
                   <Button type="primary" icon={<PlusOutlined />} onClick={() => setBatchOpen(true)}>
                     New Batch
                   </Button>
                 </Space>
 
+                <Input.Search
+                  placeholder="Search by name, status or document type…"
+                  allowClear
+                  onChange={(e) => setBatchSearch(e.target.value)}
+                  style={{ marginBottom: 16, maxWidth: 400 }}
+                />
+
                 <Table
-                  dataSource={batches}
+                  dataSource={filteredBatches}
                   columns={batchColumns}
                   rowKey="id"
                   loading={batchesLoading}
@@ -458,8 +491,14 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
                         </Descriptions>
                       </Col>
                     </Row>
+                    <Input.Search
+                      placeholder="Search by ID, status or file name…"
+                      allowClear
+                      onChange={(e) => setRecordSearch(e.target.value)}
+                      style={{ marginBottom: 12, maxWidth: 360 }}
+                    />
                     <Table
-                      dataSource={records}
+                      dataSource={filteredRecords}
                       columns={recordColumns}
                       rowKey="id"
                       loading={recordsLoading}
@@ -476,7 +515,7 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
             label: "Document Types",
             children: (
               <>
-                <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+                <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
                   <span style={{ fontSize: 16, fontWeight: 600 }}>Document Types</span>
                   {isAdmin && (
                     <Button type="primary" icon={<PlusOutlined />} onClick={() => setDtOpen(true)}>
@@ -484,7 +523,13 @@ export default function BatchManager({ projectId, isAdmin = false }: Props) {
                     </Button>
                   )}
                 </Space>
-                <Table dataSource={docTypes} columns={dtColumns} rowKey="id" size="middle" />
+                <Input.Search
+                  placeholder="Search by name…"
+                  allowClear
+                  onChange={(e) => setDtSearch(e.target.value)}
+                  style={{ marginBottom: 16, maxWidth: 320 }}
+                />
+                <Table dataSource={filteredDtypes} columns={dtColumns} rowKey="id" size="middle" />
               </>
             ),
           },

@@ -4,6 +4,7 @@ import {
   Card,
   Col,
   Empty,
+  Input,
   Row,
   Select,
   Spin,
@@ -36,6 +37,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function TaskAssignment({ projectId }: Props) {
   const qc = useQueryClient();
+  const [search, setSearch] = useState("");
   const [selectedBatch, setSelectedBatch] = useState<number | undefined>();
   const [selectedShift, setSelectedShift] = useState<number | undefined>();
   const [assignments, setAssignments] = useState<Record<number, number>>({});
@@ -183,6 +185,15 @@ export default function TaskAssignment({ projectId }: Props) {
     },
   ];
 
+  const filteredRecords = (records ?? []).filter((r) => {
+    const q = search.toLowerCase();
+    return (
+      r.status.toLowerCase().includes(q) ||
+      (r.file_reference?.split("/").pop() ?? "").toLowerCase().includes(q) ||
+      String(r.id).includes(q)
+    );
+  });
+
   const pendingCount = records?.filter((r) => r.status === "pending").length ?? 0;
 
   return (
@@ -228,10 +239,16 @@ export default function TaskAssignment({ projectId }: Props) {
         <Spin />
       ) : (
         <Card>
+          <Input.Search
+            placeholder="Search by record ID, status or file name…"
+            allowClear
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ marginBottom: 16, maxWidth: 400 }}
+          />
           <Table
             rowKey="id"
             columns={columns}
-            dataSource={records}
+            dataSource={filteredRecords}
             size="middle"
             pagination={{ pageSize: 50 }}
             summary={() => (
@@ -239,7 +256,7 @@ export default function TaskAssignment({ projectId }: Props) {
                 <Table.Summary.Row>
                   <Table.Summary.Cell index={0} colSpan={6}>
                     <Typography.Text type="secondary">
-                      {records?.length ?? 0} records total · {pendingCount} unassigned
+                      {filteredRecords.length} of {records?.length ?? 0} records · {pendingCount} unassigned
                     </Typography.Text>
                   </Table.Summary.Cell>
                 </Table.Summary.Row>

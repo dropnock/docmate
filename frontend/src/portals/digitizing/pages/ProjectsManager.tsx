@@ -21,6 +21,7 @@ interface Props {
 }
 
 export default function ProjectsManager({ onOpen }: Props) {
+  const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Project | null>(null);
@@ -93,6 +94,13 @@ export default function ProjectsManager({ onOpen }: Props) {
     setEditOpen(true);
   };
 
+  const q = search.toLowerCase();
+  const filtered = projects.filter((p) =>
+    p.name.toLowerCase().includes(q) ||
+    (p.description ?? "").toLowerCase().includes(q) ||
+    (orgById[p.customer_org_id]?.name ?? "").toLowerCase().includes(q)
+  );
+
   const columns: ColumnsType<Project> = [
     { title: "Name", dataIndex: "name", key: "name" },
     {
@@ -153,14 +161,21 @@ export default function ProjectsManager({ onOpen }: Props) {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Projects</span>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           New Project
         </Button>
       </Space>
 
-      <Table dataSource={projects} columns={columns} rowKey="id" loading={isLoading} />
+      <Input.Search
+        placeholder="Search by name, description or customer org…"
+        allowClear
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 16, maxWidth: 420 }}
+      />
+
+      <Table dataSource={filtered} columns={columns} rowKey="id" loading={isLoading} />
 
       {/* Create project modal */}
       <Modal

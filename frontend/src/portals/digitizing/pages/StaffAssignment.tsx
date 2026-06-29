@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Table, Button, Modal, Form, Select,
+  Table, Button, Modal, Form, Input, Select,
   Tag, message, Space, Empty,
 } from "antd";
 import { UserAddOutlined } from "@ant-design/icons";
@@ -23,6 +23,7 @@ interface Props {
 }
 
 export default function StaffAssignment({ projectId }: Props) {
+  const [search, setSearch] = useState("");
   const [selectedShiftId, setSelectedShiftId] = useState<number | null>(null);
   const [assignOpen, setAssignOpen] = useState(false);
   const [assignForm] = Form.useForm();
@@ -75,6 +76,13 @@ export default function StaffAssignment({ projectId }: Props) {
     },
   ];
 
+  const q = search.toLowerCase();
+  const filteredStaff = assignedStaff.filter((s) =>
+    s.full_name.toLowerCase().includes(q) ||
+    s.email.toLowerCase().includes(q) ||
+    s.role.toLowerCase().includes(q)
+  );
+
   const canViewStaff = !!selectedShiftId;
 
   return (
@@ -109,13 +117,21 @@ export default function StaffAssignment({ projectId }: Props) {
       </Space>
 
       {canViewStaff ? (
-        <Table
-          dataSource={assignedStaff}
-          columns={staffColumns}
-          rowKey="id"
-          loading={staffLoading}
-          locale={{ emptyText: "No staff assigned to this project / shift yet. Use Add Staff above." }}
-        />
+        <>
+          <Input.Search
+            placeholder="Search by name, email or role…"
+            allowClear
+            onChange={(e) => setSearch(e.target.value)}
+            style={{ marginBottom: 12, maxWidth: 360 }}
+          />
+          <Table
+            dataSource={filteredStaff}
+            columns={staffColumns}
+            rowKey="id"
+            loading={staffLoading}
+            locale={{ emptyText: "No staff assigned to this project / shift yet. Use Add Staff above." }}
+          />
+        </>
       ) : (
         <Empty description="Select a shift assigned to this project to view staff" />
       )}

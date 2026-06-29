@@ -44,6 +44,7 @@ function formatDetail(detail: unknown): string {
 }
 
 export default function UsersManager() {
+  const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<UserRecord | null>(null);
@@ -112,6 +113,14 @@ export default function UsersManager() {
     setEditOpen(true);
   };
 
+  const q = search.toLowerCase();
+  const filteredUsers = users.filter((u) =>
+    u.full_name.toLowerCase().includes(q) ||
+    u.email.toLowerCase().includes(q) ||
+    u.role.toLowerCase().includes(q) ||
+    u.portal.toLowerCase().includes(q)
+  );
+
   const columns: ColumnsType<UserRecord> = [
     { title: "Name", dataIndex: "full_name", key: "full_name" },
     { title: "Email", dataIndex: "email", key: "email" },
@@ -170,14 +179,21 @@ export default function UsersManager() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Users</span>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           New User
         </Button>
       </Space>
 
-      <Table dataSource={users} columns={columns} rowKey="id" loading={isLoading} />
+      <Input.Search
+        placeholder="Search by name, email, role or portal…"
+        allowClear
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 16, maxWidth: 420 }}
+      />
+
+      <Table dataSource={filteredUsers} columns={columns} rowKey="id" loading={isLoading} />
 
       {/* Create user modal */}
       <Modal

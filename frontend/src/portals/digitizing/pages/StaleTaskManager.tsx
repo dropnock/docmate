@@ -1,4 +1,4 @@
-import { Button, Checkbox, Select, Table, Tag, Typography, message } from "antd";
+import { Button, Checkbox, Input, Select, Table, Tag, Typography, message } from "antd";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@shared/api/client";
@@ -8,6 +8,7 @@ interface Props { projectId: number; shiftId?: number }
 
 export default function StaleTaskManager({ projectId, shiftId }: Props) {
   const qc = useQueryClient();
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
   const [targetAgent, setTargetAgent] = useState<number | undefined>();
 
@@ -80,9 +81,23 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     },
   ];
 
+  const q = search.toLowerCase();
+  const filteredTasks = (staleTasks ?? []).filter((t) =>
+    String(t.id).includes(q) ||
+    String(t.record_id).includes(q) ||
+    t.task_type.toLowerCase().includes(q) ||
+    t.status.toLowerCase().includes(q)
+  );
+
   return (
     <div>
       <Typography.Title level={4}>Stale Tasks</Typography.Title>
+      <Input.Search
+        placeholder="Search by task ID, record ID, type or status…"
+        allowClear
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 12, maxWidth: 400 }}
+      />
       <div style={{ display: "flex", gap: 12, marginBottom: 12 }}>
         <Select
           placeholder="Bulk assign to..."
@@ -101,7 +116,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
         <Button onClick={() => setSelected(staleTasks?.map((t) => t.id) ?? [])}>Select All</Button>
         <Button onClick={() => setSelected([])}>Clear</Button>
       </div>
-      <Table rowKey="id" columns={columns} dataSource={staleTasks} loading={isLoading} size="small" />
+      <Table rowKey="id" columns={columns} dataSource={filteredTasks} loading={isLoading} size="small" />
     </div>
   );
 }

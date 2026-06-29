@@ -18,6 +18,7 @@ const TIMEZONES = [
 const TIMES = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
 
 export default function ShiftsManager() {
+  const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Shift | null>(null);
@@ -105,6 +106,12 @@ export default function ShiftsManager() {
     setEditOpen(true);
   };
 
+  const q = search.toLowerCase();
+  const filteredShifts = shifts.filter((s) =>
+    s.name.toLowerCase().includes(q) ||
+    s.timezone.toLowerCase().includes(q)
+  );
+
   const columns: ColumnsType<Shift> = [
     { title: "Name", dataIndex: "name", key: "name" },
     {
@@ -166,14 +173,21 @@ export default function ShiftsManager() {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Shifts</span>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
           New Shift
         </Button>
       </Space>
 
-      <Table dataSource={shifts} columns={columns} rowKey="id" loading={isLoading} />
+      <Input.Search
+        placeholder="Search by name or timezone…"
+        allowClear
+        onChange={(e) => setSearch(e.target.value)}
+        style={{ marginBottom: 16, maxWidth: 360 }}
+      />
+
+      <Table dataSource={filteredShifts} columns={columns} rowKey="id" loading={isLoading} />
 
       {/* Create shift modal */}
       <Modal
