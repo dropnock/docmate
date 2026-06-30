@@ -50,7 +50,7 @@ export default function CabinetManager({ projectId }: Props) {
   const ingestJsonMutation = useMutation({
     mutationFn: async ({ records, idField }: { records: unknown[]; idField: string }) => {
       await api.post(
-        `/api/cabinets/${cabinet!.id}/ingest-json`,
+        `/cabinets/${cabinet!.id}/ingest-json`,
         { id_field: idField, records }
       );
     },
@@ -69,12 +69,12 @@ export default function CabinetManager({ projectId }: Props) {
   const uploadImageMutation = useMutation({
     mutationFn: async ({ file }: { file: File }) => {
       const urlRes = await api.post(
-        `/api/cabinets/${cabinet!.id}/upload-url?filename=${encodeURIComponent(file.name)}`
+        `/cabinets/${cabinet!.id}/upload-url?filename=${encodeURIComponent(file.name)}`
       );
       const { upload_url, key } = urlRes.data;
       await fetch(upload_url, { method: "PUT", body: file });
       await api.patch(
-        `/api/cabinets/${cabinet!.id}/confirm-upload`,
+        `/cabinets/${cabinet!.id}/confirm-upload`,
         null,
         { params: { original_filename: file.name, s3_key: key } }
       );
