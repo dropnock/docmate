@@ -21,12 +21,10 @@ import StaffProductivityDashboard from "./pages/StaffProductivityDashboard";
 import ProjectKPIDashboard from "./pages/ProjectKPIDashboard";
 import StaleTaskManager from "./pages/StaleTaskManager";
 import RecordHistory from "./pages/RecordHistory";
-import TaskAssignment from "./pages/TaskAssignment";
 import ProjectsManager from "./pages/ProjectsManager";
 import UsersManager from "./pages/UsersManager";
 import StaffAssignment from "./pages/StaffAssignment";
 import OrganisationsManager from "./pages/OrganisationsManager";
-import BatchManager from "./pages/BatchManager";
 import ShiftsManager from "./pages/ShiftsManager";
 import MyTasks from "./pages/MyTasks";
 import CabinetManager from "./pages/CabinetManager";
@@ -41,9 +39,7 @@ const qc = new QueryClient();
 const SUPERVISOR_PAGES = [
   { key: "cabinet-assign", label: "Cabinet Assignment", icon: <InboxOutlined /> },
   { key: "lots", label: "Lots", icon: <UnorderedListOutlined /> },
-  { key: "batches", label: "Batch Manager (Legacy)", icon: <InboxOutlined /> },
   { key: "staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
-  { key: "assign", label: "Assign Tasks (Legacy)", icon: <UnorderedListOutlined /> },
   { key: "stale", label: "Stale Tasks", icon: <WarningOutlined /> },
   { key: "productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
   { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
@@ -63,7 +59,7 @@ const ADMIN_PAGES = [
 ];
 
 const PROJECT_SCOPED_PAGES = new Set([
-  "batches", "staff-assignment", "assign", "stale", "productivity", "kpi", "history",
+  "staff-assignment", "stale", "productivity", "kpi", "history",
   "cabinet-assign", "lots", "cabinets",
 ]);
 
@@ -189,14 +185,8 @@ function AppInner() {
               {page === "lots" && projectId && isSupervisor && (
                 <LotManager projectId={projectId} />
               )}
-              {page === "batches" && projectId && (
-                <BatchManager projectId={projectId} isAdmin={isAdmin} />
-              )}
               {page === "staff-assignment" && projectId && isSupervisor && (
                 <StaffAssignment projectId={projectId} />
-              )}
-              {page === "assign" && projectId && isSupervisor && (
-                <TaskAssignment projectId={projectId} />
               )}
               {page === "stale" && projectId && isSupervisor && (
                 <StaleTaskManager projectId={projectId} />

@@ -96,7 +96,6 @@ async def ingest_json_records(
     cabinet_id: int,
     records_payload: list[dict],
     id_field: str,
-    batch_id: int,
     user_id: int,
     tenant_id: int,
 ) -> list[Record]:
@@ -106,7 +105,6 @@ async def ingest_json_records(
     for item in records_payload:
         source_id = str(item.get(id_field, "")) or None
         record = Record(
-            batch_id=batch_id,
             cabinet_id=cabinet.id,
             indexed_data=item,
             source_identifier=source_id,
@@ -153,7 +151,6 @@ async def ingest_image_create_or_link(
     db: AsyncSession,
     *,
     cabinet_id: int,
-    batch_id: int,
     original_filename: str,
     s3_key: str,
     tenant_id: int,
@@ -177,7 +174,6 @@ async def ingest_image_create_or_link(
 
     # No matching JSON record — create stub
     record = Record(
-        batch_id=batch_id,
         cabinet_id=cabinet.id,
         file_reference=s3_key,
         original_filename=original_filename,

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
+from app.models.project import Project
 from app.schemas.cabinet import (
     AssignQaAgentRequest,
     CabinetOut,
@@ -10,7 +11,6 @@ from app.schemas.cabinet import (
     IngestJsonRequest,
 )
 from app.services import cabinet_service, batch_service, s3_service
-from app.models.record import Record
 
 router = APIRouter(prefix="/api/cabinets", tags=["cabinets"])
 
@@ -69,7 +69,6 @@ async def get_cabinet_records(
 async def ingest_json(
     cabinet_id: int,
     body: IngestJsonRequest,
-    batch_id: int,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("admin")),
 ):
@@ -78,7 +77,6 @@ async def ingest_json(
         cabinet_id=cabinet_id,
         records_payload=body.records,
         id_field=body.id_field,
-        batch_id=batch_id,
         user_id=current_user.id,
         tenant_id=current_user._tenant_id,
     )
@@ -86,10 +84,9 @@ async def ingest_json(
     return {"created": len(records)}
 
 
-@router.post("/{cabinet_id}/records/{record_id}/upload-url")
+@router.post("/{cabinet_id}/upload-url")
 async def get_upload_url(
     cabinet_id: int,
-    record_id: int,
     filename: str,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("admin")),
@@ -97,21 +94,17 @@ async def get_upload_url(
     cabinet = await cabinet_service.get_cabinet(
         db, cabinet_id=cabinet_id, tenant_id=current_user._tenant_id
     )
-    from app.models.project import Project
     project = await db.get(Project, cabinet.project_id)
-    bucket = project.s3_bucket_name if project else None
-    if not bucket:
-        from fastapi import HTTPException
+    if not project or not project.s3_bucket_name:
         raise HTTPException(status_code=400, detail="Project has no S3 bucket")
-    key = f"cabinets/{cabinet_id}/records/{record_id}/{filename}"
-    url = s3_service.get_presigned_upload_url(bucket, key)
+    key = f"cabinets/{cabinet_id}/{filename}"
+    url = s3_service.get_presigned_upload_url(project.s3_bucket_name, key)
     return {"upload_url": url, "key": key}
 
 
-@router.patch("/{cabinet_id}/records/{record_id}/confirm-upload")
+@router.patch("/{cabinet_id}/confirm-upload")
 async def confirm_upload(
     cabinet_id: int,
-    record_id: int,
     original_filename: str,
     s3_key: str,
     db: AsyncSession = Depends(get_db),
@@ -120,7 +113,6 @@ async def confirm_upload(
     record = await cabinet_service.ingest_image_create_or_link(
         db,
         cabinet_id=cabinet_id,
-        batch_id=0,  # stub; overridden in ingest_image_create_or_link for new records
         original_filename=original_filename,
         s3_key=s3_key,
         tenant_id=current_user._tenant_id,

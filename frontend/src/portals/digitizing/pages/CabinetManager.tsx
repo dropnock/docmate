@@ -49,13 +49,8 @@ export default function CabinetManager({ projectId }: Props) {
 
   const ingestJsonMutation = useMutation({
     mutationFn: async ({ records, idField }: { records: unknown[]; idField: string }) => {
-      const batchRes = await api.post("/batches", {
-        project_id: projectId,
-        document_type_id: 1,
-        name: `JSON Ingest ${new Date().toISOString().slice(0, 16)}`,
-      });
       await api.post(
-        `/api/cabinets/${cabinet!.id}/ingest-json?batch_id=${batchRes.data.id}`,
+        `/api/cabinets/${cabinet!.id}/ingest-json`,
         { id_field: idField, records }
       );
     },
@@ -74,12 +69,12 @@ export default function CabinetManager({ projectId }: Props) {
   const uploadImageMutation = useMutation({
     mutationFn: async ({ file }: { file: File }) => {
       const urlRes = await api.post(
-        `/api/cabinets/${cabinet!.id}/records/0/upload-url?filename=${encodeURIComponent(file.name)}`
+        `/api/cabinets/${cabinet!.id}/upload-url?filename=${encodeURIComponent(file.name)}`
       );
       const { upload_url, key } = urlRes.data;
       await fetch(upload_url, { method: "PUT", body: file });
       await api.patch(
-        `/api/cabinets/${cabinet!.id}/records/0/confirm-upload`,
+        `/api/cabinets/${cabinet!.id}/confirm-upload`,
         null,
         { params: { original_filename: file.name, s3_key: key } }
       );
