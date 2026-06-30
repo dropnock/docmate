@@ -29,7 +29,7 @@ export default function CabinetAssignment({ projectId }: Props) {
   // One cabinet per project — auto-load
   const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
-    queryFn: () => api.get(`/api/cabinets/project/${projectId}`).then((r) => r.data),
+    queryFn: () => api.get(`/cabinets/project/${projectId}`).then((r) => r.data),
   });
   const cabinet = cabinets[0];
 
@@ -46,7 +46,7 @@ export default function CabinetAssignment({ projectId }: Props) {
   const { data: records = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
     queryKey: ["cabinet-records", cabinet?.id, "pending"],
     queryFn: () =>
-      api.get(`/api/cabinets/${cabinet!.id}/records?status=pending`).then((r) => r.data),
+      api.get(`/cabinets/${cabinet!.id}/records?status=pending`).then((r) => r.data),
     enabled: !!cabinet,
   });
 
@@ -82,7 +82,7 @@ export default function CabinetAssignment({ projectId }: Props) {
         const count = agentAllocations[agent.id] ?? 0;
         const slice = pendingRecords.slice(offset, offset + count);
         if (!slice.length) continue;
-        await api.post(`/api/cabinets/${cabinet.id}/batches`, {
+        await api.post(`/cabinets/${cabinet.id}/batches`, {
           project_id: projectId,
           document_type_id: selectedDocType,
           record_ids: slice.map((r) => r.id),
@@ -102,7 +102,7 @@ export default function CabinetAssignment({ projectId }: Props) {
 
   const assignQaMutation = useMutation({
     mutationFn: ({ batchId, agentId }: { batchId: number; agentId: number }) =>
-      api.patch(`/api/cabinets/batches/${batchId}/assign-qa`, { agent_id: agentId }),
+      api.patch(`/cabinets/batches/${batchId}/assign-qa`, { agent_id: agentId }),
     onSuccess: () => {
       message.success("QA agent assigned");
       qc.invalidateQueries({ queryKey: ["project-batches", projectId] });

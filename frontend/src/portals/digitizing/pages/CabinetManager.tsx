@@ -34,7 +34,7 @@ export default function CabinetManager({ projectId }: Props) {
 
   const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
-    queryFn: () => api.get(`/api/cabinets/project/${projectId}`).then((r) => r.data),
+    queryFn: () => api.get(`/cabinets/project/${projectId}`).then((r) => r.data),
   });
 
   // One cabinet per project — always use the first
@@ -42,7 +42,7 @@ export default function CabinetManager({ projectId }: Props) {
 
   const { data: records = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
     queryKey: ["cabinet-records", cabinet?.id],
-    queryFn: () => api.get(`/api/cabinets/${cabinet!.id}/records`).then((r) => r.data),
+    queryFn: () => api.get(`/cabinets/${cabinet!.id}/records`).then((r) => r.data),
     enabled: !!cabinet,
     refetchInterval: 10_000,
   });

@@ -30,13 +30,13 @@ export default function CustomerLotManager({ projectId }: Props) {
 
   const { data: lots = [], isLoading: lotLoading } = useQuery<Lot[]>({
     queryKey: ["customer-lots", projectId],
-    queryFn: () => api.get(`/api/lots/project/${projectId}`).then((r) => r.data),
+    queryFn: () => api.get(`/lots/project/${projectId}`).then((r) => r.data),
     refetchInterval: 15_000,
   });
 
   const { data: lotDetail } = useQuery<LotDetail>({
     queryKey: ["lot-detail", detailLotId],
-    queryFn: () => api.get(`/api/lots/${detailLotId}`).then((r) => r.data),
+    queryFn: () => api.get(`/lots/${detailLotId}`).then((r) => r.data),
     enabled: !!detailLotId,
     refetchInterval: 10_000,
   });
@@ -53,7 +53,7 @@ export default function CustomerLotManager({ projectId }: Props) {
 
   const applySampleMutation = useMutation({
     mutationFn: ({ lotId, rate }: { lotId: number; rate: number }) =>
-      api.post(`/api/lots/${lotId}/sample`, { sample_rate: rate / 100 }),
+      api.post(`/lots/${lotId}/sample`, { sample_rate: rate / 100 }),
     onSuccess: () => {
       message.success("Sample applied — records selected for QC");
       qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });
@@ -82,7 +82,7 @@ export default function CustomerLotManager({ projectId }: Props) {
         agent_id: Number(agentId),
         record_ids: rids,
       }));
-      return api.post(`/api/lots/${lotId}/qc-batches`, {
+      return api.post(`/lots/${lotId}/qc-batches`, {
         project_id: projectId,
         document_type_id: selectedDocType,
         assignments,
@@ -99,7 +99,7 @@ export default function CustomerLotManager({ projectId }: Props) {
   });
 
   const remediationMutation = useMutation({
-    mutationFn: (lotId: number) => api.post(`/api/lots/${lotId}/send-for-remediation`),
+    mutationFn: (lotId: number) => api.post(`/lots/${lotId}/send-for-remediation`),
     onSuccess: () => {
       message.success("Lot sent for remediation");
       qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });

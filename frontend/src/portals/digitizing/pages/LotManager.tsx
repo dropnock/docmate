@@ -31,14 +31,14 @@ export default function LotManager({ projectId }: Props) {
 
   const { data: lots = [], isLoading: lotLoading } = useQuery<Lot[]>({
     queryKey: ["lots", projectId],
-    queryFn: () => api.get(`/api/lots/project/${projectId}`).then((r) => r.data),
+    queryFn: () => api.get(`/lots/project/${projectId}`).then((r) => r.data),
     refetchInterval: 15_000,
   });
 
   // One cabinet per project — auto-load
   const { data: cabinets = [] } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
-    queryFn: () => api.get(`/api/cabinets/project/${projectId}`).then((r) => r.data),
+    queryFn: () => api.get(`/cabinets/project/${projectId}`).then((r) => r.data),
   });
   const cabinet = cabinets[0];
 
@@ -46,20 +46,20 @@ export default function LotManager({ projectId }: Props) {
   const { data: qaPassedRecords = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
     queryKey: ["cabinet-records", cabinet?.id, "qa_passed"],
     queryFn: () =>
-      api.get(`/api/cabinets/${cabinet!.id}/records?status=qa_passed`).then((r) => r.data),
+      api.get(`/cabinets/${cabinet!.id}/records?status=qa_passed`).then((r) => r.data),
     enabled: !!cabinet && createOpen,
   });
 
   const { data: lotDetail } = useQuery<LotDetail>({
     queryKey: ["lot-detail", detailLotId],
-    queryFn: () => api.get(`/api/lots/${detailLotId}`).then((r) => r.data),
+    queryFn: () => api.get(`/lots/${detailLotId}`).then((r) => r.data),
     enabled: !!detailLotId,
     refetchInterval: 10_000,
   });
 
   const createMutation = useMutation({
     mutationFn: () =>
-      api.post("/api/lots", {
+      api.post("/lots", {
         project_id: projectId,
         name: lotName,
         description: lotDescription || undefined,
@@ -80,7 +80,7 @@ export default function LotManager({ projectId }: Props) {
   });
 
   const releaseMutation = useMutation({
-    mutationFn: (lotId: number) => api.post(`/api/lots/${lotId}/release`),
+    mutationFn: (lotId: number) => api.post(`/lots/${lotId}/release`),
     onSuccess: () => {
       message.success("Lot released to customer");
       qc.invalidateQueries({ queryKey: ["lots", projectId] });
