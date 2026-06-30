@@ -23,7 +23,7 @@ class Record(Base, TimestampMixin):
     __tablename__ = "records"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id"), nullable=False, index=True)
+    batch_id: Mapped[int | None] = mapped_column(ForeignKey("batches.id"), nullable=True, index=True)
     cabinet_id: Mapped[int | None] = mapped_column(ForeignKey("cabinets.id"), nullable=True, index=True)
     file_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
@@ -36,7 +36,7 @@ class Record(Base, TimestampMixin):
         Enum(RecordStatus), default=RecordStatus.pending, nullable=False
     )
 
-    batch: Mapped["Batch"] = relationship(back_populates="records")
+    batch: Mapped["Batch | None"] = relationship(back_populates="records")
     cabinet: Mapped["Cabinet | None"] = relationship(back_populates="records")
     locker: Mapped["User | None"] = relationship(foreign_keys=[locked_by])
     versions: Mapped[list["RecordVersion"]] = relationship(
