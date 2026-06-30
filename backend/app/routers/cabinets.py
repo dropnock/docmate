@@ -5,7 +5,6 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
 from app.schemas.cabinet import (
     AssignQaAgentRequest,
-    CabinetCreate,
     CabinetOut,
     CreateIndexingBatchRequest,
     IngestJsonRequest,
@@ -14,25 +13,6 @@ from app.services import cabinet_service, batch_service, s3_service
 from app.models.record import Record
 
 router = APIRouter(prefix="/api/cabinets", tags=["cabinets"])
-
-
-@router.post("", status_code=201)
-async def create_cabinet(
-    body: CabinetCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin")),
-):
-    cabinet = await cabinet_service.create_cabinet(
-        db,
-        project_id=body.project_id,
-        organization_id=body.organization_id,
-        name=body.name,
-        description=body.description,
-        user_id=current_user.id,
-        tenant_id=current_user._tenant_id,
-    )
-    await db.commit()
-    return CabinetOut.from_orm_dt(cabinet)
 
 
 @router.get("/project/{project_id}")

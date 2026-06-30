@@ -1,13 +1,13 @@
 import {
-  Badge, Button, Card, Col, Empty, Form, Input, Modal, Row, Select, Spin,
+  Button, Card, Col, Empty, Form, Input, Modal, Row, Spin,
   Table, Tabs, Tag, Typography, Upload, message,
 } from "antd";
 import { InboxOutlined } from "@ant-design/icons";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Cabinet, CabinetRecord, Organization, Project } from "@shared/types";
+import type { Cabinet, CabinetRecord } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -27,65 +27,41 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function CabinetManager({ projectId }: Props) {
   const qc = useQueryClient();
-  const [selectedCabinet, setSelectedCabinet] = useState<number | undefined>();
-  const [createOpen, setCreateOpen] = useState(false);
   const [ingestJsonOpen, setIngestJsonOpen] = useState(false);
   const [jsonText, setJsonText] = useState("");
   const [idField, setIdField] = useState("id");
   const [recordSearch, setRecordSearch] = useState("");
-  const [form] = Form.useForm();
-
-  const { data: project } = useQuery<Project>({
-    queryKey: ["project", projectId],
-    queryFn: () => api.get(`/projects/${projectId}`).then((r) => r.data),
-  });
-
-  const { data: orgs = [] } = useQuery<Organization[]>({
-    queryKey: ["organizations"],
-    queryFn: () => api.get("/organizations").then((r) => r.data),
-  });
 
   const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
     queryFn: () => api.get(`/api/cabinets/project/${projectId}`).then((r) => r.data),
   });
 
-  const { data: records = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
-    queryKey: ["cabinet-records", selectedCabinet],
-    queryFn: () => api.get(`/api/cabinets/${selectedCabinet}/records`).then((r) => r.data),
-    enabled: !!selectedCabinet,
-    refetchInterval: 10_000,
-  });
+  // One cabinet per project — always use the first
+  const cabinet = cabinets[0];
 
-  const createMutation = useMutation({
-    mutationFn: (values: { name: string; description?: string; organization_id?: number }) =>
-      api.post("/api/cabinets", { project_id: projectId, ...values }),
-    onSuccess: () => {
-      message.success("Cabinet created");
-      qc.invalidateQueries({ queryKey: ["cabinets", projectId] });
-      setCreateOpen(false);
-      form.resetFields();
-    },
-    onError: () => message.error("Failed to create cabinet"),
+  const { data: records = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
+    queryKey: ["cabinet-records", cabinet?.id],
+    queryFn: () => api.get(`/api/cabinets/${cabinet!.id}/records`).then((r) => r.data),
+    enabled: !!cabinet,
+    refetchInterval: 10_000,
   });
 
   const ingestJsonMutation = useMutation({
     mutationFn: async ({ records, idField }: { records: unknown[]; idField: string }) => {
-      // We need a placeholder batch; for pure-JSON ingestion we create a stub batch via legacy endpoint
-      // then ingest into cabinet
       const batchRes = await api.post("/batches", {
         project_id: projectId,
-        document_type_id: 1, // default; can be changed later
+        document_type_id: 1,
         name: `JSON Ingest ${new Date().toISOString().slice(0, 16)}`,
       });
       await api.post(
-        `/api/cabinets/${selectedCabinet}/ingest-json?batch_id=${batchRes.data.id}`,
+        `/api/cabinets/${cabinet!.id}/ingest-json?batch_id=${batchRes.data.id}`,
         { id_field: idField, records }
       );
     },
     onSuccess: () => {
       message.success("Records ingested from JSON");
-      qc.invalidateQueries({ queryKey: ["cabinet-records", selectedCabinet] });
+      qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
       setIngestJsonOpen(false);
       setJsonText("");
     },
@@ -96,22 +72,21 @@ export default function CabinetManager({ projectId }: Props) {
   });
 
   const uploadImageMutation = useMutation({
-    mutationFn: async ({ file, recordId }: { file: File; recordId?: number }) => {
-      const rid = recordId ?? 0;
+    mutationFn: async ({ file }: { file: File }) => {
       const urlRes = await api.post(
-        `/api/cabinets/${selectedCabinet}/records/${rid}/upload-url?filename=${encodeURIComponent(file.name)}`
+        `/api/cabinets/${cabinet!.id}/records/0/upload-url?filename=${encodeURIComponent(file.name)}`
       );
       const { upload_url, key } = urlRes.data;
       await fetch(upload_url, { method: "PUT", body: file });
       await api.patch(
-        `/api/cabinets/${selectedCabinet}/records/${rid}/confirm-upload`,
+        `/api/cabinets/${cabinet!.id}/records/0/confirm-upload`,
         null,
         { params: { original_filename: file.name, s3_key: key } }
       );
     },
     onSuccess: () => {
       message.success("Image uploaded");
-      qc.invalidateQueries({ queryKey: ["cabinet-records", selectedCabinet] });
+      qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
     },
     onError: () => message.error("Image upload failed"),
   });
@@ -168,31 +143,26 @@ export default function CabinetManager({ projectId }: Props) {
     { title: "Version", dataIndex: "current_version", render: (v) => `v${v}` },
   ];
 
+  if (cabLoading) return <Spin />;
+
+  if (!cabinet) {
+    return (
+      <Empty description="No cabinet found for this project. The cabinet is created automatically when a project is set up." />
+    );
+  }
+
   return (
     <div>
-      <Typography.Title level={4}>Cabinets</Typography.Title>
-
-      <Row gutter={16} style={{ marginBottom: 16 }}>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
         <Col>
-          <Select
-            placeholder="Select cabinet"
-            style={{ width: 260 }}
-            loading={cabLoading}
-            options={cabinets.map((c) => ({ label: c.name, value: c.id }))}
-            onChange={setSelectedCabinet}
-            value={selectedCabinet}
-          />
-        </Col>
-        <Col>
-          <Button type="primary" onClick={() => setCreateOpen(true)}>
-            New Cabinet
-          </Button>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Cabinet: {cabinet.name}
+          </Typography.Title>
+          <Typography.Text type="secondary">{records.length} records total</Typography.Text>
         </Col>
       </Row>
 
-      {!selectedCabinet ? (
-        <Empty description="Select a cabinet to view and manage records" />
-      ) : recLoading ? (
+      {recLoading ? (
         <Spin />
       ) : (
         <Card>
@@ -264,35 +234,6 @@ export default function CabinetManager({ projectId }: Props) {
           />
         </Card>
       )}
-
-      {/* Create Cabinet Modal */}
-      <Modal
-        title="New Cabinet"
-        open={createOpen}
-        onCancel={() => setCreateOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={createMutation.isPending}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          initialValues={{ organization_id: project?.digitizing_org_id }}
-          onFinish={(v) => createMutation.mutate(v)}
-        >
-          <Form.Item name="organization_id" label="Organisation" rules={[{ required: true, message: "Select an organisation" }]}>
-            <Select
-              options={orgs.map((o) => ({ label: o.name, value: o.id }))}
-              placeholder="Select organisation"
-            />
-          </Form.Item>
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="description" label="Description">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-        </Form>
-      </Modal>
 
       {/* Ingest JSON Modal */}
       <Modal

@@ -1,6 +1,6 @@
 import {
-  Badge, Button, Card, Checkbox, Col, Drawer, Empty, Form, Input, Row,
-  Select, Space, Spin, Table, Tag, Typography, message,
+  Button, Card, Col, Checkbox, Drawer, Empty, Form, Input, Row,
+  Space, Spin, Table, Tag, Typography, message,
 } from "antd";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -25,7 +25,6 @@ export default function LotManager({ projectId }: Props) {
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [detailLotId, setDetailLotId] = useState<number | undefined>();
-  const [selectedCabinet, setSelectedCabinet] = useState<number | undefined>();
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [lotName, setLotName] = useState("");
   const [lotDescription, setLotDescription] = useState("");
@@ -36,16 +35,19 @@ export default function LotManager({ projectId }: Props) {
     refetchInterval: 15_000,
   });
 
+  // One cabinet per project — auto-load
   const { data: cabinets = [] } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
     queryFn: () => api.get(`/api/cabinets/project/${projectId}`).then((r) => r.data),
   });
+  const cabinet = cabinets[0];
 
-  const { data: qaPassedRecords = [] } = useQuery<CabinetRecord[]>({
-    queryKey: ["cabinet-records", selectedCabinet, "qa_passed"],
+  // QA-passed records in the project cabinet
+  const { data: qaPassedRecords = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
+    queryKey: ["cabinet-records", cabinet?.id, "qa_passed"],
     queryFn: () =>
-      api.get(`/api/cabinets/${selectedCabinet}/records?status=qa_passed`).then((r) => r.data),
-    enabled: !!selectedCabinet,
+      api.get(`/api/cabinets/${cabinet!.id}/records?status=qa_passed`).then((r) => r.data),
+    enabled: !!cabinet && createOpen,
   });
 
   const { data: lotDetail } = useQuery<LotDetail>({
@@ -70,7 +72,6 @@ export default function LotManager({ projectId }: Props) {
       setLotName("");
       setLotDescription("");
       setSelectedRecordIds([]);
-      setSelectedCabinet(undefined);
     },
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { detail?: string } } };
@@ -194,18 +195,13 @@ export default function LotManager({ projectId }: Props) {
           <Form.Item label="Description">
             <Input.TextArea rows={2} value={lotDescription} onChange={(e) => setLotDescription(e.target.value)} />
           </Form.Item>
-          <Form.Item label="Select Cabinet">
-            <Select
-              style={{ width: "100%" }}
-              options={cabinets.map((c) => ({ label: c.name, value: c.id }))}
-              onChange={(v) => { setSelectedCabinet(v); setSelectedRecordIds([]); }}
-              value={selectedCabinet}
-              placeholder="Choose a cabinet to pick records from"
-            />
-          </Form.Item>
         </Form>
 
-        {selectedCabinet && (
+        {recLoading ? (
+          <Spin />
+        ) : qaPassedRecords.length === 0 ? (
+          <Empty description="No QA-passed records in this project's cabinet yet." />
+        ) : (
           <>
             <Row justify="space-between" style={{ marginBottom: 8 }}>
               <Typography.Text type="secondary">

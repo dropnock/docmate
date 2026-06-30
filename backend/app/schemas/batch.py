@@ -28,6 +28,8 @@ class BatchOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int
     project_id: int
+    cabinet_id: int | None = None
+    batch_type: str | None = None
     document_type_id: int
     name: str
     status: str

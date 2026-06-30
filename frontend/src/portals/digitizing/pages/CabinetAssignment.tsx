@@ -1,12 +1,12 @@
 import {
-  Badge, Button, Card, Col, Empty, InputNumber, Row, Select, Spin,
+  Button, Card, Col, Empty, InputNumber, Row, Select, Spin,
   Table, Tag, Typography, message,
 } from "antd";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { AvailableStaff, Cabinet, CabinetRecord, DocumentType, Shift } from "@shared/types";
+import type { AvailableStaff, Batch, Cabinet, CabinetRecord, DocumentType, Shift } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -21,16 +21,17 @@ const BATCH_STATUS_COLOR: Record<string, string> = {
 
 export default function CabinetAssignment({ projectId }: Props) {
   const qc = useQueryClient();
-  const [selectedCabinet, setSelectedCabinet] = useState<number | undefined>();
   const [selectedShift, setSelectedShift] = useState<number | undefined>();
   const [selectedDocType, setSelectedDocType] = useState<number | undefined>();
   const [agentAllocations, setAgentAllocations] = useState<Record<number, number>>({});
   const [qaAssign, setQaAssign] = useState<Record<number, number>>({});
 
-  const { data: cabinets = [] } = useQuery<Cabinet[]>({
+  // One cabinet per project — auto-load
+  const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
     queryFn: () => api.get(`/api/cabinets/project/${projectId}`).then((r) => r.data),
   });
+  const cabinet = cabinets[0];
 
   const { data: shifts = [] } = useQuery<Shift[]>({
     queryKey: ["project-shifts", projectId],
@@ -43,10 +44,10 @@ export default function CabinetAssignment({ projectId }: Props) {
   });
 
   const { data: records = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
-    queryKey: ["cabinet-records", selectedCabinet, "pending"],
+    queryKey: ["cabinet-records", cabinet?.id, "pending"],
     queryFn: () =>
-      api.get(`/api/cabinets/${selectedCabinet}/records?status=pending`).then((r) => r.data),
-    enabled: !!selectedCabinet,
+      api.get(`/api/cabinets/${cabinet!.id}/records?status=pending`).then((r) => r.data),
+    enabled: !!cabinet,
   });
 
   const { data: staff = [] } = useQuery<AvailableStaff[]>({
@@ -57,33 +58,31 @@ export default function CabinetAssignment({ projectId }: Props) {
     enabled: !!selectedShift,
   });
 
-  // Batches for this cabinet
-  const { data: batches = [], isLoading: batchLoading } = useQuery<{
-    id: number; name: string; status: string; batch_type: string;
-  }[]>({
-    queryKey: ["cabinet-batches", selectedCabinet],
-    queryFn: () =>
-      api.get(`/batches`, { params: { cabinet_id: selectedCabinet } }).then((r) => r.data),
-    enabled: !!selectedCabinet,
+  const { data: allBatches = [], isLoading: batchLoading } = useQuery<Batch[]>({
+    queryKey: ["project-batches", projectId],
+    queryFn: () => api.get(`/projects/${projectId}/batches`).then((r) => r.data),
+    enabled: !!cabinet,
     refetchInterval: 15_000,
   });
 
+  // Only show batches that belong to this project's cabinet
+  const batches = allBatches.filter((b) => b.cabinet_id === cabinet?.id);
+
   const createBatchesMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedCabinet || !selectedDocType) throw new Error("Select cabinet and document type");
+      if (!cabinet || !selectedDocType) throw new Error("Select a document type");
       const pendingRecords = records.filter((r) => r.status === "pending");
       if (!pendingRecords.length) throw new Error("No pending records");
 
       const staffWithAlloc = staff.filter((s) => (agentAllocations[s.id] ?? 0) > 0);
       if (!staffWithAlloc.length) throw new Error("Set allocation counts for at least one agent");
 
-      // Distribute records to agents based on their allocation counts
       let offset = 0;
       for (const agent of staffWithAlloc) {
         const count = agentAllocations[agent.id] ?? 0;
         const slice = pendingRecords.slice(offset, offset + count);
         if (!slice.length) continue;
-        await api.post(`/api/cabinets/${selectedCabinet}/batches`, {
+        await api.post(`/api/cabinets/${cabinet.id}/batches`, {
           project_id: projectId,
           document_type_id: selectedDocType,
           record_ids: slice.map((r) => r.id),
@@ -94,8 +93,8 @@ export default function CabinetAssignment({ projectId }: Props) {
     },
     onSuccess: () => {
       message.success("Indexing batches created");
-      qc.invalidateQueries({ queryKey: ["cabinet-records", selectedCabinet] });
-      qc.invalidateQueries({ queryKey: ["cabinet-batches", selectedCabinet] });
+      qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
+      qc.invalidateQueries({ queryKey: ["project-batches", projectId] });
       setAgentAllocations({});
     },
     onError: (e: Error) => message.error(e.message || "Failed to create batches"),
@@ -106,7 +105,7 @@ export default function CabinetAssignment({ projectId }: Props) {
       api.patch(`/api/cabinets/batches/${batchId}/assign-qa`, { agent_id: agentId }),
     onSuccess: () => {
       message.success("QA agent assigned");
-      qc.invalidateQueries({ queryKey: ["cabinet-batches", selectedCabinet] });
+      qc.invalidateQueries({ queryKey: ["project-batches", projectId] });
     },
     onError: () => message.error("Failed to assign QA agent"),
   });
@@ -114,24 +113,74 @@ export default function CabinetAssignment({ projectId }: Props) {
   const pendingCount = records.filter((r) => r.status === "pending").length;
   const totalAllocated = Object.values(agentAllocations).reduce((s, n) => s + n, 0);
 
+  if (cabLoading) return <Spin />;
+
+  if (!cabinet) {
+    return <Empty description="No cabinet found for this project." />;
+  }
+
+  const batchColumns: ColumnType<Batch>[] = [
+    { title: "ID", dataIndex: "id", width: 70 },
+    { title: "Name", dataIndex: "name" },
+    { title: "Type", dataIndex: "batch_type", render: (v) => <Tag>{v ?? "indexing"}</Tag> },
+    {
+      title: "Status",
+      dataIndex: "status",
+      render: (s: string) => (
+        <Tag color={BATCH_STATUS_COLOR[s] ?? "default"}>{s.replace(/_/g, " ")}</Tag>
+      ),
+    },
+    {
+      title: "Assign QA Agent",
+      key: "qa",
+      render: (_: unknown, batch: Batch) =>
+        batch.status === "qa_review" ? (
+          <Row gutter={8}>
+            <Col>
+              <Select
+                size="small"
+                placeholder="QA agent"
+                style={{ width: 160 }}
+                options={staff
+                  .filter((s) => s.role === "de_qa_agent")
+                  .map((s) => ({ label: s.full_name, value: s.id }))}
+                value={qaAssign[batch.id]}
+                onChange={(v) => setQaAssign((prev) => ({ ...prev, [batch.id]: v }))}
+              />
+            </Col>
+            <Col>
+              <Button
+                size="small"
+                type="primary"
+                disabled={!qaAssign[batch.id]}
+                loading={assignQaMutation.isPending}
+                onClick={() =>
+                  assignQaMutation.mutate({ batchId: batch.id, agentId: qaAssign[batch.id] })
+                }
+              >
+                Assign
+              </Button>
+            </Col>
+          </Row>
+        ) : null,
+    },
+  ];
+
   return (
     <div>
-      <Typography.Title level={4}>Cabinet Assignment</Typography.Title>
+      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
+        <Col>
+          <Typography.Title level={4} style={{ margin: 0 }}>
+            Cabinet Assignment — {cabinet.name}
+          </Typography.Title>
+        </Col>
+      </Row>
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col>
           <Select
-            placeholder="Select cabinet"
-            style={{ width: 240 }}
-            options={cabinets.map((c) => ({ label: c.name, value: c.id }))}
-            onChange={setSelectedCabinet}
-            value={selectedCabinet}
-          />
-        </Col>
-        <Col>
-          <Select
             placeholder="Select shift"
-            style={{ width: 180 }}
+            style={{ width: 200 }}
             options={shifts.map((s) => ({ label: s.name, value: s.id }))}
             onChange={setSelectedShift}
             value={selectedShift}
@@ -140,7 +189,7 @@ export default function CabinetAssignment({ projectId }: Props) {
         <Col>
           <Select
             placeholder="Document type"
-            style={{ width: 200 }}
+            style={{ width: 220 }}
             options={docTypes.map((d) => ({ label: d.name, value: d.id }))}
             onChange={setSelectedDocType}
             value={selectedDocType}
@@ -148,11 +197,10 @@ export default function CabinetAssignment({ projectId }: Props) {
         </Col>
       </Row>
 
-      {!selectedCabinet ? (
-        <Empty description="Select a cabinet" />
+      {recLoading ? (
+        <Spin />
       ) : (
         <>
-          {/* Agent allocation panel */}
           {pendingCount > 0 && staff.length > 0 && (
             <Card
               title={`Allocate ${pendingCount} pending records to agents`}
@@ -187,7 +235,10 @@ export default function CabinetAssignment({ projectId }: Props) {
             </Card>
           )}
 
-          {/* Batch list */}
+          {pendingCount === 0 && staff.length === 0 && !selectedShift && (
+            <Empty description="Select a shift to see available agents" />
+          )}
+
           <Card title="Batches">
             {batchLoading ? (
               <Spin />
@@ -199,55 +250,7 @@ export default function CabinetAssignment({ projectId }: Props) {
                 size="small"
                 dataSource={batches}
                 pagination={false}
-                columns={[
-                  { title: "ID", dataIndex: "id", width: 70 },
-                  { title: "Name", dataIndex: "name" },
-                  { title: "Type", dataIndex: "batch_type", render: (v) => <Tag>{v}</Tag> },
-                  {
-                    title: "Status",
-                    dataIndex: "status",
-                    render: (s: string) => (
-                      <Tag color={BATCH_STATUS_COLOR[s] ?? "default"}>{s.replace(/_/g, " ")}</Tag>
-                    ),
-                  },
-                  {
-                    title: "Assign QA Agent",
-                    key: "qa",
-                    render: (_: unknown, batch: { id: number; status: string }) =>
-                      batch.status === "qa_review" ? (
-                        <Row gutter={8}>
-                          <Col>
-                            <Select
-                              size="small"
-                              placeholder="QA agent"
-                              style={{ width: 160 }}
-                              options={staff
-                                .filter((s) => s.role === "de_qa_agent")
-                                .map((s) => ({ label: s.full_name, value: s.id }))}
-                              value={qaAssign[batch.id]}
-                              onChange={(v) => setQaAssign((prev) => ({ ...prev, [batch.id]: v }))}
-                            />
-                          </Col>
-                          <Col>
-                            <Button
-                              size="small"
-                              type="primary"
-                              disabled={!qaAssign[batch.id]}
-                              loading={assignQaMutation.isPending}
-                              onClick={() =>
-                                assignQaMutation.mutate({
-                                  batchId: batch.id,
-                                  agentId: qaAssign[batch.id],
-                                })
-                              }
-                            >
-                              Assign
-                            </Button>
-                          </Col>
-                        </Row>
-                      ) : null,
-                  },
-                ]}
+                columns={batchColumns}
               />
             )}
           </Card>
