@@ -25,6 +25,7 @@ async def create_cabinet(
     cabinet = await cabinet_service.create_cabinet(
         db,
         project_id=body.project_id,
+        organization_id=body.organization_id,
         name=body.name,
         description=body.description,
         user_id=current_user.id,

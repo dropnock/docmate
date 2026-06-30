@@ -19,9 +19,16 @@ export interface Project {
   customer_org_id: number;
 }
 
+export interface Organization {
+  id: number;
+  name: string;
+  type: string;
+}
+
 export interface Cabinet {
   id: number;
   project_id: number;
+  organization_id: number | null;
   name: string;
   description: string | null;
   created_by: number | null;

@@ -20,6 +20,7 @@ async def create_cabinet(
     db: AsyncSession,
     *,
     project_id: int,
+    organization_id: int | None,
     name: str,
     description: str | None,
     user_id: int,
@@ -28,6 +29,7 @@ async def create_cabinet(
     cabinet = Cabinet(
         tenant_id=tenant_id,
         project_id=project_id,
+        organization_id=organization_id,
         name=name,
         description=description,
         created_by=user_id,

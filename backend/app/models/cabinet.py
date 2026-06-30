@@ -10,10 +10,12 @@ class Cabinet(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     tenant_id: Mapped[int] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
     project_id: Mapped[int] = mapped_column(Integer, ForeignKey("projects.id"), nullable=False, index=True)
+    organization_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
 
     project = relationship("Project", backref="cabinets")
+    organization = relationship("Organization", foreign_keys=[organization_id])
     creator = relationship("User", foreign_keys=[created_by])
     records = relationship("Record", back_populates="cabinet")

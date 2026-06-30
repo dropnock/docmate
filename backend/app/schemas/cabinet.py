@@ -3,6 +3,7 @@ from pydantic import BaseModel
 
 class CabinetCreate(BaseModel):
     project_id: int
+    organization_id: int | None = None
     name: str
     description: str | None = None
 
@@ -11,6 +12,7 @@ class CabinetOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int
     project_id: int
+    organization_id: int | None
     name: str
     description: str | None
     created_by: int | None
@@ -21,6 +23,7 @@ class CabinetOut(BaseModel):
         return cls(
             id=obj.id,
             project_id=obj.project_id,
+            organization_id=obj.organization_id,
             name=obj.name,
             description=obj.description,
             created_by=obj.created_by,

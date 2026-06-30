@@ -7,7 +7,7 @@ import { useState, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Cabinet, CabinetRecord, Project } from "@shared/types";
+import type { Cabinet, CabinetRecord, Organization, Project } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -40,6 +40,11 @@ export default function CabinetManager({ projectId }: Props) {
     queryFn: () => api.get(`/projects/${projectId}`).then((r) => r.data),
   });
 
+  const { data: orgs = [] } = useQuery<Organization[]>({
+    queryKey: ["organizations"],
+    queryFn: () => api.get("/organizations").then((r) => r.data),
+  });
+
   const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
     queryFn: () => api.get(`/api/cabinets/project/${projectId}`).then((r) => r.data),
@@ -53,7 +58,7 @@ export default function CabinetManager({ projectId }: Props) {
   });
 
   const createMutation = useMutation({
-    mutationFn: (values: { name: string; description?: string }) =>
+    mutationFn: (values: { name: string; description?: string; organization_id?: number }) =>
       api.post("/api/cabinets", { project_id: projectId, ...values }),
     onSuccess: () => {
       message.success("Cabinet created");
@@ -268,7 +273,18 @@ export default function CabinetManager({ projectId }: Props) {
         onOk={() => form.submit()}
         confirmLoading={createMutation.isPending}
       >
-        <Form form={form} layout="vertical" onFinish={(v) => createMutation.mutate(v)}>
+        <Form
+          form={form}
+          layout="vertical"
+          initialValues={{ organization_id: project?.digitizing_org_id }}
+          onFinish={(v) => createMutation.mutate(v)}
+        >
+          <Form.Item name="organization_id" label="Organisation" rules={[{ required: true, message: "Select an organisation" }]}>
+            <Select
+              options={orgs.map((o) => ({ label: o.name, value: o.id }))}
+              placeholder="Select organisation"
+            />
+          </Form.Item>
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
