@@ -1,4 +1,6 @@
 """Batch state machine — all transitions are explicit methods."""
+from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -170,3 +172,101 @@ async def reject_record_by_customer(
         performed_by=user_id,
         metadata={"reason": reason},
     )
+
+
+async def auto_advance_to_qa(
+    db: AsyncSession,
+    *,
+    batch_id: int,
+    tenant_id: int,
+) -> Batch:
+    """Called automatically when all records in a batch are indexed. Creates QA tasks."""
+    from app.models.project import Project
+
+    batch = await db.get(Batch, batch_id)
+    if not batch or batch.status != BatchStatus.indexing:
+        return batch  # Already advanced or wrong state
+
+    batch.status = BatchStatus.qa_review
+    await audit_service.write_event(
+        db, tenant_id=tenant_id, entity_type=AuditEntityType.batch, entity_id=batch_id,
+        action=AuditAction.status_changed, performed_by=0,
+        old_value={"status": "indexing"}, new_value={"status": "qa_review"},
+    )
+
+    # Create QA tasks for every record in the batch
+    project = await db.get(Project, batch.project_id)
+    stale_hours = project.stale_threshold_hours if project else 24
+    due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
+
+    records_result = await db.execute(select(Record).where(Record.batch_id == batch_id))
+    for record in records_result.scalars().all():
+        record.status = RecordStatus.qa_pending
+        db.add(Task(
+            record_id=record.id,
+            batch_id=batch_id,
+            task_type=TaskType.qa,
+            status=TaskStatus.pending,
+            due_at=due_at,
+        ))
+
+    await db.flush()
+    return batch
+
+
+async def assign_qa_agent(
+    db: AsyncSession,
+    *,
+    batch_id: int,
+    agent_id: int,
+    supervisor_id: int,
+    tenant_id: int,
+) -> Batch:
+    """Assign all unassigned QA tasks in the batch to a single QA agent."""
+    from app.models.project import Project
+
+    batch = await db.get(Batch, batch_id)
+    if not batch or batch.status != BatchStatus.qa_review:
+        raise HTTPException(status_code=400, detail="Batch must be in qa_review to assign QA agent")
+
+    project = await db.get(Project, batch.project_id)
+    stale_hours = project.stale_threshold_hours if project else 24
+    due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
+
+    tasks_result = await db.execute(
+        select(Task).where(
+            Task.batch_id == batch_id,
+            Task.task_type == TaskType.qa,
+            Task.assigned_to == None,  # noqa: E711
+        )
+    )
+    for task in tasks_result.scalars().all():
+        task.assigned_to = agent_id
+        task.assigned_by = supervisor_id
+        task.due_at = due_at
+
+    await audit_service.write_event(
+        db, tenant_id=tenant_id, entity_type=AuditEntityType.task, entity_id=batch_id,
+        action=AuditAction.assigned, performed_by=supervisor_id,
+        new_value={"agent_id": agent_id, "task_type": "qa"},
+    )
+    return batch
+
+
+async def mark_complete(
+    db: AsyncSession,
+    *,
+    batch_id: int,
+    tenant_id: int,
+) -> Batch:
+    """Called automatically when all records in a batch are qa_passed."""
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        return batch
+    batch.status = BatchStatus.complete
+    await audit_service.write_event(
+        db, tenant_id=tenant_id, entity_type=AuditEntityType.batch, entity_id=batch_id,
+        action=AuditAction.status_changed, performed_by=0,
+        old_value={"status": "qa_review"}, new_value={"status": "complete"},
+    )
+    return batch

@@ -1,8 +1,10 @@
 from app.models.aql import AQLConfig, AQLStatus
 from app.models.audit_log import AuditAction, AuditEntityType, AuditLog
 from app.models.base import Base
-from app.models.batch import Batch, BatchQCResult, BatchStatus
+from app.models.batch import Batch, BatchQCResult, BatchStatus, BatchType
+from app.models.cabinet import Cabinet
 from app.models.document_type import DocumentType
+from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.organization import Organization, OrgType
 from app.models.project import Project, S3BucketStatus
 from app.models.record import Record, RecordStatus
@@ -20,9 +22,11 @@ __all__ = [
     "Project", "S3BucketStatus",
     "Shift", "ProjectShift", "UserProjectAssignment",
     "DocumentType",
-    "Batch", "BatchStatus", "BatchQCResult",
+    "Cabinet",
+    "Batch", "BatchStatus", "BatchType", "BatchQCResult",
     "Record", "RecordStatus",
     "RecordVersion", "VersionReason",
+    "Lot", "LotRecord", "LotStatus",
     "AuditLog", "AuditAction", "AuditEntityType",
     "Task", "TaskType", "TaskStatus",
     "AQLConfig", "AQLStatus",

@@ -113,3 +113,25 @@ async def stale_tasks(
     return await task_service.get_stale_tasks(
         db, project_id=project_id, tenant_id=current_user._tenant_id
     )
+
+
+from pydantic import BaseModel
+
+class FailTaskRequest(BaseModel):
+    reason: str
+
+
+@router.post("/{task_id}/fail", response_model=TaskOut)
+async def fail_task(
+    task_id: int,
+    body: FailTaskRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return await task_service.fail_task(
+        db,
+        task_id=task_id,
+        user_id=current_user.id,
+        reason=body.reason,
+        tenant_id=current_user._tenant_id,
+    )

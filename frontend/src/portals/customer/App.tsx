@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
 import { Layout, Menu, Typography, Button, Select, Space, Spin, Card, List } from "antd";
-import { ProjectOutlined, CheckCircleOutlined, HistoryOutlined } from "@ant-design/icons";
+import { ProjectOutlined, CheckCircleOutlined, HistoryOutlined, InboxOutlined } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { initKeycloak, logout } from "@shared/api/keycloak";
 import ProjectKPIDashboard from "../digitizing/pages/ProjectKPIDashboard";
 import RecordHistory from "../digitizing/pages/RecordHistory";
 import QCWorkspace from "./pages/QCWorkspace";
+import CustomerLotManager from "./pages/CustomerLotManager";
 import api from "@shared/api/client";
 import type { Project, UserRecord } from "@shared/types";
 
@@ -15,12 +16,13 @@ const queryClient = new QueryClient();
 const CUSTOMER_REALM_KEY = "docmate_customer_realm";
 
 const NAV_ITEMS = [
+  { key: "lots", label: "Lots", icon: <InboxOutlined /> },
   { key: "qc", label: "QC Workspace", icon: <CheckCircleOutlined /> },
   { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
   { key: "history", label: "Record History", icon: <HistoryOutlined /> },
 ];
 
-const PROJECT_SCOPED = new Set(["kpi", "history"]);
+const PROJECT_SCOPED = new Set(["kpi", "history", "lots"]);
 
 interface CustomerRealm {
   name: string;
@@ -130,6 +132,7 @@ function AppInner() {
               </Space>
             </div>
           )}
+          {page === "lots" && projectId && <CustomerLotManager projectId={projectId} />}
           {page === "qc" && <QCWorkspace />}
           {page === "kpi" && projectId && <ProjectKPIDashboard projectId={projectId} />}
           {showProjectSelector && !projectId && (

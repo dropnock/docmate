@@ -24,7 +24,10 @@ class Record(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id"), nullable=False, index=True)
+    cabinet_id: Mapped[int | None] = mapped_column(ForeignKey("cabinets.id"), nullable=True, index=True)
     file_reference: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    original_filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    source_identifier: Mapped[str | None] = mapped_column(String(512), nullable=True, index=True)
     indexed_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     current_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     locked_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
@@ -34,8 +37,10 @@ class Record(Base, TimestampMixin):
     )
 
     batch: Mapped["Batch"] = relationship(back_populates="records")
+    cabinet: Mapped["Cabinet | None"] = relationship(back_populates="records")
     locker: Mapped["User | None"] = relationship(foreign_keys=[locked_by])
     versions: Mapped[list["RecordVersion"]] = relationship(
         back_populates="record", order_by="RecordVersion.version_number"
     )
     tasks: Mapped[list["Task"]] = relationship(back_populates="record")
+    lot_records: Mapped[list["LotRecord"]] = relationship(back_populates="record")
