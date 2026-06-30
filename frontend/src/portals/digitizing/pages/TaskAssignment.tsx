@@ -71,18 +71,26 @@ export default function TaskAssignment({ projectId }: Props) {
     enabled: !!selectedShift,
   });
 
+  function taskTypeForStatus(status: string): "indexing" | "qa" | "qc" {
+    if (status === "indexed" || status === "qa_failed") return "qa";
+    if (status === "qa_passed") return "qc";
+    return "indexing";
+  }
+
   const assignMutation = useMutation({
     mutationFn: ({
       recordId,
       agentId,
+      status,
     }: {
       recordId: number;
       agentId: number;
+      status: string;
     }) =>
       api.post("/tasks/assign", {
         record_id: recordId,
         batch_id: selectedBatch,
-        task_type: "indexing",
+        task_type: taskTypeForStatus(status),
         agent_id: agentId,
       }),
     onSuccess: (_, { recordId }) => {
@@ -96,7 +104,9 @@ export default function TaskAssignment({ projectId }: Props) {
   const assignAllMutation = useMutation({
     mutationFn: async () => {
       if (!records || !selectedShift) return;
-      const unassigned = records.filter((r) => r.status === "pending");
+      const unassigned = records.filter((r) =>
+        ["pending", "indexed", "qa_failed", "qa_passed"].includes(r.status)
+      );
       const staffList = staff ?? [];
       if (!staffList.length) throw new Error("No staff available");
       await Promise.all(
@@ -104,7 +114,7 @@ export default function TaskAssignment({ projectId }: Props) {
           api.post("/tasks/assign", {
             record_id: rec.id,
             batch_id: selectedBatch,
-            task_type: "indexing",
+            task_type: taskTypeForStatus(rec.status),
             agent_id: staffList[i % staffList.length].id,
           })
         )
@@ -175,6 +185,7 @@ export default function TaskAssignment({ projectId }: Props) {
               assignMutation.mutate({
                 recordId: rec.id,
                 agentId: assignments[rec.id],
+                status: rec.status,
               })
             }
           >
@@ -194,7 +205,10 @@ export default function TaskAssignment({ projectId }: Props) {
     );
   });
 
-  const pendingCount = records?.filter((r) => r.status === "pending").length ?? 0;
+  const pendingCount =
+    records?.filter((r) =>
+      ["pending", "indexed", "qa_failed", "qa_passed"].includes(r.status)
+    ).length ?? 0;
 
   return (
     <div>
