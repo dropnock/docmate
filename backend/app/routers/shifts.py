@@ -12,6 +12,7 @@ from app.schemas.shift import (
     AssignShiftToProject,
     AssignStaffToProject,
     AvailableStaffOut,
+    ProjectAssignmentInfo,
     ShiftCreate,
     ShiftOut,
     ShiftUpdate,
@@ -45,9 +46,31 @@ async def list_shifts(
     current_user=Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Shift).where(Shift.tenant_id == current_user._tenant_id)
+        select(Shift)
+        .where(Shift.tenant_id == current_user._tenant_id)
+        .options(selectinload(Shift.project_shifts).selectinload(ProjectShift.project))
     )
-    return list(result.scalars().all())
+    shifts = result.scalars().all()
+    out = []
+    for s in shifts:
+        project_assignments = [
+            ProjectAssignmentInfo(
+                project_shift_id=ps.id,
+                project_id=ps.project_id,
+                project_name=ps.project.name,
+            )
+            for ps in s.project_shifts
+        ]
+        out.append(ShiftOut(
+            id=s.id,
+            tenant_id=s.tenant_id,
+            name=s.name,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            timezone=s.timezone,
+            project_assignments=project_assignments,
+        ))
+    return out
 
 
 @router.patch("/shifts/{shift_id}", response_model=ShiftOut)
@@ -127,6 +150,26 @@ async def list_project_shifts(
         .order_by(Shift.name)
     )
     return list(result.scalars().all())
+
+
+@router.delete("/projects/{project_id}/shifts/{shift_id}", status_code=204)
+async def deassign_shift_from_project(
+    project_id: int,
+    shift_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin")),
+):
+    result = await db.execute(
+        select(ProjectShift).where(
+            ProjectShift.project_id == project_id,
+            ProjectShift.shift_id == shift_id,
+        )
+    )
+    ps = result.scalar_one_or_none()
+    if not ps:
+        raise HTTPException(status_code=404, detail="Shift is not assigned to this project")
+    await db.delete(ps)
+    await db.commit()
 
 
 @router.post("/projects/{project_id}/staff", response_model=StaffAssignmentOut, status_code=201)

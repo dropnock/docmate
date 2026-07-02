@@ -205,7 +205,7 @@ function AppInner() {
               )}
               {page === "projects" && isAdmin && (
                 <ProjectsManager
-                  onOpen={(id) => { setProjectId(id); setPage("batches"); }}
+                  onOpen={(id) => { setProjectId(id); setPage("cabinets"); }}
                 />
               )}
               {page === "organisations" && isAdmin && <OrganisationsManager />}

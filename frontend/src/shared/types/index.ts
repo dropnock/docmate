@@ -163,6 +163,12 @@ export interface RecordVersion {
   reason: string;
 }
 
+export interface ShiftProjectAssignment {
+  project_shift_id: number;
+  project_id: number;
+  project_name: string;
+}
+
 export interface Shift {
   id: number;
   tenant_id: number;
@@ -170,6 +176,7 @@ export interface Shift {
   start_time: string;
   end_time: string;
   timezone: string;
+  project_assignments: ShiftProjectAssignment[];
 }
 
 export interface UserRecord {

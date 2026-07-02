@@ -2,12 +2,12 @@ import {
   Button, Card, Col, Empty, Form, Input, Modal, Row, Spin,
   Table, Tabs, Tag, Typography, Upload, message,
 } from "antd";
-import { InboxOutlined } from "@ant-design/icons";
+import { InboxOutlined, PlusOutlined, EditOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Cabinet, CabinetRecord } from "@shared/types";
+import type { Cabinet, CabinetRecord, DocumentType } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -31,6 +31,12 @@ export default function CabinetManager({ projectId }: Props) {
   const [jsonText, setJsonText] = useState("");
   const [idField, setIdField] = useState("id");
   const [recordSearch, setRecordSearch] = useState("");
+
+  // Document type state
+  const [dtModalOpen, setDtModalOpen] = useState(false);
+  const [editingDt, setEditingDt] = useState<DocumentType | null>(null);
+  const [dtName, setDtName] = useState("");
+  const [dtSchemaText, setDtSchemaText] = useState("");
 
   const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
     queryKey: ["cabinets", projectId],
@@ -85,6 +91,55 @@ export default function CabinetManager({ projectId }: Props) {
     },
     onError: () => message.error("Image upload failed"),
   });
+
+  const { data: documentTypes = [], isLoading: dtLoading } = useQuery<DocumentType[]>({
+    queryKey: ["document-types", projectId],
+    queryFn: () => api.get(`/projects/${projectId}/document-types`).then((r) => r.data),
+  });
+
+  const saveDtMutation = useMutation({
+    mutationFn: async () => {
+      let schema: unknown;
+      try { schema = JSON.parse(dtSchemaText); } catch {
+        throw new Error("Invalid JSON schema");
+      }
+      if (editingDt) {
+        await api.patch(`/document-types/${editingDt.id}`, { name: dtName, json_schema: schema });
+      } else {
+        await api.post("/document-types", { name: dtName, json_schema: schema }, { params: { project_id: projectId } });
+      }
+    },
+    onSuccess: () => {
+      message.success(editingDt ? "Document type updated" : "Document type created");
+      qc.invalidateQueries({ queryKey: ["document-types", projectId] });
+      closeDtModal();
+    },
+    onError: (e: unknown) => {
+      const err = e as { message?: string; response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail ?? err.message ?? "Save failed");
+    },
+  });
+
+  const openCreateDt = () => {
+    setEditingDt(null);
+    setDtName("");
+    setDtSchemaText("");
+    setDtModalOpen(true);
+  };
+
+  const openEditDt = (dt: DocumentType) => {
+    setEditingDt(dt);
+    setDtName(dt.name);
+    setDtSchemaText(JSON.stringify(dt.json_schema, null, 2));
+    setDtModalOpen(true);
+  };
+
+  const closeDtModal = () => {
+    setDtModalOpen(false);
+    setEditingDt(null);
+    setDtName("");
+    setDtSchemaText("");
+  };
 
   const handleIngestJson = () => {
     let parsed: unknown[];
@@ -225,10 +280,93 @@ export default function CabinetManager({ projectId }: Props) {
                   </Upload.Dragger>
                 ),
               },
+              {
+                key: "document-types",
+                label: `Document Types (${documentTypes.length})`,
+                children: (
+                  <>
+                    <Row justify="end" style={{ marginBottom: 12 }}>
+                      <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDt}>
+                        New Document Type
+                      </Button>
+                    </Row>
+                    {dtLoading ? (
+                      <Spin />
+                    ) : documentTypes.length === 0 ? (
+                      <Empty description="No document types yet. Create one to define the indexing form for agents." />
+                    ) : (
+                      <Table
+                        rowKey="id"
+                        size="small"
+                        dataSource={documentTypes}
+                        pagination={false}
+                        columns={[
+                          { title: "ID", dataIndex: "id", width: 60 },
+                          { title: "Name", dataIndex: "name" },
+                          {
+                            title: "Fields",
+                            render: (_: unknown, dt: DocumentType) => {
+                              const props = (dt.json_schema as { properties?: Record<string, unknown> })?.properties;
+                              return props ? Object.keys(props).length : "—";
+                            },
+                          },
+                          {
+                            title: "Actions",
+                            key: "actions",
+                            render: (_: unknown, dt: DocumentType) => (
+                              <Button
+                                size="small"
+                                icon={<EditOutlined />}
+                                onClick={() => openEditDt(dt)}
+                              >
+                                Edit
+                              </Button>
+                            ),
+                          },
+                        ]}
+                      />
+                    )}
+                  </>
+                ),
+              },
             ]}
           />
         </Card>
       )}
+
+      {/* Document Type Modal */}
+      <Modal
+        title={editingDt ? `Edit: ${editingDt.name}` : "New Document Type"}
+        open={dtModalOpen}
+        onCancel={closeDtModal}
+        onOk={() => saveDtMutation.mutate()}
+        confirmLoading={saveDtMutation.isPending}
+        okText="Save"
+        width={680}
+      >
+        <Form layout="vertical">
+          <Form.Item label="Name" required>
+            <Input
+              value={dtName}
+              onChange={(e) => setDtName(e.target.value)}
+              placeholder='e.g. "Birth Certificate"'
+            />
+          </Form.Item>
+          <Form.Item
+            label="JSON Schema"
+            extra="Standard JSON Schema object. Use properties to define the fields agents will fill in."
+            required
+          >
+            <Input.TextArea
+              rows={16}
+              value={dtSchemaText}
+              onChange={(e) => setDtSchemaText(e.target.value)}
+              placeholder={'{\n  "type": "object",\n  "properties": {\n    "surname": { "type": "string", "title": "Surname" }\n  }\n}'}
+              style={{ fontFamily: "monospace", fontSize: 13 }}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* Ingest JSON Modal */}
       <Modal

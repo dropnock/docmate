@@ -9,6 +9,12 @@ class ShiftCreate(BaseModel):
     timezone: str = "UTC"
 
 
+class ProjectAssignmentInfo(BaseModel):
+    project_shift_id: int
+    project_id: int
+    project_name: str
+
+
 class ShiftOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int
@@ -17,6 +23,7 @@ class ShiftOut(BaseModel):
     start_time: time
     end_time: time
     timezone: str
+    project_assignments: list[ProjectAssignmentInfo] = []
 
 
 class ShiftUpdate(BaseModel):
