@@ -155,7 +155,53 @@ async def complete_task(
         old_value={"status": "in_progress"},
         new_value={"status": "completed"},
     )
+
+    # Auto-advance batch when all records reach terminal indexing/QA state
+    await db.flush()
+    if task.task_type == TaskType.indexing:
+        await _maybe_advance_to_qa(db, batch_id=task.batch_id, tenant_id=tenant_id)
+    elif task.task_type == TaskType.qa:
+        await _maybe_complete_batch(db, batch_id=task.batch_id, tenant_id=tenant_id)
+    elif task.task_type == TaskType.qc:
+        await _maybe_finalise_lot(db, record=record, tenant_id=tenant_id)
+
     return task
+
+
+async def _maybe_advance_to_qa(db: AsyncSession, *, batch_id: int, tenant_id: int) -> None:
+    from sqlalchemy import func
+    from app.models.record import RecordStatus
+    non_indexed = (await db.execute(
+        select(Record).where(
+            Record.batch_id == batch_id,
+            Record.status != RecordStatus.indexed,
+        )
+    )).scalars().all()
+    if not non_indexed:
+        from app.services.batch_service import auto_advance_to_qa
+        await auto_advance_to_qa(db, batch_id=batch_id, tenant_id=tenant_id)
+
+
+async def _maybe_complete_batch(db: AsyncSession, *, batch_id: int, tenant_id: int) -> None:
+    non_passed = (await db.execute(
+        select(Record).where(
+            Record.batch_id == batch_id,
+            Record.status.notin_([RecordStatus.qa_passed]),
+        )
+    )).scalars().all()
+    if not non_passed:
+        from app.services.batch_service import mark_complete
+        await mark_complete(db, batch_id=batch_id, tenant_id=tenant_id)
+
+
+async def _maybe_finalise_lot(db: AsyncSession, *, record: Record, tenant_id: int) -> None:
+    from app.models.lot import LotRecord
+    lr = (await db.execute(
+        select(LotRecord).where(LotRecord.record_id == record.id, LotRecord.is_sampled == True)  # noqa: E712
+    )).scalar_one_or_none()
+    if lr:
+        from app.services.lot_service import calculate_accuracy
+        await calculate_accuracy(db, lot_id=lr.lot_id, tenant_id=tenant_id)
 
 
 async def reassign_task(
@@ -233,3 +279,72 @@ async def get_stale_tasks(
         )
     )
     return list(result.scalars().all())
+
+
+async def fail_task(
+    db: AsyncSession,
+    *,
+    task_id: int,
+    user_id: int,
+    reason: str,
+    tenant_id: int,
+) -> Task:
+    """Fail a QA or QC task. QA fail re-queues the record for rework; QC fail logs and checks lot."""
+    from app.models.record_version import VersionReason
+    from app.services.version_service import create_version
+
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.assigned_to != user_id:
+        raise HTTPException(status_code=403, detail="Not your task")
+    if task.status != TaskStatus.in_progress:
+        raise HTTPException(status_code=409, detail="Task is not in progress")
+
+    record = await db.get(Record, task.record_id)
+    await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
+
+    now = datetime.now(timezone.utc)
+    task.status = TaskStatus.completed
+    task.completed_at = now
+    if task.started_at:
+        task.processing_time_seconds = int((now - task.started_at).total_seconds())
+
+    if task.task_type == TaskType.qa:
+        record.status = RecordStatus.qa_failed
+        # Snapshot current data as a version so rework history is preserved
+        await create_version(
+            db, record=record, reason=VersionReason.rework_after_qa,
+            user_id=user_id, tenant_id=tenant_id,
+        )
+        # Create a new indexing task to send back for rework
+        stale_hours = await _get_stale_hours(db, task.batch_id)
+        db.add(Task(
+            record_id=record.id,
+            batch_id=task.batch_id,
+            task_type=TaskType.indexing,
+            assigned_to=None,
+            assigned_by=user_id,
+            status=TaskStatus.pending,
+            due_at=datetime.now(timezone.utc) + timedelta(hours=stale_hours),
+        ))
+        await audit_service.write_event(
+            db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,
+            action=AuditAction.qa_failed, performed_by=user_id, metadata={"reason": reason},
+        )
+
+    elif task.task_type == TaskType.qc:
+        record.status = RecordStatus.qc_failed
+        await audit_service.write_event(
+            db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,
+            action=AuditAction.qc_rejected, performed_by=user_id, metadata={"reason": reason},
+        )
+        await db.flush()
+        await _maybe_finalise_lot(db, record=record, tenant_id=tenant_id)
+
+    await audit_service.write_event(
+        db, tenant_id=tenant_id, entity_type=AuditEntityType.task, entity_id=task.id,
+        action=AuditAction.status_changed, performed_by=user_id,
+        old_value={"status": "in_progress"}, new_value={"status": "failed", "reason": reason},
+    )
+    return task

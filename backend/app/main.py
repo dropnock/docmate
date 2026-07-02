@@ -13,7 +13,8 @@ from app.routers import (
     aql,
     auth,
     batches,
-    batches_workflow,
+    cabinets,
+    lots,
     records,
     shifts,
     tasks,
@@ -51,7 +52,8 @@ app.include_router(auth.router)
 app.include_router(tenants.router)
 app.include_router(shifts.router)
 app.include_router(batches.router)
-app.include_router(batches_workflow.router)
+app.include_router(cabinets.router)
+app.include_router(lots.router)
 app.include_router(records.router)
 app.include_router(tasks.router)
 app.include_router(aql.router)

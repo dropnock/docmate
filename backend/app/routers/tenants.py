@@ -137,6 +137,17 @@ async def create_project(
     aql_config = AQLConfig(project_id=project.id)
     db.add(aql_config)
 
+    # Auto-create the project cabinet, tied to the digitizing organisation
+    from app.models.cabinet import Cabinet
+    cabinet = Cabinet(
+        tenant_id=tenant_id,
+        project_id=project.id,
+        organization_id=de_org.id,
+        name=project.name,
+        created_by=current_user.id,
+    )
+    db.add(cabinet)
+
     # Provision S3 bucket asynchronously (non-blocking; status updated by s3_service)
     await s3_service.provision_bucket(db, project=project)
 

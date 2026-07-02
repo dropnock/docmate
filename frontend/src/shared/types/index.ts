@@ -19,12 +19,66 @@ export interface Project {
   customer_org_id: number;
 }
 
+export interface Organization {
+  id: number;
+  name: string;
+  type: string;
+}
+
+export interface Cabinet {
+  id: number;
+  project_id: number;
+  organization_id: number | null;
+  name: string;
+  description: string | null;
+  created_by: number | null;
+  created_at: string | null;
+}
+
+export interface CabinetRecord {
+  id: number;
+  source_identifier: string | null;
+  original_filename: string | null;
+  file_reference: string | null;
+  status: string;
+  current_version: number;
+  has_image: boolean;
+  has_data: boolean;
+  cabinet_id: number | null;
+}
+
+export interface Lot {
+  id: number;
+  project_id: number;
+  name: string;
+  description: string | null;
+  status: string;
+  sample_rate: number | null;
+  sample_size: number | null;
+  accuracy_rate: number | null;
+  released_at: string | null;
+  released_by: number | null;
+  created_by: number | null;
+}
+
+export interface LotDetail extends Lot {
+  records: {
+    record_id: number;
+    source_identifier: string | null;
+    original_filename: string | null;
+    status: string;
+    is_sampled: boolean;
+  }[];
+}
+
 export interface Batch {
   id: number;
   project_id: number;
+  cabinet_id: number | null;
   document_type_id: number;
   name: string;
-  status: string;
+  batch_type: "indexing" | "qc";
+  status: "draft" | "submitted" | "indexing" | "qa_review" | "customer_qc" | "passed" | "rejected" | "complete";
   aql_level_snapshot: number | null;
   aql_sample_size: number | null;
 }
@@ -32,7 +86,10 @@ export interface Batch {
 export interface DocRecord {
   id: number;
   batch_id: number;
+  cabinet_id: number | null;
   file_reference: string | null;
+  original_filename: string | null;
+  source_identifier: string | null;
   indexed_data: { [key: string]: unknown } | null;
   current_version: number;
   locked_by: number | null;
@@ -106,6 +163,12 @@ export interface RecordVersion {
   reason: string;
 }
 
+export interface ShiftProjectAssignment {
+  project_shift_id: number;
+  project_id: number;
+  project_name: string;
+}
+
 export interface Shift {
   id: number;
   tenant_id: number;
@@ -113,6 +176,7 @@ export interface Shift {
   start_time: string;
   end_time: string;
   timezone: string;
+  project_assignments: ShiftProjectAssignment[];
 }
 
 export interface UserRecord {

@@ -14,20 +14,12 @@ class DocumentTypeOut(BaseModel):
     json_schema: dict
 
 
-class CreateRecordsRequest(BaseModel):
-    count: int = 1
-
-
-class BatchCreate(BaseModel):
-    project_id: int
-    document_type_id: int
-    name: str
-
-
 class BatchOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int
     project_id: int
+    cabinet_id: int | None = None
+    batch_type: str | None = None
     document_type_id: int
     name: str
     status: str
@@ -38,21 +30,12 @@ class BatchOut(BaseModel):
 class RecordOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int
-    batch_id: int
+    batch_id: int | None = None
     file_reference: str | None
     indexed_data: dict | None
     current_version: int
     locked_by: int | None
     status: str
-
-
-class UploadUrlResponse(BaseModel):
-    upload_url: str
-    s3_key: str
-
-
-class ConfirmUploadRequest(BaseModel):
-    s3_key: str
 
 
 class IndexDataRequest(BaseModel):

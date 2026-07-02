@@ -2,17 +2,17 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Table, Button, Modal, Form, Input, Select,
-  Space, message, Popconfirm,
+  Space, Tag, message, Popconfirm,
 } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PlusOutlined, EditOutlined, DeleteOutlined, DisconnectOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Shift, Project } from "@shared/types";
+import type { Shift, ShiftProjectAssignment, Project } from "@shared/types";
 
 const TIMEZONES = [
-  "UTC", "America/New_York", "America/Chicago", "America/Los_Angeles",
-  "America/Toronto", "Europe/London", "Europe/Paris", "Europe/Berlin",
-  "Asia/Dubai", "Asia/Kolkata", "Asia/Tokyo", "Australia/Sydney",
+  { value: "America/Jamaica",       label: "Jamaica (UTC−5, no DST)" },
+  { value: "America/Barbados",      label: "Barbados (UTC−4, no DST)" },
+  { value: "America/Port_of_Spain", label: "Trinidad & Tobago (UTC−4, no DST)" },
 ];
 
 const TIMES = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
@@ -95,6 +95,19 @@ export default function ShiftsManager() {
     },
   });
 
+  const deassign = useMutation({
+    mutationFn: ({ projectId, shiftId }: { projectId: number; shiftId: number }) =>
+      api.delete(`/projects/${projectId}/shifts/${shiftId}`),
+    onSuccess: () => {
+      message.success("Shift removed from project");
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { detail?: string } } };
+      message.error(err.response?.data?.detail ?? "Failed to deassign shift");
+    },
+  });
+
   const openEdit = (shift: Shift) => {
     setEditTarget(shift);
     editForm.setFieldsValue({
@@ -120,6 +133,35 @@ export default function ShiftsManager() {
       render: (_: unknown, s: Shift) => `${s.start_time.slice(0, 5)} – ${s.end_time.slice(0, 5)}`,
     },
     { title: "Timezone", dataIndex: "timezone", key: "timezone" },
+    {
+      title: "Project",
+      key: "project",
+      render: (_: unknown, s: Shift) =>
+        s.project_assignments.length === 0 ? (
+          <Tag color="default">Unassigned</Tag>
+        ) : (
+          <Space wrap>
+            {s.project_assignments.map((pa: ShiftProjectAssignment) => (
+              <Space key={pa.project_shift_id} size={4}>
+                <Tag color="blue">{pa.project_name}</Tag>
+                <Popconfirm
+                  title={`Remove from "${pa.project_name}"?`}
+                  onConfirm={() => deassign.mutate({ projectId: pa.project_id, shiftId: s.id })}
+                  okText="Remove"
+                  okType="danger"
+                >
+                  <Button
+                    size="small"
+                    danger
+                    icon={<DisconnectOutlined />}
+                    title="Deassign from project"
+                  />
+                </Popconfirm>
+              </Space>
+            ))}
+          </Space>
+        ),
+    },
     {
       title: "",
       key: "actions",
@@ -165,8 +207,8 @@ export default function ShiftsManager() {
       <Form.Item name="end_time" label="End Time" rules={[{ required: true }]}>
         <Select options={TIMES.map((t) => ({ value: t, label: t }))} showSearch />
       </Form.Item>
-      <Form.Item name="timezone" label="Timezone" rules={[{ required: true }]} initialValue="UTC">
-        <Select options={TIMEZONES.map((tz) => ({ value: tz, label: tz }))} showSearch />
+      <Form.Item name="timezone" label="Timezone" rules={[{ required: true }]} initialValue="America/Jamaica">
+        <Select options={TIMEZONES} />
       </Form.Item>
     </>
   );

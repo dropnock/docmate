@@ -14,6 +14,12 @@ class BatchStatus(str, enum.Enum):
     customer_qc = "customer_qc"
     passed = "passed"
     rejected = "rejected"
+    complete = "complete"
+
+
+class BatchType(str, enum.Enum):
+    indexing = "indexing"
+    qc = "qc"
 
 
 class Batch(Base, TimestampMixin):
@@ -21,8 +27,12 @@ class Batch(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
+    cabinet_id: Mapped[int | None] = mapped_column(ForeignKey("cabinets.id"), nullable=True, index=True)
     document_type_id: Mapped[int] = mapped_column(ForeignKey("document_types.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
+    batch_type: Mapped[BatchType] = mapped_column(
+        Enum(BatchType), default=BatchType.indexing, nullable=False
+    )
     status: Mapped[BatchStatus] = mapped_column(
         Enum(BatchStatus), default=BatchStatus.draft, nullable=False
     )
@@ -30,6 +40,7 @@ class Batch(Base, TimestampMixin):
     aql_sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="batches")
+    cabinet: Mapped["Cabinet | None"] = relationship(backref="batches")
     document_type: Mapped["DocumentType"] = relationship(back_populates="batches")
     records: Mapped[list["Record"]] = relationship(back_populates="batch")
     tasks: Mapped[list["Task"]] = relationship(back_populates="batch")

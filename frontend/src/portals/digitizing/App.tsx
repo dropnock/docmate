@@ -21,14 +21,15 @@ import StaffProductivityDashboard from "./pages/StaffProductivityDashboard";
 import ProjectKPIDashboard from "./pages/ProjectKPIDashboard";
 import StaleTaskManager from "./pages/StaleTaskManager";
 import RecordHistory from "./pages/RecordHistory";
-import TaskAssignment from "./pages/TaskAssignment";
 import ProjectsManager from "./pages/ProjectsManager";
 import UsersManager from "./pages/UsersManager";
 import StaffAssignment from "./pages/StaffAssignment";
 import OrganisationsManager from "./pages/OrganisationsManager";
-import BatchManager from "./pages/BatchManager";
 import ShiftsManager from "./pages/ShiftsManager";
 import MyTasks from "./pages/MyTasks";
+import CabinetManager from "./pages/CabinetManager";
+import CabinetAssignment from "./pages/CabinetAssignment";
+import LotManager from "./pages/LotManager";
 import api from "@shared/api/client";
 import type { UserRecord, Project } from "@shared/types";
 
@@ -36,9 +37,9 @@ const { Header, Sider, Content } = Layout;
 const qc = new QueryClient();
 
 const SUPERVISOR_PAGES = [
-  { key: "batches", label: "Batch Manager", icon: <InboxOutlined /> },
+  { key: "cabinet-assign", label: "Cabinet Assignment", icon: <InboxOutlined /> },
+  { key: "lots", label: "Lots", icon: <UnorderedListOutlined /> },
   { key: "staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
-  { key: "assign", label: "Assign Tasks", icon: <UnorderedListOutlined /> },
   { key: "stale", label: "Stale Tasks", icon: <WarningOutlined /> },
   { key: "productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
   { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
@@ -51,12 +52,16 @@ const AGENT_PAGES = [
 
 const ADMIN_PAGES = [
   { key: "projects", label: "Projects", icon: <FolderOpenOutlined /> },
+  { key: "cabinets", label: "Cabinets", icon: <FolderOpenOutlined /> },
   { key: "organisations", label: "Organisations", icon: <BankOutlined /> },
   { key: "shifts", label: "Shifts", icon: <ClockCircleOutlined /> },
   { key: "users", label: "Users", icon: <UserOutlined /> },
 ];
 
-const PROJECT_SCOPED_PAGES = new Set(["batches", "staff-assignment", "assign", "stale", "productivity", "kpi", "history"]);
+const PROJECT_SCOPED_PAGES = new Set([
+  "staff-assignment", "stale", "productivity", "kpi", "history",
+  "cabinet-assign", "lots", "cabinets",
+]);
 
 function ProjectSelector({
   projectId,
@@ -171,14 +176,17 @@ function AppInner() {
             </div>
           ) : (
             <>
-              {page === "batches" && projectId && (
-                <BatchManager projectId={projectId} isAdmin={isAdmin} />
+              {page === "cabinets" && projectId && isAdmin && (
+                <CabinetManager projectId={projectId} />
+              )}
+              {page === "cabinet-assign" && projectId && isSupervisor && (
+                <CabinetAssignment projectId={projectId} />
+              )}
+              {page === "lots" && projectId && isSupervisor && (
+                <LotManager projectId={projectId} />
               )}
               {page === "staff-assignment" && projectId && isSupervisor && (
                 <StaffAssignment projectId={projectId} />
-              )}
-              {page === "assign" && projectId && isSupervisor && (
-                <TaskAssignment projectId={projectId} />
               )}
               {page === "stale" && projectId && isSupervisor && (
                 <StaleTaskManager projectId={projectId} />
@@ -197,7 +205,7 @@ function AppInner() {
               )}
               {page === "projects" && isAdmin && (
                 <ProjectsManager
-                  onOpen={(id) => { setProjectId(id); setPage("batches"); }}
+                  onOpen={(id) => { setProjectId(id); setPage("cabinets"); }}
                 />
               )}
               {page === "organisations" && isAdmin && <OrganisationsManager />}
