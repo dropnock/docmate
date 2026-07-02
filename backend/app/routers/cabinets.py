@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
 from app.models.project import Project
+from app.models.record import Record
 from app.schemas.cabinet import (
     AssignQaAgentRequest,
     CabinetOut,
@@ -120,6 +122,31 @@ async def confirm_upload(
     )
     await db.commit()
     return {"id": record.id, "source_identifier": record.source_identifier}
+
+
+@router.get("/{cabinet_id}/records/{record_id}/view-url")
+async def get_image_view_url(
+    cabinet_id: int,
+    record_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    cabinet = await cabinet_service.get_cabinet(
+        db, cabinet_id=cabinet_id, tenant_id=current_user._tenant_id
+    )
+    result = await db.execute(
+        select(Record).where(Record.id == record_id, Record.cabinet_id == cabinet_id)
+    )
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    if not record.file_reference:
+        raise HTTPException(status_code=404, detail="Record has no image")
+    project = await db.get(Project, cabinet.project_id)
+    if not project or not project.s3_bucket_name:
+        raise HTTPException(status_code=400, detail="Project has no S3 bucket")
+    url = s3_service.get_presigned_view_url(project.s3_bucket_name, record.file_reference)
+    return {"url": url}
 
 
 @router.post("/{cabinet_id}/batches", status_code=201)

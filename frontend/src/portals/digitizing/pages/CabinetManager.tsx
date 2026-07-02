@@ -1,9 +1,9 @@
 import {
-  Button, Card, Col, Empty, Form, Input, Modal, Row, Spin,
+  Button, Card, Col, Empty, Form, Input, Modal, Row, Segmented, Spin,
   Table, Tabs, Tag, Typography, Upload, message,
 } from "antd";
-import { InboxOutlined, PlusOutlined, EditOutlined } from "@ant-design/icons";
-import { useState } from "react";
+import { InboxOutlined, PlusOutlined, EditOutlined, EyeOutlined, PictureOutlined } from "@ant-design/icons";
+import { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
@@ -31,6 +31,11 @@ export default function CabinetManager({ projectId }: Props) {
   const [jsonText, setJsonText] = useState("");
   const [idField, setIdField] = useState("id");
   const [recordSearch, setRecordSearch] = useState("");
+
+  // Images tab state
+  const [imageSearch, setImageSearch] = useState("");
+  const [imageFilter, setImageFilter] = useState("all");
+  const [loadingViewId, setLoadingViewId] = useState<number | null>(null);
 
   // Document type state
   const [dtModalOpen, setDtModalOpen] = useState(false);
@@ -139,6 +144,36 @@ export default function CabinetManager({ projectId }: Props) {
     setEditingDt(null);
     setDtName("");
     setDtSchemaText("");
+  };
+
+  const imageRecords = useMemo(() => records.filter((r) => r.has_image), [records]);
+
+  const filteredImages = useMemo(() => {
+    const q = imageSearch.toLowerCase();
+    return imageRecords.filter((r) => {
+      const matchesSearch =
+        !q ||
+        (r.original_filename ?? "").toLowerCase().includes(q) ||
+        (r.source_identifier ?? "").toLowerCase().includes(q);
+      const matchesFilter =
+        imageFilter === "all" ||
+        (imageFilter === "linked" && r.has_data) ||
+        (imageFilter === "unlinked" && !r.has_data);
+      return matchesSearch && matchesFilter;
+    });
+  }, [imageRecords, imageSearch, imageFilter]);
+
+  const handleViewImage = async (recordId: number) => {
+    if (!cabinet) return;
+    setLoadingViewId(recordId);
+    try {
+      const { data } = await api.get(`/cabinets/${cabinet.id}/records/${recordId}/view-url`);
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch {
+      message.error("Could not generate view URL");
+    } finally {
+      setLoadingViewId(null);
+    }
   };
 
   const handleIngestJson = () => {
@@ -250,6 +285,97 @@ export default function CabinetManager({ projectId }: Props) {
               },
               {
                 key: "images",
+                label: (
+                  <span>
+                    <PictureOutlined style={{ marginRight: 6 }} />
+                    Images ({imageRecords.length})
+                  </span>
+                ),
+                children: (
+                  <>
+                    <Row gutter={8} style={{ marginBottom: 12 }} align="middle">
+                      <Col>
+                        <Input.Search
+                          placeholder="Search by filename or identifier…"
+                          allowClear
+                          value={imageSearch}
+                          onChange={(e) => setImageSearch(e.target.value)}
+                          style={{ width: 300 }}
+                        />
+                      </Col>
+                      <Col>
+                        <Segmented
+                          options={[
+                            { label: "All", value: "all" },
+                            { label: "Linked to record", value: "linked" },
+                            { label: "Unlinked", value: "unlinked" },
+                          ]}
+                          value={imageFilter}
+                          onChange={(v) => setImageFilter(v as string)}
+                        />
+                      </Col>
+                    </Row>
+                    {imageRecords.length === 0 ? (
+                      <Empty description="No images in this cabinet yet. Upload images in the Upload Images tab." />
+                    ) : (
+                      <Table
+                        rowKey="id"
+                        size="small"
+                        dataSource={filteredImages}
+                        pagination={{ pageSize: 50, showSizeChanger: false }}
+                        locale={{ emptyText: "No images match your filters." }}
+                        columns={[
+                          {
+                            title: "Filename",
+                            dataIndex: "original_filename",
+                            render: (v: string | null) => (
+                              <Typography.Text ellipsis style={{ maxWidth: 260 }}>
+                                {v ?? <Tag>—</Tag>}
+                              </Typography.Text>
+                            ),
+                          },
+                          {
+                            title: "Linked Record",
+                            dataIndex: "source_identifier",
+                            render: (v: string | null, r: CabinetRecord) =>
+                              r.has_data ? (
+                                <Tag color="green">{v ?? "—"}</Tag>
+                              ) : v ? (
+                                <Tag color="orange">{v} (no data)</Tag>
+                              ) : (
+                                <Tag color="default">—</Tag>
+                              ),
+                          },
+                          {
+                            title: "Status",
+                            dataIndex: "status",
+                            render: (s: string) => (
+                              <Tag color={STATUS_COLOR[s] ?? "default"}>{s.replace(/_/g, " ")}</Tag>
+                            ),
+                          },
+                          {
+                            title: "",
+                            key: "view",
+                            width: 80,
+                            render: (_: unknown, r: CabinetRecord) => (
+                              <Button
+                                size="small"
+                                icon={<EyeOutlined />}
+                                loading={loadingViewId === r.id}
+                                onClick={() => handleViewImage(r.id)}
+                              >
+                                View
+                              </Button>
+                            ),
+                          },
+                        ]}
+                      />
+                    )}
+                  </>
+                ),
+              },
+              {
+                key: "upload-images",
                 label: "Upload Images",
                 children: (
                   <Upload.Dragger
