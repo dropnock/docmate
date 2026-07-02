@@ -245,7 +245,7 @@ async def calculate_accuracy(
         entity_type=AuditEntityType.record,
         entity_id=lot.id,
         action=AuditAction.status_changed,
-        performed_by=0,
+        performed_by=None,
         new_value={"status": lot.status, "accuracy_rate": accuracy, "passed": passed, "total": total},
     )
     return lot

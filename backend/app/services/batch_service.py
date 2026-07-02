@@ -190,7 +190,7 @@ async def auto_advance_to_qa(
     batch.status = BatchStatus.qa_review
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.batch, entity_id=batch_id,
-        action=AuditAction.status_changed, performed_by=0,
+        action=AuditAction.status_changed, performed_by=None,
         old_value={"status": "indexing"}, new_value={"status": "qa_review"},
     )
 
@@ -266,7 +266,7 @@ async def mark_complete(
     batch.status = BatchStatus.complete
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.batch, entity_id=batch_id,
-        action=AuditAction.status_changed, performed_by=0,
+        action=AuditAction.status_changed, performed_by=None,
         old_value={"status": "qa_review"}, new_value={"status": "complete"},
     )
     return batch
