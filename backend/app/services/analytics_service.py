@@ -121,19 +121,30 @@ async def staff_productivity(
 
 
 async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
+    from app.models.cabinet import Cabinet
+
     project = await db.get(Project, project_id)
 
+    # Count via cabinet so unassigned (batch_id=NULL) records are included
     total_q = await db.execute(
-        select(func.count(Record.id)).join(Batch, Record.batch_id == Batch.id).where(
-            Batch.project_id == project_id
-        )
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(Cabinet.project_id == project_id)
     )
     total = total_q.scalar() or 0
 
+    # "Complete" from the digitizing perspective = QA passed or beyond
+    _COMPLETE_STATUSES = (
+        RecordStatus.qa_passed,
+        RecordStatus.qc_pending,
+        RecordStatus.qc_passed,
+    )
     complete_q = await db.execute(
-        select(func.count(Record.id)).join(Batch, Record.batch_id == Batch.id).where(
-            Batch.project_id == project_id,
-            Record.status == RecordStatus.qc_passed,
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(
+            Cabinet.project_id == project_id,
+            Record.status.in_(_COMPLETE_STATUSES),
         )
     )
     complete = complete_q.scalar() or 0
@@ -141,12 +152,12 @@ async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
     remaining = total - complete
     completion_pct = round(complete / total * 100, 1) if total else 0.0
 
-    # Throughput: records completed in last 7 days
+    # Throughput: QA-completed records in last 7 days (primary digitizing output metric)
     week_ago = datetime.now(timezone.utc) - timedelta(days=7)
     throughput_q = await db.execute(
         select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
             Batch.project_id == project_id,
-            Task.task_type == TaskType.qc,
+            Task.task_type == TaskType.qa,
             Task.status == TaskStatus.completed,
             Task.completed_at >= week_ago,
         )
@@ -185,22 +196,24 @@ async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
 
 async def burnup_chart_data(db: AsyncSession, *, project_id: int) -> list[dict]:
     """Daily cumulative completed records for the last 30 days + projection."""
+    from app.models.cabinet import Cabinet
+
     project = await db.get(Project, project_id)
     today = date.today()
     start = today - timedelta(days=29)
 
     total_q = await db.execute(
-        select(func.count(Record.id)).join(Batch, Record.batch_id == Batch.id).where(
-            Batch.project_id == project_id
-        )
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(Cabinet.project_id == project_id)
     )
     total = total_q.scalar() or 0
 
-    # Fetch all completion timestamps
+    # Fetch QA completion timestamps (primary digitizing output)
     completions_q = await db.execute(
         select(Task.completed_at).join(Batch, Task.batch_id == Batch.id).where(
             Batch.project_id == project_id,
-            Task.task_type == TaskType.qc,
+            Task.task_type == TaskType.qa,
             Task.status == TaskStatus.completed,
             Task.completed_at.is_not(None),
         )
