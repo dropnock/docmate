@@ -1,8 +1,8 @@
 import {
-  Alert, Button, Card, Col, Drawer, Empty, InputNumber, Row, Select,
+  Alert, Button, Card, Checkbox, Col, Drawer, Empty, InputNumber, Row, Select,
   Slider, Space, Spin, Table, Tag, Typography, message,
 } from "antd";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
@@ -25,7 +25,8 @@ export default function CustomerLotManager({ projectId }: Props) {
   const qc = useQueryClient();
   const [detailLotId, setDetailLotId] = useState<number | undefined>();
   const [sampleRate, setSampleRate] = useState<number>(10);
-  const [agentAssign, setAgentAssign] = useState<Record<number, number>>({});
+  const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
+  const [batchSize, setBatchSize] = useState<number>(25);
   const [selectedDocType, setSelectedDocType] = useState<number | undefined>();
 
   const { data: lots = [], isLoading: lotLoading } = useQuery<Lot[]>({
@@ -65,32 +66,36 @@ export default function CustomerLotManager({ projectId }: Props) {
     },
   });
 
+  // Split sampled records into chunks of batchSize, assign round-robin to selected agents
+  const batchPreview = useMemo(() => {
+    if (!lotDetail || !selectedAgents.length || batchSize < 1) return [];
+    const sampled = lotDetail.records.filter((r) => r.is_sampled).map((r) => r.record_id);
+    const chunks: { agentId: number; recordIds: number[] }[] = [];
+    for (let i = 0; i < sampled.length; i += batchSize) {
+      const agentId = selectedAgents[chunks.length % selectedAgents.length];
+      chunks.push({ agentId, recordIds: sampled.slice(i, i + batchSize) });
+    }
+    return chunks;
+  }, [lotDetail, selectedAgents, batchSize]);
+
   const createQcBatchesMutation = useMutation({
     mutationFn: ({ lotId }: { lotId: number }) => {
-      if (!lotDetail) throw new Error("No lot detail");
       if (!selectedDocType) throw new Error("Select a document type");
-
-      // Group sampled records by their assigned QC agent
-      const sampled = lotDetail.records.filter((r) => r.is_sampled);
-      const byAgent: Record<number, number[]> = {};
-      for (const rec of sampled) {
-        const agentId = agentAssign[rec.record_id];
-        if (!agentId) throw new Error(`No agent assigned for record #${rec.record_id}`);
-        byAgent[agentId] = [...(byAgent[agentId] ?? []), rec.record_id];
-      }
-      const assignments = Object.entries(byAgent).map(([agentId, rids]) => ({
-        agent_id: Number(agentId),
-        record_ids: rids,
-      }));
+      if (!selectedAgents.length) throw new Error("Select at least one QC agent");
+      if (!batchPreview.length) throw new Error("No sampled records to assign");
       return api.post(`/lots/${lotId}/qc-batches`, {
         project_id: projectId,
         document_type_id: selectedDocType,
-        assignments,
+        assignments: batchPreview.map((b) => ({
+          agent_id: b.agentId,
+          record_ids: b.recordIds,
+        })),
       });
     },
     onSuccess: () => {
       message.success("QC batches created and assigned");
       qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });
+      setSelectedAgents([]);
     },
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { detail?: string } } };
@@ -262,61 +267,82 @@ export default function CustomerLotManager({ projectId }: Props) {
               <Card
                 title={`Assign ${sampledRecords.length} Sampled Records to QC Agents`}
                 style={{ marginBottom: 16 }}
-                extra={
-                  <Space>
+              >
+                <Row gutter={16} align="middle" style={{ marginBottom: 16 }}>
+                  <Col>
+                    <Typography.Text>Batch size</Typography.Text>
+                    <br />
+                    <InputNumber
+                      min={1}
+                      max={sampledRecords.length}
+                      value={batchSize}
+                      onChange={(v) => setBatchSize(v ?? 25)}
+                      style={{ width: 100, marginTop: 4 }}
+                    />
+                  </Col>
+                  <Col>
+                    <Typography.Text>Document type</Typography.Text>
+                    <br />
                     <Select
-                      placeholder="Document type"
-                      size="small"
-                      style={{ width: 180 }}
+                      placeholder="Select type"
+                      style={{ width: 200, marginTop: 4 }}
                       options={docTypes.map((d) => ({ label: d.name, value: d.id }))}
                       onChange={setSelectedDocType}
                       value={selectedDocType}
                     />
-                    <Button
-                      type="primary"
-                      size="small"
-                      loading={createQcBatchesMutation.isPending}
-                      disabled={!selectedDocType}
-                      onClick={() => createQcBatchesMutation.mutate({ lotId: lotDetail.id })}
-                    >
-                      Create QC Batches
-                    </Button>
-                  </Space>
-                }
-              >
-                <Table
-                  rowKey="record_id"
-                  size="small"
-                  dataSource={sampledRecords}
-                  pagination={false}
-                  columns={[
-                    { title: "Record ID", dataIndex: "record_id", width: 90 },
-                    { title: "Identifier", dataIndex: "source_identifier", render: (v) => v ?? "—" },
-                    {
-                      title: "Status",
-                      dataIndex: "status",
-                      render: (s: string) => <Tag>{s.replace(/_/g, " ")}</Tag>,
-                    },
-                    {
-                      title: "Assign Agent",
-                      key: "agent",
-                      render: (_: unknown, rec: { record_id: number }) => (
-                        <Select
-                          size="small"
-                          placeholder="QC agent"
-                          style={{ width: 160 }}
-                          options={staff
-                            .filter((s) => s.role === "customer_qc_agent")
-                            .map((s) => ({ label: s.full_name, value: s.id }))}
-                          value={agentAssign[rec.record_id]}
-                          onChange={(v) =>
-                            setAgentAssign((prev) => ({ ...prev, [rec.record_id]: v }))
-                          }
-                        />
-                      ),
-                    },
-                  ]}
-                />
+                  </Col>
+                </Row>
+
+                <Typography.Text strong>Select QC Agents</Typography.Text>
+                <Row gutter={[16, 8]} style={{ marginTop: 8, marginBottom: 16 }}>
+                  {staff.map((agent) => (
+                    <Col key={agent.id} xs={24} sm={12} md={8}>
+                      <Checkbox
+                        checked={selectedAgents.includes(agent.id)}
+                        onChange={(e) =>
+                          setSelectedAgents((prev) =>
+                            e.target.checked
+                              ? [...prev, agent.id]
+                              : prev.filter((id) => id !== agent.id)
+                          )
+                        }
+                      >
+                        {agent.full_name}
+                      </Checkbox>
+                    </Col>
+                  ))}
+                </Row>
+
+                {batchPreview.length > 0 && (
+                  <>
+                    <Typography.Text type="secondary">
+                      Preview — {batchPreview.length} batch{batchPreview.length !== 1 ? "es" : ""} across {selectedAgents.length} agent{selectedAgents.length !== 1 ? "s" : ""}:
+                    </Typography.Text>
+                    <Row gutter={[8, 8]} style={{ marginTop: 8, marginBottom: 16 }}>
+                      {selectedAgents.map((agentId) => {
+                        const agentBatches = batchPreview.filter((b) => b.agentId === agentId);
+                        const agentName = staff.find((s) => s.id === agentId)?.full_name ?? agentId;
+                        const total = agentBatches.reduce((n, b) => n + b.recordIds.length, 0);
+                        return (
+                          <Col key={agentId}>
+                            <Tag>
+                              {agentName} — {agentBatches.length} batch{agentBatches.length !== 1 ? "es" : ""}, {total} records
+                            </Tag>
+                          </Col>
+                        );
+                      })}
+                    </Row>
+                  </>
+                )}
+
+                <Button
+                  type="primary"
+                  loading={createQcBatchesMutation.isPending}
+                  disabled={!selectedDocType || !selectedAgents.length}
+                  onClick={() => createQcBatchesMutation.mutate({ lotId: lotDetail.id })}
+                >
+                  Create QC Batches
+                </Button>
               </Card>
             )}
 
