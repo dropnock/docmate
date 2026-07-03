@@ -21,13 +21,8 @@ export interface Project {
 
 export interface Organization {
   id: number;
-  tenant_id: number;
   name: string;
   type: string;
-  domain: string | null;
-  realm_slug: string | null;
-  s3_bucket_name: string | null;
-  s3_bucket_status: string | null;
 }
 
 export interface Cabinet {
@@ -195,6 +190,15 @@ export interface UserRecord {
   organization_id: number | null;
 }
 
+export interface Organization {
+  id: number;
+  tenant_id: number;
+  name: string;
+  type: string;
+  realm_slug: string | null;
+  s3_bucket_name: string | null;
+  s3_bucket_status: string | null;
+}
 
 export interface AvailableStaff {
   id: number;

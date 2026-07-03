@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user
 from app.models.organization import Organization, OrgType
+from app.models.user import User
 from app.schemas.auth import MeResponse, RealmLookupResponse
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -27,11 +28,14 @@ async def get_realm_by_domain(
         raise HTTPException(status_code=400, detail="Invalid email address")
 
     result = await db.execute(
-        select(Organization).where(
+        select(Organization)
+        .join(User, User.organization_id == Organization.id)
+        .where(
             Organization.type == OrgType.customer,
             Organization.realm_slug.isnot(None),
-            Organization.domain == domain,
-        ).limit(1)
+            User.email.ilike(f"%@{domain}"),
+        )
+        .limit(1)
     )
     org = result.scalar_one_or_none()
     if not org:

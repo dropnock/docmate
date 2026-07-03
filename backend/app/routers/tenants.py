@@ -73,7 +73,6 @@ async def create_organization(
         tenant_id=current_user._tenant_id,
         name=body.name,
         type=org_type,
-        domain=body.domain,
         realm_slug=realm_slug,
     )
     db.add(org)

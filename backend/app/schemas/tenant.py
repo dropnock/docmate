@@ -17,12 +17,10 @@ class TenantOut(BaseModel):
 class OrgCreate(BaseModel):
     name: str
     type: str  # "digitizing_entity" | "customer"
-    domain: str | None = None
 
 
 class OrgUpdate(BaseModel):
     name: str | None = None
-    domain: str | None = None
 
 
 class OrgOut(BaseModel):
@@ -31,7 +29,6 @@ class OrgOut(BaseModel):
     tenant_id: int
     name: str
     type: str
-    domain: str | None = None
     realm_slug: str | None = None
     s3_bucket_name: str | None = None
     s3_bucket_status: str | None = None
