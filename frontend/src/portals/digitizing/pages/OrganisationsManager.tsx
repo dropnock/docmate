@@ -303,6 +303,13 @@ export default function OrganisationsManager() {
           <Form.Item name="type" label="Type" rules={[{ required: true }]} initialValue="customer">
             <Select options={TYPE_OPTIONS} />
           </Form.Item>
+          <Form.Item
+            name="domain"
+            label="Email domain"
+            extra="Used to route customer portal login. Example: acme.com"
+          >
+            <Input placeholder="acme.com" />
+          </Form.Item>
         </Form>
         <div style={{ color: "#8c8c8c", fontSize: 12, marginTop: 8 }}>
           Creating a customer organisation will automatically provision a Keycloak realm and an S3 bucket.
