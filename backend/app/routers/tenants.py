@@ -7,7 +7,7 @@ from app.core.security import get_current_user, require_roles
 from app.models.organization import Organization, OrgType
 from app.models.project import Project, S3BucketStatus
 from app.models.tenant import Tenant
-from app.schemas.tenant import OrgCreate, OrgOut, ProjectCreate, ProjectOut, ProjectUpdate, TenantCreate, TenantOut
+from app.schemas.tenant import OrgCreate, OrgOut, OrgUpdate, ProjectCreate, ProjectOut, ProjectUpdate, TenantCreate, TenantOut
 
 router = APIRouter(prefix="/api", tags=["tenants"])
 
@@ -82,6 +82,21 @@ async def create_organization(
         from app.services import s3_service
         await s3_service.provision_org_bucket(db, org=org)
 
+    return org
+
+
+@router.patch("/organizations/{org_id}", response_model=OrgOut)
+async def update_organization(
+    org_id: int,
+    body: OrgUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin")),
+):
+    org = await db.get(Organization, org_id)
+    if not org or org.tenant_id != current_user._tenant_id:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    for field, value in body.model_dump(exclude_none=True).items():
+        setattr(org, field, value)
     return org
 
 
