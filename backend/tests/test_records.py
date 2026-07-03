@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Record, RecordVersion, Task, TaskStatus, TaskType
 from app.services import lock_service, task_service, version_service
 from app.models.record_version import VersionReason
-from tests.conftest import token
+from tests.conftest import auth_headers
 
 
 class TestRecordLocking:
@@ -49,13 +49,13 @@ class TestRecordLocking:
         await db.commit()
 
         # indexer2 tries to start → must get 409 via API
-        i2_token = token(seed["indexer2"])
         resp = await client.post(
             f"/api/tasks/{task2.id}/start",
-            headers={"Authorization": f"Bearer {i2_token}"},
+            headers=auth_headers(seed["indexer2"]),
         )
         assert resp.status_code == 409
-        assert "locked" in resp.json()["detail"].lower()
+        detail = resp.json()["detail"]
+        assert "locked" in detail.get("message", "").lower()
 
     async def test_release_lock_frees_record(self, db: AsyncSession, seed):
         record = seed["record"]

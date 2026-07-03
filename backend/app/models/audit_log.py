@@ -38,7 +38,7 @@ class AuditAction(str, enum.Enum):
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     entity_type: Mapped[AuditEntityType] = mapped_column(Enum(AuditEntityType), nullable=False)
     entity_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)

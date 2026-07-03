@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Task, TaskStatus, TaskType
 from app.services import task_service
-from tests.conftest import token
+from tests.conftest import auth_headers
 
 
 class TestTaskAssignment:
@@ -115,11 +115,10 @@ class TestBulkReassign:
         )
         await db.commit()
 
-        sup_token = token(seed["supervisor"])
         resp = await client.post(
             "/api/tasks/bulk-reassign",
             json={"task_ids": [t1.id, t2.id], "agent_id": seed["indexer2"].id},
-            headers={"Authorization": f"Bearer {sup_token}"},
+            headers=auth_headers(seed["supervisor"]),
         )
         assert resp.status_code == 200
         data = resp.json()

@@ -11,9 +11,9 @@ class TestComputeSampleSize:
         assert accept == 0
 
     def test_medium_batch_normal_aql(self):
-        # 100 items → code letter F → AQL 1.5 → sample 20, accept 1
+        # 100 items → code letter G (91-150) → AQL 1.5 → sample 32, accept 1
         sample, accept = compute_sample_size(100, 1.5)
-        assert sample == 20
+        assert sample == 32
         assert accept == 1
 
     def test_large_batch_normal_aql(self):
@@ -23,16 +23,16 @@ class TestComputeSampleSize:
         assert accept == 3
 
     def test_tightened_aql(self):
-        # 100 items → code letter F → AQL 1.0 → sample 20, accept 0
+        # 100 items → code letter G (91-150) → AQL 1.0 → sample 32, accept 1
         sample, accept = compute_sample_size(100, 1.0)
-        assert sample == 20
-        assert accept == 0
+        assert sample == 32
+        assert accept == 1
 
     def test_reduced_aql(self):
-        # 100 items → code letter F → AQL 2.5 → sample 20, accept 1
+        # 100 items → code letter G (91-150) → AQL 2.5 → sample 32, accept 2
         sample, accept = compute_sample_size(100, 2.5)
-        assert sample == 20
-        assert accept == 1
+        assert sample == 32
+        assert accept == 2
 
     def test_batch_at_boundary(self):
         # Exactly at boundary: 90 items → code letter F
@@ -45,12 +45,10 @@ class TestComputeSampleSize:
         assert sample == 1250
 
     def test_acceptance_threshold(self):
-        # For code H (51-150 items), AQL 1.5: accept 2, reject at 3
-        # Batch of 100 falls in this range (actually 100 → code F)
-        # Let's use 200 items → code G → AQL 1.5 → sample 32, accept 1
+        # 200 items → code H (151-280) → AQL 1.5 → sample 50, accept 2
         sample, accept = compute_sample_size(200, 1.5)
-        assert sample == 32
-        assert accept == 1
+        assert sample == 50
+        assert accept == 2
 
     def test_aql_escalation_tightened_stricter(self):
         # Tightened (1.0) must be at least as strict as normal (1.5) acceptance
