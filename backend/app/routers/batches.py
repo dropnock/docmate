@@ -128,8 +128,8 @@ async def get_view_url(
         raise HTTPException(status_code=503, detail="S3 bucket not ready")
 
     bucket = project.s3_bucket_name
-    content_type = s3_service.get_object_content_type(bucket, record.file_reference)
+    content_type = await s3_service.get_object_content_type(bucket, record.file_reference)
     if content_type == "application/octet-stream":
-        content_type = s3_service.sniff_content_type(bucket, record.file_reference)
-    url = s3_service.get_presigned_view_url(bucket, record.file_reference, content_type=content_type)
+        content_type = await s3_service.sniff_content_type(bucket, record.file_reference)
+    url = await s3_service.get_presigned_view_url(bucket, record.file_reference, content_type=content_type)
     return {"view_url": url, "content_type": content_type}

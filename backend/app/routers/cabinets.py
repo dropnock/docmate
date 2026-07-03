@@ -100,7 +100,7 @@ async def get_upload_url(
     if not project or not project.s3_bucket_name:
         raise HTTPException(status_code=400, detail="Project has no S3 bucket")
     key = f"cabinets/{cabinet_id}/{filename}"
-    url = s3_service.get_presigned_upload_url(project.s3_bucket_name, key)
+    url = await s3_service.get_presigned_upload_url(project.s3_bucket_name, key)
     return {"upload_url": url, "key": key}
 
 
@@ -145,7 +145,7 @@ async def get_image_view_url(
     project = await db.get(Project, cabinet.project_id)
     if not project or not project.s3_bucket_name:
         raise HTTPException(status_code=400, detail="Project has no S3 bucket")
-    url = s3_service.get_presigned_view_url(project.s3_bucket_name, record.file_reference)
+    url = await s3_service.get_presigned_view_url(project.s3_bucket_name, record.file_reference)
     return {"url": url}
 
 

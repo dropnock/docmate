@@ -1,7 +1,7 @@
 import re
 from typing import TYPE_CHECKING
 
-import boto3
+import aioboto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,8 +12,10 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.project import Project
 
+_session = aioboto3.Session()
 
-def _get_client():
+
+def _client_kwargs() -> dict:
     kwargs = dict(
         region_name=settings.aws_region,
         aws_access_key_id=settings.aws_access_key_id,
@@ -21,13 +23,12 @@ def _get_client():
     )
     if settings.aws_endpoint_url:
         kwargs["endpoint_url"] = settings.aws_endpoint_url
-    return boto3.client("s3", **kwargs)
+    return kwargs
 
 
-def _get_presigned_client():
-    """Client used only for generating presigned URLs — uses the public-facing endpoint
-    so the URLs are resolvable by browsers rather than internal Docker hostnames.
-    Forces Signature V4 (required by MinIO; V2 is not accepted)."""
+def _presigned_client_kwargs() -> dict:
+    """Uses the public-facing endpoint so presigned URLs are browser-resolvable.
+    Forces Signature V4 (required by MinIO)."""
     public_url = settings.aws_public_endpoint_url or settings.aws_endpoint_url
     kwargs = dict(
         region_name=settings.aws_region,
@@ -37,24 +38,23 @@ def _get_presigned_client():
     )
     if public_url:
         kwargs["endpoint_url"] = public_url
-    return boto3.client("s3", **kwargs)
+    return kwargs
 
 
 def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9-]", "-", name.lower())[:40].strip("-")
 
 
-def _create_bucket(bucket_name: str) -> bool:
-    """Create the bucket. Returns True on success, False on error."""
+async def _create_bucket(bucket_name: str) -> bool:
     try:
-        client = _get_client()
-        if settings.aws_region == "us-east-1":
-            client.create_bucket(Bucket=bucket_name)
-        else:
-            client.create_bucket(
-                Bucket=bucket_name,
-                CreateBucketConfiguration={"LocationConstraint": settings.aws_region},
-            )
+        async with _session.client("s3", **_client_kwargs()) as client:
+            if settings.aws_region == "us-east-1":
+                await client.create_bucket(Bucket=bucket_name)
+            else:
+                await client.create_bucket(
+                    Bucket=bucket_name,
+                    CreateBucketConfiguration={"LocationConstraint": settings.aws_region},
+                )
         return True
     except ClientError as exc:
         code = exc.response["Error"]["Code"]
@@ -66,7 +66,6 @@ def _create_bucket(bucket_name: str) -> bool:
 
 
 async def provision_org_bucket(db: AsyncSession, *, org: "Organization") -> None:
-    """Create the S3 bucket for a customer organisation and update the org record."""
     from app.models.organization import OrgBucketStatus
     from app.models.tenant import Tenant
 
@@ -75,12 +74,11 @@ async def provision_org_bucket(db: AsyncSession, *, org: "Organization") -> None
     org.s3_bucket_name = bucket_name
     org.s3_bucket_status = OrgBucketStatus.provisioning
 
-    ok = _create_bucket(bucket_name)
+    ok = await _create_bucket(bucket_name)
     org.s3_bucket_status = OrgBucketStatus.ready if ok else OrgBucketStatus.error
 
 
 async def provision_bucket(db: AsyncSession, *, project: "Project") -> None:
-    """Inherit the customer org's bucket for this project (no separate bucket)."""
     from app.models.organization import Organization
     from app.models.project import S3BucketStatus
 
@@ -92,43 +90,47 @@ async def provision_bucket(db: AsyncSession, *, project: "Project") -> None:
         project.s3_bucket_status = S3BucketStatus.error
 
 
-def get_object_content_type(bucket: str, key: str) -> str:
-    """Return the stored Content-Type for an object (via HeadObject)."""
+async def get_object_content_type(bucket: str, key: str) -> str:
     try:
-        resp = _get_client().head_object(Bucket=bucket, Key=key)
-        return resp.get("ContentType", "application/octet-stream")
+        async with _session.client("s3", **_client_kwargs()) as client:
+            resp = await client.head_object(Bucket=bucket, Key=key)
+            return resp.get("ContentType", "application/octet-stream")
     except Exception:
         return "application/octet-stream"
 
 
-def sniff_content_type(bucket: str, key: str) -> str:
-    """Read the first 8 bytes of an object to detect file type by magic bytes."""
+async def sniff_content_type(bucket: str, key: str) -> str:
     try:
-        resp = _get_client().get_object(Bucket=bucket, Key=key, Range="bytes=0-7")
-        header = resp["Body"].read(8)
-        if header[:5] == b"%PDF-":
-            return "application/pdf"
-        if header[:4] in (b"\x89PNG", b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1"):
-            return "image/jpeg" if header[:3] == b"\xff\xd8\xff" else "image/png"
-        if header[:4] == b"II*\x00" or header[:4] == b"MM\x00*":
-            return "image/tiff"
+        async with _session.client("s3", **_client_kwargs()) as client:
+            resp = await client.get_object(Bucket=bucket, Key=key, Range="bytes=0-7")
+            header = await resp["Body"].read(8)
+            if header[:5] == b"%PDF-":
+                return "application/pdf"
+            if header[:3] == b"\xff\xd8\xff":
+                return "image/jpeg"
+            if header[:4] == b"\x89PNG":
+                return "image/png"
+            if header[:4] in (b"II*\x00", b"MM\x00*"):
+                return "image/tiff"
     except Exception:
         pass
     return "application/octet-stream"
 
 
-def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
-    client = _get_presigned_client()
-    return client.generate_presigned_url(
-        "put_object",
-        Params={"Bucket": bucket, "Key": key},
-        ExpiresIn=expires,
-    )
+async def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
+    async with _session.client("s3", **_presigned_client_kwargs()) as client:
+        return await client.generate_presigned_url(
+            "put_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expires,
+        )
 
 
-def get_presigned_view_url(bucket: str, key: str, expires: int = 3600, content_type: str | None = None) -> str:
-    client = _get_presigned_client()
-    params: dict = {"Bucket": bucket, "Key": key, "ResponseContentDisposition": "inline"}
-    if content_type:
-        params["ResponseContentType"] = content_type
-    return client.generate_presigned_url("get_object", Params=params, ExpiresIn=expires)
+async def get_presigned_view_url(
+    bucket: str, key: str, expires: int = 3600, content_type: str | None = None
+) -> str:
+    async with _session.client("s3", **_presigned_client_kwargs()) as client:
+        params: dict = {"Bucket": bucket, "Key": key, "ResponseContentDisposition": "inline"}
+        if content_type:
+            params["ResponseContentType"] = content_type
+        return await client.generate_presigned_url("get_object", Params=params, ExpiresIn=expires)
