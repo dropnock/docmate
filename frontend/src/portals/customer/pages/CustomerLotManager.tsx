@@ -43,7 +43,7 @@ export default function CustomerLotManager({ projectId }: Props) {
 
   const { data: staff = [] } = useQuery<AvailableStaff[]>({
     queryKey: ["qc-staff", projectId],
-    queryFn: () => api.get(`/projects/${projectId}/available-staff`).then((r) => r.data),
+    queryFn: () => api.get(`/projects/${projectId}/qc-agents`).then((r) => r.data),
   });
 
   const { data: docTypes = [] } = useQuery<DocumentType[]>({

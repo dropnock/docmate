@@ -218,6 +218,27 @@ async def assign_staff_to_project(
     return assignment
 
 
+@router.get("/projects/{project_id}/qc-agents", response_model=list[AvailableStaffOut])
+async def get_qc_agents(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("customer_supervisor", "admin")),
+):
+    """Returns all active customer_qc_agent users in the same tenant."""
+    from app.models.user import UserRole
+    result = await db.execute(
+        select(User).where(
+            User.tenant_id == current_user._tenant_id,
+            User.role == UserRole.customer_qc_agent,
+            User.is_active == True,  # noqa: E712
+        ).order_by(User.full_name)
+    )
+    return [
+        AvailableStaffOut(id=u.id, full_name=u.full_name, email=u.email, role=u.role.value)
+        for u in result.scalars().all()
+    ]
+
+
 @router.get("/projects/{project_id}/available-staff", response_model=list[AvailableStaffOut])
 async def get_available_staff(
     project_id: int,
