@@ -4,7 +4,8 @@ from tests.conftest import auth_headers
 
 class TestRealmByDomain:
     async def test_known_domain_returns_realm_slug(self, client, seed):
-        resp = await client.get("/api/auth/realm-by-domain?email=qc@test.com")
+        """Email domain matching org.domain returns that org's realm_slug."""
+        resp = await client.get("/api/auth/realm-by-domain?email=anyone@custorg.com")
         assert resp.status_code == 200
         assert resp.json()["realm_slug"] == "cust-realm"
 
@@ -16,9 +17,11 @@ class TestRealmByDomain:
         resp = await client.get("/api/auth/realm-by-domain?email=notanemail")
         assert resp.status_code == 400
 
-    async def test_domain_with_no_customer_org_returns_404(self, client, seed):
-        """A domain not associated with any customer org returns 404."""
-        resp = await client.get("/api/auth/realm-by-domain?email=user@entirely-unknown-domain.io")
+    async def test_org_without_domain_not_matched(self, client, db, seed):
+        """Customer org with no domain set must not be matched by any email."""
+        seed["cust_org"].domain = None
+        await db.commit()
+        resp = await client.get("/api/auth/realm-by-domain?email=anyone@custorg.com")
         assert resp.status_code == 404
 
 

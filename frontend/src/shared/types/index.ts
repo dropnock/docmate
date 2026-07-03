@@ -23,6 +23,10 @@ export interface Organization {
   id: number;
   name: string;
   type: string;
+  domain: string | null;
+  realm_slug: string | null;
+  s3_bucket_name: string | null;
+  s3_bucket_status: string | null;
 }
 
 export interface Cabinet {
