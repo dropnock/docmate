@@ -12,6 +12,5 @@ class MeResponse(BaseModel):
     organization_id: int | None
 
 
-class CustomerRealm(BaseModel):
-    name: str
+class RealmLookupResponse(BaseModel):
     realm_slug: str

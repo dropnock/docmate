@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Layout, Menu, Typography, Button, Select, Space, Spin, Card, List } from "antd";
+import { Layout, Menu, Typography, Button, Select, Space, Spin, Card, Form, Input, Alert } from "antd";
 import { ProjectOutlined, CheckCircleOutlined, HistoryOutlined, InboxOutlined } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { initKeycloak, logout } from "@shared/api/keycloak";
@@ -24,24 +24,27 @@ const NAV_ITEMS = [
 
 const PROJECT_SCOPED = new Set(["kpi", "history", "lots"]);
 
-interface CustomerRealm {
-  name: string;
-  realm_slug: string;
-}
+function EmailGate({ onRealm }: { onRealm: (slug: string) => void }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-function OrgSelector({ onSelect }: { onSelect: (slug: string) => void }) {
-  const [realms, setRealms] = useState<CustomerRealm[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/auth/customer-realms")
-      .then((r) => r.json())
-      .then((data: CustomerRealm[]) => {
-        setRealms(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
+  const handleSubmit = async ({ email }: { email: string }) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/auth/realm-by-domain?email=${encodeURIComponent(email)}`);
+      if (!res.ok) {
+        setError("No organisation found for this email address.");
+        return;
+      }
+      const { realm_slug } = await res.json() as { realm_slug: string };
+      onRealm(realm_slug);
+    } catch {
+      setError("Unable to reach the server. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div
@@ -53,23 +56,29 @@ function OrgSelector({ onSelect }: { onSelect: (slug: string) => void }) {
         background: "#f0f2f5",
       }}
     >
-      <Card title="Select Your Organisation" style={{ width: 380 }} loading={loading}>
-        <List
-          dataSource={realms}
-          locale={{ emptyText: "No organisations available" }}
-          renderItem={(r) => (
-            <List.Item>
-              <Button
-                type="link"
-                block
-                style={{ textAlign: "left" }}
-                onClick={() => onSelect(r.realm_slug)}
-              >
-                {r.name}
-              </Button>
-            </List.Item>
+      <Card title="DocMate — Customer Portal" style={{ width: 380 }}>
+        <Form layout="vertical" onFinish={handleSubmit}>
+          <Form.Item
+            name="email"
+            label="Work email address"
+            rules={[
+              { required: true, message: "Enter your email address" },
+              { type: "email", message: "Enter a valid email address" },
+            ]}
+          >
+            <Input placeholder="you@yourcompany.com" autoFocus />
+          </Form.Item>
+          {error && (
+            <Form.Item>
+              <Alert type="error" message={error} showIcon />
+            </Form.Item>
           )}
-        />
+          <Form.Item style={{ marginBottom: 0 }}>
+            <Button type="primary" htmlType="submit" loading={loading} block>
+              Continue
+            </Button>
+          </Form.Item>
+        </Form>
       </Card>
     </div>
   );
@@ -153,6 +162,7 @@ export default function App() {
   );
   const [ready, setReady] = useState(false);
 
+  // Runs when realm is first set (page load from cache or after email lookup)
   useEffect(() => {
     if (!realm) return;
     initKeycloak(realm, "docmate-cust")
@@ -166,8 +176,8 @@ export default function App() {
 
   if (!realm) {
     return (
-      <OrgSelector
-        onSelect={(slug) => {
+      <EmailGate
+        onRealm={(slug) => {
           localStorage.setItem(CUSTOMER_REALM_KEY, slug);
           setRealm(slug);
         }}
