@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -18,7 +20,7 @@ class LotOut(BaseModel):
     sample_rate: float | None
     sample_size: int | None
     accuracy_rate: float | None
-    released_at: str | None = None
+    released_at: datetime | None = None
     released_by: int | None
     created_by: int | None
 
