@@ -147,17 +147,6 @@ export default function OrganisationsManager() {
       },
     },
     {
-      title: "Domain",
-      dataIndex: "domain",
-      key: "domain",
-      render: (v: string | null) =>
-        v ? (
-          <Tag color="blue" style={{ fontFamily: "monospace" }}>{v}</Tag>
-        ) : (
-          <Tag>—</Tag>
-        ),
-    },
-    {
       title: "Realm",
       dataIndex: "realm_slug",
       key: "realm_slug",
@@ -180,7 +169,7 @@ export default function OrganisationsManager() {
             onClick={(e) => {
               e.stopPropagation();
               setEditOrg(org);
-              editForm.setFieldsValue({ name: org.name, domain: org.domain ?? "" });
+              editForm.setFieldsValue({ name: org.name });
             }}
           >
             Edit
@@ -264,13 +253,6 @@ export default function OrganisationsManager() {
           <Form.Item name="name" label="Name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item
-            name="domain"
-            label="Email domain"
-            extra="Used to route customer portal login. Example: acme.com"
-          >
-            <Input placeholder="acme.com" />
-          </Form.Item>
           <Form.Item label="Type">
             <Tag color={TYPE_COLOR[editOrg?.type ?? ""] ?? "default"}>
               {editOrg?.type === "digitizing_entity" ? "Digitizing Entity" : "Customer"}
@@ -302,13 +284,6 @@ export default function OrganisationsManager() {
           </Form.Item>
           <Form.Item name="type" label="Type" rules={[{ required: true }]} initialValue="customer">
             <Select options={TYPE_OPTIONS} />
-          </Form.Item>
-          <Form.Item
-            name="domain"
-            label="Email domain"
-            extra="Used to route customer portal login. Example: acme.com"
-          >
-            <Input placeholder="acme.com" />
           </Form.Item>
         </Form>
         <div style={{ color: "#8c8c8c", fontSize: 12, marginTop: 8 }}>

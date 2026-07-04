@@ -25,7 +25,6 @@ class Organization(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[OrgType] = mapped_column(Enum(OrgType), nullable=False)
     realm_slug: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
-    domain: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     s3_bucket_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     s3_bucket_status: Mapped[OrgBucketStatus | None] = mapped_column(
         Enum(OrgBucketStatus), nullable=True

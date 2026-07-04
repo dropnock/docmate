@@ -68,7 +68,7 @@ async def seed(db: AsyncSession):
     de_org = Organization(tenant_id=tenant.id, name="DE Org", type=OrgType.digitizing_entity)
     cust_org = Organization(
         tenant_id=tenant.id, name="Cust Org", type=OrgType.customer,
-        realm_slug="cust-realm", domain="custorg.com",
+        realm_slug="cust-realm",
     )
     db.add_all([de_org, cust_org])
     await db.flush()
