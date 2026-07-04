@@ -3,11 +3,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
-import jwt as pyjwt
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jwt import PyJWTError
-from jwt.algorithms import RSAAlgorithm
+from jose import JWTError, jwt as jose_jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,11 +43,7 @@ async def _get_jwks(realm_slug: str) -> dict:
 
 def _extract_realm_slug(token: str) -> str:
     try:
-        unverified = pyjwt.decode(
-            token,
-            options={"verify_signature": False},
-            algorithms=["RS256"],
-        )
+        unverified = jose_jwt.get_unverified_claims(token)
         iss: str = unverified.get("iss", "")
         # iss format: http[s]://host[:port]/realms/<slug>
         parts = iss.split("/realms/")
@@ -73,7 +67,7 @@ async def _verify_token(token: str, realm_slug: str) -> dict:
             detail="Auth service unavailable",
         )
 
-    header = pyjwt.get_unverified_header(token)
+    header = jose_jwt.get_unverified_header(token)
     kid = header.get("kid")
 
     matching_keys = [
@@ -86,17 +80,16 @@ async def _verify_token(token: str, realm_slug: str) -> dict:
             detail="Token signing key not found",
         )
 
-    last_exc: Optional[PyJWTError] = None
+    last_exc: Optional[JWTError] = None
     for key_data in matching_keys:
         try:
-            public_key = RSAAlgorithm.from_jwk(key_data)
-            return pyjwt.decode(
+            return jose_jwt.decode(
                 token,
-                public_key,
+                key_data,
                 algorithms=["RS256"],
-                options={"verify_aud": False},
+                options={"verify_aud": False, "verify_iss": False},
             )
-        except PyJWTError as exc:
+        except JWTError as exc:
             last_exc = exc
 
     raise HTTPException(

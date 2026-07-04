@@ -19,10 +19,6 @@ class OrgCreate(BaseModel):
     type: str  # "digitizing_entity" | "customer"
 
 
-class OrgUpdate(BaseModel):
-    name: str | None = None
-
-
 class OrgOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int

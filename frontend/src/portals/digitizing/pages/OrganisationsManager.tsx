@@ -4,7 +4,7 @@ import {
   Table, Button, Modal, Form, Input, Select,
   Tag, Space, message, Badge, Drawer, Typography,
 } from "antd";
-import { PlusOutlined, DatabaseOutlined, EditOutlined, FolderOutlined } from "@ant-design/icons";
+import { PlusOutlined, DatabaseOutlined, FolderOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
 import type { Organization, Project } from "@shared/types";
@@ -33,10 +33,8 @@ const PROJECT_STATUS_COLOR: Record<string, string> = {
 export default function OrganisationsManager() {
   const [search, setSearch] = useState("");
   const [open, setOpen] = useState(false);
-  const [editOrg, setEditOrg] = useState<Organization | null>(null);
   const [selectedOrg, setSelectedOrg] = useState<Organization | null>(null);
   const [form] = Form.useForm();
-  const [editForm] = Form.useForm();
   const qc = useQueryClient();
 
   const { data: orgs = [], isLoading } = useQuery<Organization[]>({
@@ -49,21 +47,6 @@ export default function OrganisationsManager() {
   const { data: allProjects = [] } = useQuery<Project[]>({
     queryKey: ["projects"],
     queryFn: () => api.get("/projects").then((r) => r.data),
-  });
-
-  const update = useMutation({
-    mutationFn: ({ id, values }: { id: number; values: Record<string, unknown> }) =>
-      api.patch(`/organizations/${id}`, values).then((r) => r.data),
-    onSuccess: () => {
-      message.success("Organisation updated");
-      qc.invalidateQueries({ queryKey: ["organizations"] });
-      setEditOrg(null);
-      editForm.resetFields();
-    },
-    onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail ?? "Failed to update organisation");
-    },
   });
 
   const create = useMutation({
@@ -160,28 +143,15 @@ export default function OrganisationsManager() {
     {
       title: "",
       key: "actions",
-      width: 160,
+      width: 110,
       render: (_: unknown, org: Organization) => (
-        <Space>
-          <Button
-            size="small"
-            icon={<EditOutlined />}
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditOrg(org);
-              editForm.setFieldsValue({ name: org.name });
-            }}
-          >
-            Edit
-          </Button>
-          <Button
-            size="small"
-            icon={<FolderOutlined />}
-            onClick={(e) => { e.stopPropagation(); setSelectedOrg(org); }}
-          >
-            Projects
-          </Button>
-        </Space>
+        <Button
+          size="small"
+          icon={<FolderOutlined />}
+          onClick={(e) => { e.stopPropagation(); setSelectedOrg(org); }}
+        >
+          Projects
+        </Button>
       ),
     },
   ];
@@ -234,40 +204,6 @@ export default function OrganisationsManager() {
           />
         )}
       </Drawer>
-
-      {/* Edit organisation modal */}
-      <Modal
-        title={`Edit Organisation — ${editOrg?.name}`}
-        open={!!editOrg}
-        onOk={() => editForm.submit()}
-        onCancel={() => { setEditOrg(null); editForm.resetFields(); }}
-        confirmLoading={update.isPending}
-        destroyOnClose
-      >
-        <Form
-          form={editForm}
-          layout="vertical"
-          onFinish={(values) => update.mutate({ id: editOrg!.id, values })}
-          style={{ marginTop: 12 }}
-        >
-          <Form.Item name="name" label="Name" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item label="Type">
-            <Tag color={TYPE_COLOR[editOrg?.type ?? ""] ?? "default"}>
-              {editOrg?.type === "digitizing_entity" ? "Digitizing Entity" : "Customer"}
-            </Tag>
-            <Typography.Text type="secondary" style={{ marginLeft: 8, fontSize: 12 }}>
-              Type cannot be changed after creation.
-            </Typography.Text>
-          </Form.Item>
-          {editOrg?.realm_slug && (
-            <Form.Item label="Keycloak Realm">
-              <Tag color="purple" style={{ fontFamily: "monospace" }}>{editOrg.realm_slug}</Tag>
-            </Form.Item>
-          )}
-        </Form>
-      </Modal>
 
       {/* Create organisation modal */}
       <Modal

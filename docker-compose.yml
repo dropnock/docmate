@@ -92,18 +92,6 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
     ports:
       - "8000:8000"
-    develop:
-      watch:
-        - path: ./backend/app
-          action: sync+restart
-          target: /app/app
-        - path: ./backend/alembic
-          action: sync+restart
-          target: /app/alembic
-        - path: ./backend/requirements.txt
-          action: rebuild
-        - path: ./backend/Dockerfile
-          action: rebuild
 
   frontend-de:
     build:
@@ -112,16 +100,6 @@ services:
     restart: unless-stopped
     ports:
       - "5173:80"
-    develop:
-      watch:
-        - path: ./frontend/src
-          action: rebuild
-          ignore:
-            - node_modules
-        - path: ./frontend/vite.config.ts
-          action: rebuild
-        - path: ./frontend/package.json
-          action: rebuild
 
   frontend-cust:
     build:
@@ -130,16 +108,6 @@ services:
     restart: unless-stopped
     ports:
       - "5174:80"
-    develop:
-      watch:
-        - path: ./frontend/src
-          action: rebuild
-          ignore:
-            - node_modules
-        - path: ./frontend/vite.config.ts
-          action: rebuild
-        - path: ./frontend/package.json
-          action: rebuild
 
   nginx:
     image: nginx:alpine
@@ -153,11 +121,6 @@ services:
       - "8080:8080"  # Customer portal
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    develop:
-      watch:
-        - path: ./nginx/nginx.conf
-          action: sync+restart
-          target: /etc/nginx/nginx.conf
 
 volumes:
   postgres_data:

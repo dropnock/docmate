@@ -1,16 +1,15 @@
 """Shared fixtures for DocMate integration tests.
 
-Uses SQLite in-memory so tests need no running PostgreSQL or Keycloak instance.
-Each test gets a fresh database (function-scoped engine). Authentication is
-bypassed via FastAPI dependency_overrides — get_current_user returns the seeded
-user based on a test-only bearer token "test:<user_id>".
+Uses SQLite in-memory so tests need no running PostgreSQL instance.
+Each test gets a fresh database (function-scoped engine).
 """
-from sqlalchemy import select
+import pytest_asyncio
+from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.models  # noqa — register all models with Base
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import create_access_token, get_password_hash
 from app.main import app
 from app.models import (
     AQLConfig,
@@ -18,7 +17,6 @@ from app.models import (
     Base,
     Batch,
     BatchStatus,
-    Cabinet,
     DocumentType,
     Organization,
     OrgType,
@@ -32,16 +30,7 @@ from app.models import (
     UserRole,
 )
 
-import pytest_asyncio
-from fastapi import HTTPException, Request
-from httpx import AsyncClient, ASGITransport
-
 _SQLITE_URL = "sqlite+aiosqlite:///:memory:"
-
-
-def auth_headers(user: User) -> dict:
-    """Return Authorization headers that authenticate as the given user in tests."""
-    return {"Authorization": f"Bearer test:{user.id}"}
 
 
 @pytest_asyncio.fixture
@@ -60,55 +49,47 @@ async def db():
 
 @pytest_asyncio.fixture
 async def seed(db: AsyncSession):
-    """Minimal seeded world: tenant → orgs → users → project → cabinet → batch → records."""
+    """Minimal seeded world: tenant → orgs → users → project → batch → record."""
     tenant = Tenant(name="Test Corp", slug="testcorp")
     db.add(tenant)
     await db.flush()
 
     de_org = Organization(tenant_id=tenant.id, name="DE Org", type=OrgType.digitizing_entity)
-    cust_org = Organization(
-        tenant_id=tenant.id, name="Cust Org", type=OrgType.customer,
-        realm_slug="cust-realm",
-    )
+    cust_org = Organization(tenant_id=tenant.id, name="Cust Org", type=OrgType.customer)
     db.add_all([de_org, cust_org])
     await db.flush()
 
     admin = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="admin@test.com",
-        full_name="Admin", role=UserRole.admin, portal=Portal.digitizing, is_active=True,
+        hashed_password=get_password_hash("pass123"), full_name="Admin",
+        role=UserRole.admin, portal=Portal.digitizing, is_active=True,
     )
     supervisor = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="sup@test.com",
-        full_name="Supervisor", role=UserRole.de_supervisor,
-        portal=Portal.digitizing, is_active=True,
+        hashed_password=get_password_hash("pass123"), full_name="Supervisor",
+        role=UserRole.de_supervisor, portal=Portal.digitizing, is_active=True,
     )
     indexer = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="indexer@test.com",
-        full_name="Indexer One", role=UserRole.de_indexer,
-        portal=Portal.digitizing, is_active=True,
+        hashed_password=get_password_hash("pass123"), full_name="Indexer One",
+        role=UserRole.de_indexer, portal=Portal.digitizing, is_active=True,
     )
     indexer2 = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="indexer2@test.com",
-        full_name="Indexer Two", role=UserRole.de_indexer,
-        portal=Portal.digitizing, is_active=True,
+        hashed_password=get_password_hash("pass123"), full_name="Indexer Two",
+        role=UserRole.de_indexer, portal=Portal.digitizing, is_active=True,
     )
     qc_agent = User(
         tenant_id=tenant.id, organization_id=cust_org.id, email="qc@test.com",
-        full_name="QC Agent", role=UserRole.customer_qc_agent,
-        portal=Portal.customer, is_active=True,
+        hashed_password=get_password_hash("pass123"), full_name="QC Agent",
+        role=UserRole.customer_qc_agent, portal=Portal.customer, is_active=True,
     )
-    cust_supervisor = User(
-        tenant_id=tenant.id, organization_id=cust_org.id, email="custsup@test.com",
-        full_name="Cust Supervisor", role=UserRole.customer_supervisor,
-        portal=Portal.customer, is_active=True,
-    )
-    db.add_all([admin, supervisor, indexer, indexer2, qc_agent, cust_supervisor])
+    db.add_all([admin, supervisor, indexer, indexer2, qc_agent])
     await db.flush()
 
     project = Project(
         tenant_id=tenant.id, digitizing_org_id=de_org.id, customer_org_id=cust_org.id,
         name="Test Project", stale_threshold_hours=8.0,
-        s3_bucket_name="docmate-testcorp-test-project",
         s3_bucket_status=S3BucketStatus.ready,
     )
     db.add(project)
@@ -129,14 +110,6 @@ async def seed(db: AsyncSession):
     db.add(doc_type)
     await db.flush()
 
-    cabinet = Cabinet(
-        tenant_id=tenant.id, project_id=project.id,
-        organization_id=de_org.id, name="Test Cabinet",
-        created_by=admin.id,
-    )
-    db.add(cabinet)
-    await db.flush()
-
     batch = Batch(
         project_id=project.id, document_type_id=doc_type.id,
         name="Batch 001", status=BatchStatus.indexing,
@@ -153,40 +126,28 @@ async def seed(db: AsyncSession):
     return {
         "tenant": tenant, "de_org": de_org, "cust_org": cust_org,
         "admin": admin, "supervisor": supervisor,
-        "indexer": indexer, "indexer2": indexer2,
-        "qc_agent": qc_agent, "cust_supervisor": cust_supervisor,
+        "indexer": indexer, "indexer2": indexer2, "qc_agent": qc_agent,
         "project": project, "aql_config": aql_config, "doc_type": doc_type,
-        "cabinet": cabinet, "batch": batch, "record": record, "record2": record2,
+        "batch": batch, "record": record, "record2": record2,
     }
+
+
+def token(user: User, portal_override: str | None = None) -> str:
+    return create_access_token(
+        user_id=user.id,
+        tenant_id=user.tenant_id,
+        portal=portal_override or user.portal.value,
+        role=user.role.value,
+    )
 
 
 @pytest_asyncio.fixture
 async def client(db: AsyncSession):
-    """AsyncClient wired to test DB with Keycloak auth bypassed."""
+    """AsyncClient wired to the test DB via dependency override."""
     async def _override_get_db():
         yield db
 
-    def _make_auth_override(session: AsyncSession):
-        async def _inner(request: Request):
-            auth = request.headers.get("Authorization", "")
-            prefix = "Bearer test:"
-            if not auth.startswith(prefix):
-                raise HTTPException(status_code=401, detail="Not authenticated")
-            try:
-                uid = int(auth[len(prefix):])
-            except ValueError:
-                raise HTTPException(status_code=401, detail="Invalid test token")
-            result = await session.execute(select(User).where(User.id == uid))
-            user = result.scalar_one_or_none()
-            if not user or not user.is_active:
-                raise HTTPException(status_code=401, detail="User not found or inactive")
-            user._tenant_id = user.tenant_id
-            return user
-        return _inner
-
     app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[get_current_user] = _make_auth_override(db)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.pop(get_db, None)
-    app.dependency_overrides.pop(get_current_user, None)
