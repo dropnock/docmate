@@ -69,7 +69,7 @@ def start_scheduler():
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        lambda: asyncio.create_task(_run_stale_check()),
+        _run_stale_check,
         trigger="interval",
         minutes=15,
         id="stale_checker",
