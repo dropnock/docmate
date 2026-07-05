@@ -19,5 +19,9 @@ class Settings(BaseSettings):
     keycloak_admin_user: str = "admin"
     keycloak_admin_password: str = "admin"
 
+    # Base URL of the customer portal WITHOUT subdomain, e.g. http://docmate.com:8080
+    # Used to build per-realm Keycloak redirect URIs: http://<realm>.docmate.com:8080/*
+    customer_portal_base_url: str = "http://localhost:8080"
+
 
 settings = Settings()

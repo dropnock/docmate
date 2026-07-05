@@ -85,6 +85,26 @@ async def create_organization(
     return org
 
 
+@router.post("/organizations/{org_id}/sync-keycloak-uris", status_code=status.HTTP_200_OK)
+async def sync_keycloak_redirect_uris(
+    org_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin")),
+):
+    """Patch an existing customer org's Keycloak client with the correct subdomain redirect URIs.
+
+    Use this once for realms created before subdomain routing was introduced.
+    """
+    from app.services.keycloak_service import update_customer_client_uris
+    org = await db.get(Organization, org_id)
+    if not org or org.tenant_id != current_user._tenant_id:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    if org.type != OrgType.customer or not org.realm_slug:
+        raise HTTPException(status_code=400, detail="Organisation has no Keycloak realm")
+    update_customer_client_uris(org.realm_slug)
+    return {"detail": f"Redirect URIs updated for realm '{org.realm_slug}'"}
+
+
 @router.get("/organizations", response_model=list[OrgOut])
 async def list_organizations(
     db: AsyncSession = Depends(get_db),

@@ -1,5 +1,6 @@
 import logging
 import re
+from urllib.parse import urlparse
 
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
 
@@ -7,32 +8,45 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_CUSTOMER_CLIENT = {
-    "clientId": "docmate-cust",
-    "name": "DocMate Customer Portal",
-    "enabled": True,
-    "publicClient": True,
-    "bearerOnly": False,
-    "consentRequired": False,
-    "standardFlowEnabled": True,
-    "implicitFlowEnabled": False,
-    "directAccessGrantsEnabled": False,
-    "serviceAccountsEnabled": False,
-    "protocol": "openid-connect",
-    "redirectUris": [
-        "http://localhost:8080",
-        "http://localhost:8080/",
+
+def _build_customer_client(realm_slug: str) -> dict:
+    """Build the docmate-cust client config with redirect URIs for this realm's subdomain."""
+    parsed = urlparse(settings.customer_portal_base_url)
+    scheme = parsed.scheme or "http"
+    host = parsed.hostname or "localhost"
+    port = parsed.port
+
+    subdomain_origin = f"{scheme}://{realm_slug}.{host}"
+    if port and not (scheme == "http" and port == 80) and not (scheme == "https" and port == 443):
+        subdomain_origin += f":{port}"
+
+    dev_uris = [
         "http://localhost:8080/*",
-        "http://localhost:5174",
-        "http://localhost:5174/",
         "http://localhost:5174/*",
-    ],
-    "webOrigins": ["+"],
-    "attributes": {
-        "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:8080/*##http://localhost:5174/*",
-    },
-}
+    ]
+    subdomain_uris = [subdomain_origin, f"{subdomain_origin}/", f"{subdomain_origin}/*"]
+
+    return {
+        "clientId": "docmate-cust",
+        "name": "DocMate Customer Portal",
+        "enabled": True,
+        "publicClient": True,
+        "bearerOnly": False,
+        "consentRequired": False,
+        "standardFlowEnabled": True,
+        "implicitFlowEnabled": False,
+        "directAccessGrantsEnabled": False,
+        "serviceAccountsEnabled": False,
+        "protocol": "openid-connect",
+        "redirectUris": subdomain_uris + dev_uris,
+        "webOrigins": ["+"],
+        "attributes": {
+            "pkce.code.challenge.method": "S256",
+            "post.logout.redirect.uris": "##".join(
+                [f"{subdomain_origin}/*"] + dev_uris
+            ),
+        },
+    }
 
 
 def slugify(name: str) -> str:
@@ -81,8 +95,24 @@ def create_customer_realm(realm_slug: str, display_name: str) -> None:
     )
     # Create the customer portal client in the new realm
     admin.connection.realm_name = realm_slug
-    admin.create_client(_CUSTOMER_CLIENT, skip_exists=True)
+    admin.create_client(_build_customer_client(realm_slug), skip_exists=True)
     logger.info("Provisioned Keycloak realm: %s", realm_slug)
+
+
+def update_customer_client_uris(realm_slug: str) -> None:
+    """Patch an existing realm's docmate-cust client with the current redirect URIs.
+
+    Call this for realms created before the subdomain routing change.
+    """
+    admin = _make_admin("master")
+    admin.connection.realm_name = realm_slug
+    clients = admin.get_clients()
+    cust_client = next((c for c in clients if c["clientId"] == "docmate-cust"), None)
+    if not cust_client:
+        logger.warning("docmate-cust client not found in realm %s", realm_slug)
+        return
+    admin.update_client(cust_client["id"], _build_customer_client(realm_slug))
+    logger.info("Updated redirect URIs for realm: %s", realm_slug)
 
 
 def create_user_in_realm(
