@@ -48,8 +48,8 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
-      KC_HOSTNAME_URL: http://localhost:8180
-      KC_HOSTNAME_ADMIN_URL: http://localhost:8180
+      KC_HOSTNAME_URL: http://auth.docmate.local
+      KC_HOSTNAME_ADMIN_URL: http://auth.docmate.local
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
       KEYCLOAK_ADMIN: admin
@@ -87,7 +87,7 @@ services:
       AWS_REGION: us-east-1
       S3_FORCE_PATH_STYLE: "true"
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
-      KEYCLOAK_EXTERNAL_URL: http://localhost:8180
+      KEYCLOAK_EXTERNAL_URL: http://auth.docmate.local
       KEYCLOAK_ADMIN_USER: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
       CUSTOMER_PORTAL_BASE_URL: ${CUSTOMER_PORTAL_BASE_URL:-http://docmate.local}

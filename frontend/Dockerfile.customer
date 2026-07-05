@@ -4,6 +4,7 @@ COPY package*.json .npmrc ./
 RUN npm ci --silent
 COPY . .
 ENV VITE_PORTAL=customer
+ENV VITE_KEYCLOAK_URL=http://auth.docmate.local
 RUN npx vite build
 
 FROM nginx:alpine
