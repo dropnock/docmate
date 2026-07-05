@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Layout, Menu, Typography, Button, Select, Space, Spin, Card, List } from "antd";
+import { Layout, Menu, Typography, Button, Select, Space, Spin, Result } from "antd";
 import { ProjectOutlined, CheckCircleOutlined, HistoryOutlined, InboxOutlined } from "@ant-design/icons";
 import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { initKeycloak, logout } from "@shared/api/keycloak";
@@ -13,8 +13,6 @@ import type { Project, UserRecord } from "@shared/types";
 const { Header, Sider, Content } = Layout;
 const queryClient = new QueryClient();
 
-const CUSTOMER_REALM_KEY = "docmate_customer_realm";
-
 const NAV_ITEMS = [
   { key: "lots", label: "Lots", icon: <InboxOutlined /> },
   { key: "qc", label: "QC Workspace", icon: <CheckCircleOutlined /> },
@@ -24,55 +22,9 @@ const NAV_ITEMS = [
 
 const PROJECT_SCOPED = new Set(["kpi", "history", "lots"]);
 
-interface CustomerRealm {
-  name: string;
-  realm_slug: string;
-}
-
-function OrgSelector({ onSelect }: { onSelect: (slug: string) => void }) {
-  const [realms, setRealms] = useState<CustomerRealm[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch("/api/auth/customer-realms")
-      .then((r) => r.json())
-      .then((data: CustomerRealm[]) => {
-        setRealms(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "center",
-        alignItems: "center",
-        minHeight: "100vh",
-        background: "#f0f2f5",
-      }}
-    >
-      <Card title="Select Your Organisation" style={{ width: 380 }} loading={loading}>
-        <List
-          dataSource={realms}
-          locale={{ emptyText: "No organisations available" }}
-          renderItem={(r) => (
-            <List.Item>
-              <Button
-                type="link"
-                block
-                style={{ textAlign: "left" }}
-                onClick={() => onSelect(r.realm_slug)}
-              >
-                {r.name}
-              </Button>
-            </List.Item>
-          )}
-        />
-      </Card>
-    </div>
-  );
+function getSubdomain(): string | null {
+  const parts = window.location.hostname.split(".");
+  return parts.length >= 2 ? parts[0] : null;
 }
 
 function AppInner() {
@@ -147,35 +99,48 @@ function AppInner() {
   );
 }
 
+type AppState = "loading" | "ready" | "error";
+
 export default function App() {
-  const [realm, setRealm] = useState<string | null>(
-    () => localStorage.getItem(CUSTOMER_REALM_KEY)
-  );
-  const [ready, setReady] = useState(false);
+  const [state, setState] = useState<AppState>("loading");
+  const [errorMsg, setErrorMsg] = useState<string>("");
 
   useEffect(() => {
-    if (!realm) return;
-    initKeycloak(realm, "docmate-cust")
-      .then(() => setReady(true))
-      .catch((err) => {
-        console.error("Keycloak init failed:", err);
-        localStorage.removeItem(CUSTOMER_REALM_KEY);
-        setRealm(null);
-      });
-  }, [realm]);
+    const subdomain = getSubdomain();
+    if (!subdomain) {
+      setErrorMsg("No customer subdomain detected in the URL.");
+      setState("error");
+      return;
+    }
 
-  if (!realm) {
+    fetch(`/api/auth/realm-by-subdomain?subdomain=${encodeURIComponent(subdomain)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error("not_found");
+        return r.json();
+      })
+      .then(({ realm_slug }: { realm_slug: string }) =>
+        initKeycloak(realm_slug, "docmate-cust")
+      )
+      .then(() => setState("ready"))
+      .catch((err) => {
+        const msg =
+          err.message === "not_found"
+            ? `"${subdomain}" is not a recognised customer portal.`
+            : "Failed to connect to the authentication service.";
+        setErrorMsg(msg);
+        setState("error");
+      });
+  }, []);
+
+  if (state === "loading") return <Spin fullscreen tip="Connecting..." />;
+
+  if (state === "error") {
     return (
-      <OrgSelector
-        onSelect={(slug) => {
-          localStorage.setItem(CUSTOMER_REALM_KEY, slug);
-          setRealm(slug);
-        }}
-      />
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+        <Result status="404" title="Unknown Portal" subTitle={errorMsg} />
+      </div>
     );
   }
-
-  if (!ready) return <Spin fullscreen tip="Connecting..." />;
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -2,6 +2,33 @@
 from tests.conftest import token
 
 
+class TestRealmBySubdomain:
+    async def test_valid_subdomain_returns_realm(self, client, db, seed):
+        seed["cust_org"].realm_slug = "nla"
+        await db.commit()
+        resp = await client.get("/api/auth/realm-by-subdomain?subdomain=nla")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["realm_slug"] == "nla"
+        assert data["name"] == "Cust Org"
+
+    async def test_unknown_subdomain_returns_404(self, client, seed):
+        resp = await client.get("/api/auth/realm-by-subdomain?subdomain=unknown")
+        assert resp.status_code == 404
+
+    async def test_org_without_realm_slug_not_matched(self, client, seed):
+        """Customer org with no realm_slug must not match any subdomain."""
+        resp = await client.get("/api/auth/realm-by-subdomain?subdomain=cust-org")
+        assert resp.status_code == 404
+
+    async def test_digitizing_org_not_matched(self, client, db, seed):
+        """Digitizing entity orgs must not be returned even if realm_slug matches."""
+        seed["de_org"].realm_slug = "de-realm"
+        await db.commit()
+        resp = await client.get("/api/auth/realm-by-subdomain?subdomain=de-realm")
+        assert resp.status_code == 404
+
+
 class TestLogin:
     async def test_login_success(self, client, seed):
         resp = await client.post("/api/auth/login", json={

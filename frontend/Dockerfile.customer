@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package*.json .npmrc ./
 RUN npm ci --silent
 COPY . .
+ENV VITE_PORTAL=customer
 RUN npx vite build
 
 FROM nginx:alpine

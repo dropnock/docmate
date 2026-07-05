@@ -1,9 +1,7 @@
 import axios from "axios";
 import { getToken } from "./keycloak";
 
-export const PORTAL = (
-  window.location.hostname.includes("customer") ? "customer" : "digitizing"
-) as "digitizing" | "customer";
+export const PORTAL = (import.meta.env.VITE_PORTAL ?? "digitizing") as "digitizing" | "customer";
 
 const api = axios.create({ baseURL: "/api" });
 
