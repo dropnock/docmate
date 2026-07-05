@@ -90,7 +90,7 @@ services:
       KEYCLOAK_EXTERNAL_URL: http://localhost:8180
       KEYCLOAK_ADMIN_USER: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
-      CUSTOMER_PORTAL_BASE_URL: ${CUSTOMER_PORTAL_BASE_URL:-http://localhost:8080}
+      CUSTOMER_PORTAL_BASE_URL: ${CUSTOMER_PORTAL_BASE_URL:-http://docmate.local}
     ports:
       - "8000:8000"
 
