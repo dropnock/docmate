@@ -10,6 +10,7 @@ import type { AvailableStaff, DocumentType, Lot, LotDetail } from "@shared/types
 
 interface Props {
   projectId: number;
+  role: string;
 }
 
 const LOT_STATUS_COLOR: Record<string, string> = {
@@ -21,7 +22,8 @@ const LOT_STATUS_COLOR: Record<string, string> = {
   remediation: "warning",
 };
 
-export default function CustomerLotManager({ projectId }: Props) {
+export default function CustomerLotManager({ projectId, role }: Props) {
+  const isSupervisor = role === "customer_supervisor";
   const qc = useQueryClient();
   const [detailLotId, setDetailLotId] = useState<number | undefined>();
   const [sampleRate, setSampleRate] = useState<number>(10);
@@ -143,15 +145,17 @@ export default function CustomerLotManager({ projectId }: Props) {
           <Tag color={v >= 0.9 ? "success" : "error"}>{(v * 100).toFixed(1)}%</Tag>
         ) : "—",
     },
-    {
-      title: "",
-      key: "action",
-      render: (_: unknown, lot: Lot) => (
-        <Button size="small" onClick={() => setDetailLotId(lot.id)}>
-          Manage
-        </Button>
-      ),
-    },
+    ...(isSupervisor
+      ? [{
+          title: "",
+          key: "action",
+          render: (_: unknown, lot: Lot) => (
+            <Button size="small" onClick={() => setDetailLotId(lot.id)}>
+              Manage
+            </Button>
+          ),
+        }]
+      : []),
   ];
 
   const sampledRecords = lotDetail?.records.filter((r) => r.is_sampled) ?? [];

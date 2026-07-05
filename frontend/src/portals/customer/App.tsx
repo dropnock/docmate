@@ -84,7 +84,9 @@ function AppInner() {
               </Space>
             </div>
           )}
-          {page === "lots" && projectId && <CustomerLotManager projectId={projectId} />}
+          {page === "lots" && projectId && (
+            <CustomerLotManager projectId={projectId} role={user?.role ?? ""} />
+          )}
           {page === "qc" && <QCWorkspace />}
           {page === "kpi" && projectId && <ProjectKPIDashboard projectId={projectId} />}
           {showProjectSelector && !projectId && (
