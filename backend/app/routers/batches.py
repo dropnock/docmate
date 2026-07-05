@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import check_project_access, get_current_user, require_roles
 from app.models.batch import Batch
 from app.models.document_type import DocumentType
 from app.models.project import Project
@@ -35,6 +35,8 @@ async def list_document_types(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    project = await db.get(Project, project_id)
+    check_project_access(project, current_user)
     result = await db.execute(
         select(DocumentType).where(DocumentType.project_id == project_id)
     )
@@ -47,6 +49,8 @@ async def list_batches(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    project = await db.get(Project, project_id)
+    check_project_access(project, current_user)
     result = await db.execute(
         select(Batch).where(Batch.project_id == project_id)
     )
@@ -62,6 +66,8 @@ async def get_batch(
     batch = await db.get(Batch, batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="Batch not found")
+    project = await db.get(Project, batch.project_id)
+    check_project_access(project, current_user)
     return batch
 
 
@@ -71,6 +77,11 @@ async def list_records(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    project = await db.get(Project, batch.project_id)
+    check_project_access(project, current_user)
     result = await db.execute(select(Record).where(Record.batch_id == batch_id))
     return list(result.scalars().all())
 
@@ -84,6 +95,8 @@ async def get_document_type(
     dt = await db.get(DocumentType, doc_type_id)
     if not dt:
         raise HTTPException(status_code=404, detail="Document type not found")
+    project = await db.get(Project, dt.project_id)
+    check_project_access(project, current_user)
     return dt
 
 
@@ -124,7 +137,10 @@ async def get_view_url(
         if batch:
             project = await db.get(Project, batch.project_id)
 
-    if not project or not project.s3_bucket_name:
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    check_project_access(project, current_user)
+    if not project.s3_bucket_name:
         raise HTTPException(status_code=503, detail="S3 bucket not ready")
 
     bucket = project.s3_bucket_name

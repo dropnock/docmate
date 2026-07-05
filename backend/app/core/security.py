@@ -152,3 +152,21 @@ def require_roles(*roles: str):
         return current_user
 
     return _check
+
+
+def check_project_access(project, current_user) -> None:
+    """Raise 404 if current_user cannot access project.
+
+    Customer portal users are further restricted to projects where
+    customer_org_id matches their own organization. 404 (not 403) so
+    project existence is not leaked to unauthorised customers.
+    """
+    from app.models.user import Portal
+
+    if not project or project.tenant_id != current_user._tenant_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if (
+        current_user.portal == Portal.customer
+        and project.customer_org_id != current_user.organization_id
+    ):
+        raise HTTPException(status_code=404, detail="Project not found")

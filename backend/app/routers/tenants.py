@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import check_project_access, get_current_user, require_roles
 from app.models.organization import Organization, OrgType
 from app.models.project import Project, S3BucketStatus
 from app.models.tenant import Tenant
@@ -179,9 +179,12 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(Project).where(Project.tenant_id == current_user._tenant_id)
-    )
+    from app.models.user import Portal
+
+    query = select(Project).where(Project.tenant_id == current_user._tenant_id)
+    if current_user.portal == Portal.customer:
+        query = query.where(Project.customer_org_id == current_user.organization_id)
+    result = await db.execute(query)
     return list(result.scalars().all())
 
 
@@ -192,8 +195,7 @@ async def get_project(
     current_user=Depends(get_current_user),
 ):
     project = await db.get(Project, project_id)
-    if not project or project.tenant_id != current_user._tenant_id:
-        raise HTTPException(status_code=404, detail="Project not found")
+    check_project_access(project, current_user)
     return project
 
 
