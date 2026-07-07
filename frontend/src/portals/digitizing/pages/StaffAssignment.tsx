@@ -1,17 +1,18 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Table, Button, Drawer, Input, Select, Tag, message,
-  Space, Empty, Typography, Segmented, Badge,
+  Button, Card, Col, Drawer, Input, Row, Select, Tag, message,
+  Space, Empty, Typography, Segmented, Badge, Tooltip,
 } from "antd";
 import { UserAddOutlined } from "@ant-design/icons";
+import type { AxiosError } from "axios";
 import type { ColumnsType } from "antd/es/table";
+import { Table } from "antd";
 import api from "@shared/api/client";
-import type { Shift, AvailableStaff, UserRecord } from "@shared/types";
+import type { Shift, AvailableStaff, UserRecord, StaffBuckets, BucketedStaffMember } from "@shared/types";
 
 const ROLE_COLOR: Record<string, string> = {
-  de_indexer: "blue",
-  de_qa_agent: "gold",
+  de_staff: "blue",
   de_supervisor: "green",
   customer_supervisor: "purple",
   customer_qc_agent: "orange",
@@ -19,9 +20,31 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  de_indexer: "Indexer",
-  de_qa_agent: "QA Agent",
+  de_staff: "DE Staff",
   de_supervisor: "Supervisor",
+};
+
+type BucketKey = "unassigned" | "indexer" | "qa";
+
+const BUCKET_TITLE: Record<BucketKey, string> = {
+  unassigned: "Unassigned",
+  indexer: "Indexer",
+  qa: "Quality Assurance",
+};
+
+const BUCKET_TARGETS: Record<BucketKey, { key: BucketKey; label: string }[]> = {
+  unassigned: [
+    { key: "indexer", label: "Indexer" },
+    { key: "qa", label: "QA" },
+  ],
+  indexer: [
+    { key: "qa", label: "QA" },
+    { key: "unassigned", label: "Unassigned" },
+  ],
+  qa: [
+    { key: "indexer", label: "Indexer" },
+    { key: "unassigned", label: "Unassigned" },
+  ],
 };
 
 interface Props {
@@ -49,10 +72,11 @@ export default function StaffAssignment({ projectId }: Props) {
     queryFn: () => api.get("/users").then((r) => r.data),
   });
 
-  const { data: assignedStaff = [], isLoading: staffLoading } = useQuery<AvailableStaff[]>({
-    queryKey: ["available-staff", projectId, selectedShiftId],
+  const { data: buckets, isLoading: bucketsLoading } = useQuery<StaffBuckets>({
+    queryKey: ["staff-buckets", projectId, selectedShiftId],
     queryFn: () =>
-      api.get(`/projects/${projectId}/available-staff?shift_id=${selectedShiftId}`).then((r) => r.data),
+      api.get(`/projects/${projectId}/staff-buckets`, { params: { shift_id: selectedShiftId } })
+        .then((r) => r.data),
     enabled: !!selectedShiftId,
   });
 
@@ -66,6 +90,19 @@ export default function StaffAssignment({ projectId }: Props) {
   const assignStaff = useMutation({
     mutationFn: ({ user_id, shift_id }: { user_id: number; shift_id: number }) =>
       api.post(`/projects/${projectId}/staff`, { user_id, shift_id }),
+  });
+
+  const moveBucket = useMutation({
+    mutationFn: ({ assignmentId, shiftRole }: { assignmentId: number; shiftRole: BucketKey }) =>
+      api.patch(`/staff-assignments/${assignmentId}/bucket`, {
+        shift_role: shiftRole === "unassigned" ? null : shiftRole,
+      }),
+    onSuccess: () => {
+      message.success("Staff member moved");
+      qc.invalidateQueries({ queryKey: ["staff-buckets", projectId, selectedShiftId] });
+    },
+    onError: (e: AxiosError<{ detail: string }>) =>
+      message.error(e.response?.data?.detail ?? "Could not move staff member"),
   });
 
   const openDrawer = () => {
@@ -93,6 +130,7 @@ export default function StaffAssignment({ projectId }: Props) {
     if (succeeded > 0) {
       message.success(`${succeeded} staff member${succeeded > 1 ? "s" : ""} assigned`);
       qc.invalidateQueries({ queryKey: ["available-staff"] });
+      qc.invalidateQueries({ queryKey: ["staff-buckets"] });
     }
     if (failed > 0) {
       message.error(`${failed} assignment${failed > 1 ? "s" : ""} failed`);
@@ -169,26 +207,58 @@ export default function StaffAssignment({ projectId }: Props) {
     },
   ];
 
-  const staffColumns: ColumnsType<AvailableStaff> = [
-    { title: "Name", dataIndex: "full_name" },
-    { title: "Email", dataIndex: "email" },
+  const q = tableSearch.toLowerCase();
+  const matchesSearch = (m: BucketedStaffMember) =>
+    !q || m.full_name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q);
+
+  const bucketColumns = (bucketKey: BucketKey): ColumnsType<BucketedStaffMember> => [
     {
-      title: "Role",
-      dataIndex: "role",
-      render: (v: string) => (
-        <Tag color={ROLE_COLOR[v] ?? "default"}>{(ROLE_LABEL[v] ?? v).replace(/_/g, " ")}</Tag>
+      title: "Name",
+      dataIndex: "full_name",
+      ellipsis: true,
+      render: (name: string, m: BucketedStaffMember) => (
+        <Space direction="vertical" size={0} style={{ maxWidth: "100%" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
+          {m.has_active_work && <Tag color="orange" style={{ marginTop: 2 }}>Active task</Tag>}
+        </Space>
+      ),
+    },
+    {
+      title: "Move to",
+      key: "move",
+      width: 110,
+      render: (_: unknown, m: BucketedStaffMember) => (
+        <Space direction="vertical" size={4} style={{ width: "100%" }}>
+          {BUCKET_TARGETS[bucketKey].map((target) => {
+            const btn = (
+              <Button
+                key={target.key}
+                size="small"
+                block
+                disabled={m.has_active_work}
+                loading={moveBucket.isPending && moveBucket.variables?.assignmentId === m.assignment_id}
+                onClick={() => moveBucket.mutate({ assignmentId: m.assignment_id, shiftRole: target.key })}
+              >
+                → {target.label}
+              </Button>
+            );
+            return m.has_active_work ? (
+              <Tooltip
+                key={target.key}
+                title="Complete or reassign this user's active task before moving them"
+              >
+                <span style={{ display: "block" }}>{btn}</span>
+              </Tooltip>
+            ) : btn;
+          })}
+        </Space>
       ),
     },
   ];
 
-  const q = tableSearch.toLowerCase();
-  const filteredStaff = assignedStaff.filter((s) =>
-    s.full_name.toLowerCase().includes(q) ||
-    s.email.toLowerCase().includes(q) ||
-    s.role.toLowerCase().includes(q)
-  );
-
   const selectedShift = shifts.find((s) => s.id === drawerShiftId);
+
+  const bucketKeys: BucketKey[] = ["unassigned", "indexer", "qa"];
 
   return (
     <>
@@ -201,7 +271,7 @@ export default function StaffAssignment({ projectId }: Props) {
 
       <Space style={{ marginBottom: 16 }} wrap>
         <Select
-          placeholder="Select shift to view assigned staff"
+          placeholder="Select shift to manage staff roles"
           style={{ width: 280 }}
           options={shifts.map((s) => ({
             value: s.id,
@@ -216,22 +286,32 @@ export default function StaffAssignment({ projectId }: Props) {
       {selectedShiftId ? (
         <>
           <Input.Search
-            placeholder="Search by name, email or role…"
+            placeholder="Search by name or email…"
             allowClear
             onChange={(e) => setTableSearch(e.target.value)}
             style={{ marginBottom: 12, maxWidth: 360 }}
           />
-          <Table
-            dataSource={filteredStaff}
-            columns={staffColumns}
-            rowKey="id"
-            loading={staffLoading}
-            size="middle"
-            locale={{ emptyText: "No staff assigned to this shift yet." }}
-          />
+          <Row gutter={16}>
+            {bucketKeys.map((key) => (
+              <Col key={key} xs={24} lg={8} style={{ marginBottom: 16 }}>
+                <Card title={`${BUCKET_TITLE[key]} (${buckets?.[key]?.length ?? 0})`} size="small">
+                  <Table
+                    dataSource={(buckets?.[key] ?? []).filter(matchesSearch)}
+                    columns={bucketColumns(key)}
+                    rowKey="assignment_id"
+                    loading={bucketsLoading}
+                    size="small"
+                    pagination={false}
+                    tableLayout="fixed"
+                    locale={{ emptyText: "No staff in this bucket" }}
+                  />
+                </Card>
+              </Col>
+            ))}
+          </Row>
         </>
       ) : (
-        <Empty description="Select a shift to view currently assigned staff" />
+        <Empty description="Select a shift to manage staff roles" />
       )}
 
       <Drawer

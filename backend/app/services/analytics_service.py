@@ -36,13 +36,13 @@ async def staff_productivity(
     staff_result = await db.execute(staff_query)
     staff = list(staff_result.scalars().all())
 
-    rows = []
-    for user in staff:
+    async def _metrics_for(user_id: int, task_type: TaskType) -> dict:
         # Total completed tasks on this project
         total = await db.execute(
             select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
                 Batch.project_id == project_id,
-                Task.assigned_to == user.id,
+                Task.assigned_to == user_id,
+                Task.task_type == task_type,
                 Task.status == TaskStatus.completed,
             )
         )
@@ -52,7 +52,8 @@ async def staff_productivity(
         today_q = await db.execute(
             select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
                 Batch.project_id == project_id,
-                Task.assigned_to == user.id,
+                Task.assigned_to == user_id,
+                Task.task_type == task_type,
                 Task.status == TaskStatus.completed,
                 Task.completed_at >= day_start,
                 Task.completed_at < day_end,
@@ -66,7 +67,8 @@ async def staff_productivity(
             .join(Batch, Task.batch_id == Batch.id)
             .where(
                 Batch.project_id == project_id,
-                Task.assigned_to == user.id,
+                Task.assigned_to == user_id,
+                Task.task_type == task_type,
                 Task.status == TaskStatus.completed,
                 Task.processing_time_seconds.is_not(None),
             )
@@ -77,7 +79,8 @@ async def staff_productivity(
         failed_q = await db.execute(
             select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
                 Batch.project_id == project_id,
-                Task.assigned_to == user.id,
+                Task.assigned_to == user_id,
+                Task.task_type == task_type,
                 Task.status == TaskStatus.failed,
             )
         )
@@ -89,7 +92,8 @@ async def staff_productivity(
         stale_q = await db.execute(
             select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
                 Batch.project_id == project_id,
-                Task.assigned_to == user.id,
+                Task.assigned_to == user_id,
+                Task.task_type == task_type,
                 Task.status == TaskStatus.stale,
             )
         )
@@ -99,23 +103,30 @@ async def staff_productivity(
         inprogress_q = await db.execute(
             select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
                 Batch.project_id == project_id,
-                Task.assigned_to == user.id,
+                Task.assigned_to == user_id,
+                Task.task_type == task_type,
                 Task.status == TaskStatus.in_progress,
             )
         )
         inprogress_count = inprogress_q.scalar() or 0
 
-        rows.append({
-            "user_id": user.id,
-            "full_name": user.full_name,
-            "email": user.email,
-            "role": user.role.value,
+        return {
             "total_records_processed": total_count,
             "records_today": today_count,
             "avg_processing_time_seconds": round(float(avg_time)),
             "error_rate": error_rate,
             "stale_task_count": stale_count,
             "tasks_in_progress": inprogress_count,
+        }
+
+    rows = []
+    for user in staff:
+        rows.append({
+            "user_id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "indexing": await _metrics_for(user.id, TaskType.indexing),
+            "qa": await _metrics_for(user.id, TaskType.qa),
         })
     return rows
 

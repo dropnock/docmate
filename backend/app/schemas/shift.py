@@ -57,3 +57,22 @@ class AvailableStaffOut(BaseModel):
     full_name: str
     email: str
     role: str
+    shift_role: str | None = None
+
+
+class MoveStaffBucketRequest(BaseModel):
+    shift_role: str | None  # "indexer" | "qa" | None (unassigned)
+
+
+class BucketedStaffMember(BaseModel):
+    assignment_id: int
+    user_id: int
+    full_name: str
+    email: str
+    has_active_work: bool
+
+
+class StaffBucketsOut(BaseModel):
+    unassigned: list[BucketedStaffMember]
+    indexer: list[BucketedStaffMember]
+    qa: list[BucketedStaffMember]

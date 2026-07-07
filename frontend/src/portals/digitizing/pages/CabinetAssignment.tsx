@@ -58,6 +58,9 @@ export default function CabinetAssignment({ projectId }: Props) {
     enabled: !!selectedShift,
   });
 
+  const indexerStaff = staff.filter((s) => s.shift_role === "indexer");
+  const qaStaff = staff.filter((s) => s.shift_role === "qa");
+
   const { data: allBatches = [], isLoading: batchLoading } = useQuery<Batch[]>({
     queryKey: ["project-batches", projectId],
     queryFn: () => api.get(`/projects/${projectId}/batches`).then((r) => r.data),
@@ -74,7 +77,7 @@ export default function CabinetAssignment({ projectId }: Props) {
       const pendingRecords = records.filter((r) => r.status === "pending");
       if (!pendingRecords.length) throw new Error("No pending records");
 
-      const staffWithAlloc = staff.filter((s) => (agentAllocations[s.id] ?? 0) > 0);
+      const staffWithAlloc = indexerStaff.filter((s) => (agentAllocations[s.id] ?? 0) > 0);
       if (!staffWithAlloc.length) throw new Error("Set allocation counts for at least one agent");
 
       let offset = 0;
@@ -141,9 +144,7 @@ export default function CabinetAssignment({ projectId }: Props) {
                 size="small"
                 placeholder="QA agent"
                 style={{ width: 160 }}
-                options={staff
-                  .filter((s) => s.role === "de_qa_agent")
-                  .map((s) => ({ label: s.full_name, value: s.id }))}
+                options={qaStaff.map((s) => ({ label: s.full_name, value: s.id }))}
                 value={qaAssign[batch.id]}
                 onChange={(v) => setQaAssign((prev) => ({ ...prev, [batch.id]: v }))}
               />
@@ -201,9 +202,9 @@ export default function CabinetAssignment({ projectId }: Props) {
         <Spin />
       ) : (
         <>
-          {pendingCount > 0 && staff.length > 0 && (
+          {pendingCount > 0 && indexerStaff.length > 0 && (
             <Card
-              title={`Allocate ${pendingCount} pending records to agents`}
+              title={`Allocate ${pendingCount} pending records to indexers`}
               style={{ marginBottom: 16 }}
               extra={
                 <Button
@@ -217,7 +218,7 @@ export default function CabinetAssignment({ projectId }: Props) {
               }
             >
               <Row gutter={16}>
-                {staff.map((agent) => (
+                {indexerStaff.map((agent) => (
                   <Col key={agent.id} xs={12} sm={8} md={6} style={{ marginBottom: 8 }}>
                     <Typography.Text>{agent.full_name}</Typography.Text>
                     <InputNumber
@@ -233,6 +234,10 @@ export default function CabinetAssignment({ projectId }: Props) {
                 ))}
               </Row>
             </Card>
+          )}
+
+          {pendingCount > 0 && !!selectedShift && indexerStaff.length === 0 && (
+            <Empty description="No staff currently bucketed as Indexer for this shift" style={{ marginBottom: 16 }} />
           )}
 
           {pendingCount === 0 && staff.length === 0 && !selectedShift && (

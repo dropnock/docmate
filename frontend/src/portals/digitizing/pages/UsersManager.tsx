@@ -12,8 +12,7 @@ import type { Organization, UserRecord } from "@shared/types";
 const ROLES = [
   { value: "admin", label: "Admin" },
   { value: "de_supervisor", label: "DE Supervisor" },
-  { value: "de_indexer", label: "DE Indexer" },
-  { value: "de_qa_agent", label: "DE QA Agent" },
+  { value: "de_staff", label: "DE Staff" },
   { value: "customer_supervisor", label: "Customer Supervisor" },
   { value: "customer_qc_agent", label: "Customer QC Agent" },
 ];
@@ -26,8 +25,7 @@ const PORTALS = [
 const ROLE_COLOR: Record<string, string> = {
   admin: "red",
   de_supervisor: "blue",
-  de_indexer: "cyan",
-  de_qa_agent: "geekblue",
+  de_staff: "cyan",
   customer_supervisor: "purple",
   customer_qc_agent: "magenta",
 };

@@ -12,7 +12,7 @@ from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.cabinet import Cabinet
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service
+from app.services import audit_service, staff_assignment_service
 from app.services.task_service import _get_stale_hours
 
 
@@ -214,16 +214,24 @@ async def create_indexing_batch(
     stale_hours = project.stale_threshold_hours if project else 24
     due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
 
+    await staff_assignment_service.require_shift_role_for_task_type(
+        db, user_id=agent_id, project_id=project_id, task_type=TaskType.indexing,
+    )
+
     batch = Batch(
         project_id=project_id,
         cabinet_id=cabinet.id,
         document_type_id=document_type_id,
-        name=f"Batch {datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}",
+        name="",
         batch_type=BatchType.indexing,
         status=BatchStatus.indexing,
     )
     db.add(batch)
     await db.flush()
+    # Name includes the DB-assigned id so it's guaranteed unique even when
+    # several batches are created within the same wall-clock second (e.g.
+    # allocating to multiple agents in one supervisor action).
+    batch.name = f"Batch {batch.id} — {datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
 
     for record_id in record_ids:
         record = await db.get(Record, record_id)

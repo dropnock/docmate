@@ -33,12 +33,17 @@ class AuditAction(str, enum.Enum):
     batch_escalated = "batch_escalated"
     stale_flagged = "stale_flagged"
     deactivated = "deactivated"
+    shift_role_changed = "shift_role_changed"
 
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    # BigInteger with an Integer variant for SQLite: SQLite only auto-increments
+    # a rowid-aliased "INTEGER PRIMARY KEY" column, not BIGINT — this only
+    # affects the SQLite test DB, Postgres still gets a real bigint via the
+    # migration's explicit column type.
+    id: Mapped[int] = mapped_column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
     tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id"), nullable=False, index=True)
     entity_type: Mapped[AuditEntityType] = mapped_column(Enum(AuditEntityType), nullable=False)
     entity_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
