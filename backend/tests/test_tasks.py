@@ -62,6 +62,39 @@ class TestTaskAssignment:
         record = await db.get(Record, seed["record"].id)
         assert record.locked_by is None
 
+    async def test_complete_qa_task_persists_edits_and_creates_version(self, db: AsyncSession, seed):
+        from app.models import Record, RecordVersion
+        from sqlalchemy import select as sa_select
+
+        record = seed["record"]
+        record.indexed_data = {"title": "Original"}
+        record.current_version = 2
+        await db.flush()
+
+        qa_task = await task_service.assign_task(
+            db, record_id=record.id, batch_id=seed["batch"].id,
+            task_type=TaskType.qa, agent_id=seed["qa_staff"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=qa_task.id, user_id=seed["qa_staff"].id, tenant_id=seed["tenant"].id
+        )
+
+        await task_service.complete_task(
+            db, task_id=qa_task.id, user_id=seed["qa_staff"].id,
+            tenant_id=seed["tenant"].id, indexed_data={"title": "Corrected by QA"},
+        )
+
+        updated = await db.get(Record, record.id)
+        assert updated.indexed_data == {"title": "Corrected by QA"}
+        assert updated.current_version == 3
+
+        versions = (await db.execute(
+            sa_select(RecordVersion).where(RecordVersion.record_id == record.id)
+        )).scalars().all()
+        assert any(v.indexed_data == {"title": "Corrected by QA"} for v in versions)
+
     async def test_start_task_wrong_user_forbidden(self, db: AsyncSession, seed):
         from fastapi import HTTPException
         task = await task_service.assign_task(

@@ -116,8 +116,8 @@ async def complete_task(
 
     record = await db.get(Record, task.record_id)
 
-    # Persist indexed data and version it (indexing tasks only)
-    if indexed_data is not None and task.task_type == TaskType.indexing:
+    # Persist indexed data and version it for indexing and QA submissions
+    if indexed_data is not None and task.task_type in (TaskType.indexing, TaskType.qa):
         record.indexed_data = indexed_data
         reason = (
             VersionReason.initial_indexing
@@ -130,7 +130,11 @@ async def complete_task(
             tenant_id=tenant_id,
             entity_type=AuditEntityType.record,
             entity_id=record.id,
-            action=AuditAction.indexing_submitted,
+            action=(
+                AuditAction.indexing_submitted
+                if task.task_type == TaskType.indexing
+                else AuditAction.qa_passed
+            ),
             performed_by=user_id,
         )
 
