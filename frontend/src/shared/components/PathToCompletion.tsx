@@ -28,9 +28,8 @@ export default function PathToCompletion({ data, proposedEndDate, totalRecords }
       ...(proposedEndDate
         ? [
             {
-              type: "line" as const,
-              start: [proposedEndDate, "min"] as [string, string],
-              end: [proposedEndDate, "max"] as [string, string],
+              type: "lineX" as const,
+              data: [proposedEndDate],
               style: { stroke: "#0F172A", lineDash: [4, 4] },
             },
           ]
@@ -38,9 +37,8 @@ export default function PathToCompletion({ data, proposedEndDate, totalRecords }
       ...(totalRecords
         ? [
             {
-              type: "line" as const,
-              start: ["min", totalRecords] as [string, number],
-              end: ["max", totalRecords] as [string, number],
+              type: "lineY" as const,
+              data: [totalRecords],
               style: { stroke: "#94A3B8", lineDash: [4, 4] },
             },
           ]
