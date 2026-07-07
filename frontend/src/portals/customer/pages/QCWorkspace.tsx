@@ -38,7 +38,7 @@ export default function QCWorkspace() {
     queryKey: ["record-view-url", activeTask?.record_id],
     queryFn: () =>
       api
-        .get<{ view_url: string }>(`/records/${activeTask!.record_id}/view-url`)
+        .get<{ view_url: string; content_type: string }>(`/records/${activeTask!.record_id}/view-url`)
         .then((r) => r.data),
     enabled: !!activeTask && activeTask.status === "in_progress",
   });
@@ -75,8 +75,8 @@ export default function QCWorkspace() {
   });
 
   const rejectMutation = useMutation({
-    mutationFn: ({ recordId, reason }: { recordId: number; reason: string }) =>
-      api.post(`/batches/records/${recordId}/reject`, { reason }),
+    mutationFn: ({ taskId, reason }: { taskId: number; reason: string }) =>
+      api.post(`/tasks/${taskId}/fail`, { reason }),
     onSuccess: () => {
       message.success("Record rejected — sent back for rework");
       setRejectModalOpen(false);
@@ -84,13 +84,14 @@ export default function QCWorkspace() {
       setActiveTask(null);
       qc.invalidateQueries({ queryKey: ["my-tasks"] });
     },
-    onError: () => message.error("Rejection failed"),
+    onError: (err: { response?: { data?: { detail?: string } } }) =>
+      message.error(err.response?.data?.detail ?? "Rejection failed"),
   });
 
   const handleReject = async () => {
     const values = await rejectForm.validateFields();
     if (!activeTask) return;
-    rejectMutation.mutate({ recordId: activeTask.record_id, reason: values.reason });
+    rejectMutation.mutate({ taskId: activeTask.id, reason: values.reason });
   };
 
   // Task list panel
@@ -234,7 +235,15 @@ export default function QCWorkspace() {
             viewLoading ? (
               <Spin style={{ padding: 24 }} />
             ) : viewData?.view_url ? (
-              <OpenSeadragonViewer imageUrl={viewData.view_url} />
+              viewData.content_type === "application/pdf" ? (
+                <iframe
+                  src={viewData.view_url}
+                  style={{ width: "100%", height: "100%", border: "none" }}
+                  title={`Record ${activeTask.record_id}`}
+                />
+              ) : (
+                <OpenSeadragonViewer imageUrl={viewData.view_url} />
+              )
             ) : (
               <div style={{ padding: 24, color: "#999" }}>
                 {activeTask.status === "pending"

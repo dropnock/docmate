@@ -275,15 +275,21 @@ export function ParcelArrayField({
 // Plain text input for date fields — allows free typing.
 // Normalizes to YYYY-MM-DD on blur (accepts most date strings).
 function normalizeToIso(input: string): string {
-  if (!input.trim()) return "";
-  const d = new Date(input);
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  // Already ISO — return as-is rather than round-tripping through `new
+  // Date()`: a bare YYYY-MM-DD string is parsed as UTC midnight per spec,
+  // so reading local y/m/d back out rolls the date back a day in any
+  // timezone behind UTC.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const d = new Date(trimmed);
   if (!isNaN(d.getTime())) {
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, "0");
     const day = String(d.getDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
   }
-  return input;
+  return trimmed;
 }
 
 export function DateTextWidget({ value, onChange, id, required, rawErrors }: WidgetProps) {

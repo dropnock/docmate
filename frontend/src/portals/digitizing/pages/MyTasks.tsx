@@ -85,7 +85,7 @@ export default function MyTasks() {
                   type="primary"
                   onClick={() => setActiveTask(task)}
                 >
-                  {task.status === "in_progress" ? "Resume" : "Open"}
+                  {task.status === "in_progress" ? "Resume" : "Start"}
                 </Button>,
               ]}
             >

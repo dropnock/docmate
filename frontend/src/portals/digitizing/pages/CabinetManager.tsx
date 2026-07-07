@@ -1,9 +1,9 @@
 import {
-  Button, Card, Col, Empty, Form, Input, Modal, Row, Segmented, Spin,
+  Button, Card, Col, Empty, Form, Input, Modal, Progress, Row, Segmented, Spin,
   Table, Tabs, Tag, Typography, Upload, message,
 } from "antd";
 import { InboxOutlined, PlusOutlined, EditOutlined, EyeOutlined, PictureOutlined } from "@ant-design/icons";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
@@ -77,6 +77,10 @@ export default function CabinetManager({ projectId }: Props) {
     },
   });
 
+  // Batch upload progress — one summary message at the end instead of a
+  // toast per file.
+  const [uploadStats, setUploadStats] = useState<{ total: number; done: number; failed: number } | null>(null);
+
   const uploadImageMutation = useMutation({
     mutationFn: async ({ file }: { file: File }) => {
       const urlRes = await api.post(
@@ -90,12 +94,20 @@ export default function CabinetManager({ projectId }: Props) {
         { params: { original_filename: file.name, s3_key: key } }
       );
     },
-    onSuccess: () => {
-      message.success("Image uploaded");
-      qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
-    },
-    onError: () => message.error("Image upload failed"),
   });
+
+  useEffect(() => {
+    if (!uploadStats || uploadStats.total === 0) return;
+    if (uploadStats.done + uploadStats.failed !== uploadStats.total) return;
+    qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
+    const { total, done, failed } = uploadStats;
+    if (failed === 0) {
+      message.success(`${done} of ${total} image${total > 1 ? "s" : ""} uploaded successfully`);
+    } else {
+      message.warning(`${done} of ${total} image${total > 1 ? "s" : ""} uploaded — ${failed} failed`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploadStats]);
 
   const { data: documentTypes = [], isLoading: dtLoading } = useQuery<DocumentType[]>({
     queryKey: ["document-types", projectId],
@@ -293,6 +305,56 @@ export default function CabinetManager({ projectId }: Props) {
                 ),
                 children: (
                   <>
+                    <Upload.Dragger
+                      multiple
+                      accept=".tif,.tiff,.jpg,.jpeg,.png,.pdf"
+                      showUploadList={false}
+                      beforeUpload={(file, fileList) => {
+                        if (file === fileList[0]) {
+                          setUploadStats({ total: fileList.length, done: 0, failed: 0 });
+                        }
+                        return true;
+                      }}
+                      customRequest={({ file, onSuccess, onError }) => {
+                        uploadImageMutation.mutate(
+                          { file: file as File },
+                          {
+                            onSuccess: () => {
+                              onSuccess?.("ok");
+                              setUploadStats((prev) => prev && { ...prev, done: prev.done + 1 });
+                            },
+                            onError: (e) => {
+                              onError?.(e as Error);
+                              setUploadStats((prev) => prev && { ...prev, failed: prev.failed + 1 });
+                            },
+                          }
+                        );
+                      }}
+                      style={{ padding: 16, marginBottom: 12 }}
+                    >
+                      <p className="ant-upload-drag-icon" style={{ margin: "4px 0" }}>
+                        <InboxOutlined />
+                      </p>
+                      <p className="ant-upload-text">Drag images here or click to upload</p>
+                      <p className="ant-upload-hint">
+                        Supported: TIFF, JPG, PNG, PDF. The original filename is retained
+                        and used to auto-link to JSON-ingested records by identifier.
+                      </p>
+                    </Upload.Dragger>
+
+                    {uploadStats && uploadStats.done + uploadStats.failed < uploadStats.total && (
+                      <div style={{ marginBottom: 12 }}>
+                        <Typography.Text type="secondary">
+                          Uploading {uploadStats.done + uploadStats.failed} of {uploadStats.total}…
+                        </Typography.Text>
+                        <Progress
+                          percent={Math.round(((uploadStats.done + uploadStats.failed) / uploadStats.total) * 100)}
+                          size="small"
+                          status={uploadStats.failed > 0 ? "exception" : "active"}
+                        />
+                      </div>
+                    )}
+
                     <Row gutter={8} style={{ marginBottom: 12 }} align="middle">
                       <Col>
                         <Input.Search
@@ -316,7 +378,7 @@ export default function CabinetManager({ projectId }: Props) {
                       </Col>
                     </Row>
                     {imageRecords.length === 0 ? (
-                      <Empty description="No images in this cabinet yet. Upload images in the Upload Images tab." />
+                      <Empty description="No images in this cabinet yet. Drag files above to upload." />
                     ) : (
                       <Table
                         rowKey="id"
@@ -372,38 +434,6 @@ export default function CabinetManager({ projectId }: Props) {
                       />
                     )}
                   </>
-                ),
-              },
-              {
-                key: "upload-images",
-                label: "Upload Images",
-                children: (
-                  <Upload.Dragger
-                    multiple
-                    accept=".tif,.tiff,.jpg,.jpeg,.png,.pdf"
-                    showUploadList={false}
-                    customRequest={({ file, onSuccess, onError }) => {
-                      uploadImageMutation.mutate(
-                        { file: file as File },
-                        {
-                          onSuccess: () => onSuccess?.("ok"),
-                          onError: (e) => onError?.(e as Error),
-                        }
-                      );
-                    }}
-                    style={{ padding: 32 }}
-                  >
-                    <p className="ant-upload-drag-icon">
-                      <InboxOutlined />
-                    </p>
-                    <p className="ant-upload-text">
-                      Drag images here or click to upload
-                    </p>
-                    <p className="ant-upload-hint">
-                      Supported: TIFF, JPG, PNG, PDF. The original filename is retained
-                      and used to auto-link to JSON-ingested records by identifier.
-                    </p>
-                  </Upload.Dragger>
                 ),
               },
               {

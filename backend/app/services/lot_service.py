@@ -183,12 +183,16 @@ async def create_qc_batches(
         batch = Batch(
             project_id=project_id,
             document_type_id=document_type_id,
-            name=f"QC Batch {datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}",
+            name="",
             batch_type=BatchType.qc,
             status=BatchStatus.indexing,
         )
         db.add(batch)
         await db.flush()
+        # Name includes the DB-assigned id so it's guaranteed unique even when
+        # several QC batches are created in the same request (one per agent
+        # in the assignments loop, all within the same wall-clock second).
+        batch.name = f"QC Batch {batch.id} — {datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
 
         for record_id in record_ids:
             task = Task(
