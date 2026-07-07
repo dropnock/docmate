@@ -99,7 +99,7 @@ function AppInner() {
 
   const isAdmin = user.role === "admin";
   const isSupervisor = isAdmin || user.role === "de_supervisor";
-  const isAgent = ["de_indexer", "de_qa_agent"].includes(user.role);
+  const isAgent = user.role === "de_staff";
 
   const navItems = [
     ...(isSupervisor

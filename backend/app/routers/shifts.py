@@ -6,18 +6,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
 from app.models.project import Project
-from app.models.shift import ProjectShift, Shift, UserProjectAssignment
+from app.models.shift import ProjectShift, Shift, ShiftRole, UserProjectAssignment
 from app.models.user import User
 from app.schemas.shift import (
     AssignShiftToProject,
     AssignStaffToProject,
     AvailableStaffOut,
+    MoveStaffBucketRequest,
     ProjectAssignmentInfo,
     ShiftCreate,
     ShiftOut,
     ShiftUpdate,
     StaffAssignmentOut,
+    StaffBucketsOut,
 )
+from app.services import staff_assignment_service
 
 router = APIRouter(prefix="/api", tags=["shifts"])
 
@@ -248,7 +251,7 @@ async def get_available_staff(
 ):
     """Returns active users assigned to this project on the given shift."""
     result = await db.execute(
-        select(User)
+        select(User, UserProjectAssignment.shift_role)
         .join(
             UserProjectAssignment,
             (UserProjectAssignment.user_id == User.id)
@@ -260,7 +263,46 @@ async def get_available_staff(
     )
     return [
         AvailableStaffOut(
-            id=u.id, full_name=u.full_name, email=u.email, role=u.role.value
+            id=u.id,
+            full_name=u.full_name,
+            email=u.email,
+            role=u.role.value,
+            shift_role=shift_role.value if shift_role else None,
         )
-        for u in result.scalars().all()
+        for u, shift_role in result.all()
     ]
+
+
+@router.get("/projects/{project_id}/staff-buckets", response_model=StaffBucketsOut)
+async def get_staff_buckets(
+    project_id: int,
+    shift_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    """Returns the active de_staff roster for this project+shift, split into
+    unassigned / indexer / qa buckets."""
+    project = await db.get(Project, project_id)
+    if not project or project.tenant_id != current_user._tenant_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return await staff_assignment_service.get_staff_buckets(
+        db, project_id=project_id, shift_id=shift_id, tenant_id=current_user._tenant_id,
+    )
+
+
+@router.patch("/staff-assignments/{assignment_id}/bucket", response_model=StaffAssignmentOut)
+async def move_staff_bucket(
+    assignment_id: int,
+    body: MoveStaffBucketRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    assignment = await staff_assignment_service.move_user_bucket(
+        db,
+        assignment_id=assignment_id,
+        new_shift_role=ShiftRole(body.shift_role) if body.shift_role else None,
+        supervisor_id=current_user.id,
+        tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return assignment

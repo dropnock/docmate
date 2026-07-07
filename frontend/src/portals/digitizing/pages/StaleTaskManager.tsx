@@ -1,8 +1,14 @@
 import { Button, Checkbox, Input, Select, Table, Tag, Typography, message } from "antd";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { AxiosError } from "axios";
 import api from "@shared/api/client";
 import type { AvailableStaff, Task } from "@shared/types";
+
+const REQUIRED_SHIFT_ROLE: Record<string, "indexer" | "qa" | undefined> = {
+  indexing: "indexer",
+  qa: "qa",
+};
 
 interface Props { projectId: number; shiftId?: number }
 
@@ -35,6 +41,8 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
       setSelected([]);
       qc.invalidateQueries({ queryKey: ["stale-tasks"] });
     },
+    onError: (e: AxiosError<{ detail: string }>) =>
+      message.error(e.response?.data?.detail ?? "Failed to reassign tasks"),
   });
 
   const singleMutation = useMutation({
@@ -44,6 +52,8 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
       qc.invalidateQueries({ queryKey: ["stale-tasks"] });
       message.success("Reassigned");
     },
+    onError: (e: AxiosError<{ detail: string }>) =>
+      message.error(e.response?.data?.detail ?? "Failed to reassign task"),
   });
 
   const columns = [
@@ -69,15 +79,21 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     {
       title: "Reassign",
       key: "action",
-      render: (_: unknown, t: Task) => (
-        <Select
-          placeholder="Assign to..."
-          size="small"
-          style={{ width: 160 }}
-          options={staff?.map((s) => ({ label: s.full_name, value: s.id }))}
-          onChange={(agentId) => singleMutation.mutate({ taskId: t.id, agentId })}
-        />
-      ),
+      render: (_: unknown, t: Task) => {
+        const requiredRole = REQUIRED_SHIFT_ROLE[t.task_type];
+        const eligible = requiredRole
+          ? staff?.filter((s) => s.shift_role === requiredRole)
+          : staff;
+        return (
+          <Select
+            placeholder="Assign to..."
+            size="small"
+            style={{ width: 160 }}
+            options={eligible?.map((s) => ({ label: s.full_name, value: s.id }))}
+            onChange={(agentId) => singleMutation.mutate({ taskId: t.id, agentId })}
+          />
+        );
+      },
     },
   ];
 

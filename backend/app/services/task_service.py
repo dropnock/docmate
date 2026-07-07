@@ -5,11 +5,11 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditAction, AuditEntityType
-from app.models.batch import Batch
+from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.project import Project
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service
+from app.services import audit_service, staff_assignment_service
 from app.services.lock_service import acquire_lock, release_lock
 
 
@@ -30,6 +30,10 @@ async def assign_task(
     tenant_id: int,
 ) -> Task:
     stale_hours = await _get_stale_hours(db, batch_id)
+    batch = await db.get(Batch, batch_id)
+    await staff_assignment_service.require_shift_role_for_task_type(
+        db, user_id=agent_id, project_id=batch.project_id, task_type=task_type,
+    )
     task = Task(
         record_id=record_id,
         batch_id=batch_id,
@@ -42,7 +46,6 @@ async def assign_task(
     db.add(task)
     await db.flush()
 
-    batch = await db.get(Batch, batch_id)
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
@@ -216,6 +219,11 @@ async def reassign_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    batch = await db.get(Batch, task.batch_id)
+    await staff_assignment_service.require_shift_role_for_task_type(
+        db, user_id=new_agent_id, project_id=batch.project_id, task_type=task.task_type,
+    )
+
     old_agent = task.assigned_to
     record = await db.get(Record, task.record_id)
 
@@ -339,6 +347,38 @@ async def fail_task(
             db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,
             action=AuditAction.qc_rejected, performed_by=user_id, metadata={"reason": reason},
         )
+
+        # Route the record back through QA for remediation. The original
+        # batch has typically already completed by the time customer QC
+        # rejects it, and assign_qa_agent only ever looks at unassigned QA
+        # tasks in a batch whose status is qa_review — so a fresh small
+        # batch is created (same convention as create_indexing_batch: new
+        # assignable work gets its own batch) to make this record
+        # immediately assignable to a QA agent via the existing UI.
+        original_batch = await db.get(Batch, task.batch_id)
+        stale_hours = await _get_stale_hours(db, task.batch_id)
+        rework_batch = Batch(
+            project_id=original_batch.project_id,
+            cabinet_id=original_batch.cabinet_id,
+            document_type_id=original_batch.document_type_id,
+            name="",
+            batch_type=BatchType.indexing,
+            status=BatchStatus.qa_review,
+        )
+        db.add(rework_batch)
+        await db.flush()
+        rework_batch.name = f"QC Rework {rework_batch.id} — Record {record.id}"
+        record.batch_id = rework_batch.id
+        db.add(Task(
+            record_id=record.id,
+            batch_id=rework_batch.id,
+            task_type=TaskType.qa,
+            assigned_to=None,
+            assigned_by=user_id,
+            status=TaskStatus.pending,
+            due_at=datetime.now(timezone.utc) + timedelta(hours=stale_hours),
+        ))
+
         await db.flush()
         await _maybe_finalise_lot(db, record=record, tenant_id=tenant_id)
 

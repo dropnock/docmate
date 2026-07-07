@@ -109,17 +109,21 @@ export interface Task {
   processing_time_seconds: number | null;
 }
 
-export interface StaffMetric {
-  user_id: number;
-  full_name: string;
-  email: string;
-  role: string;
+export interface TaskTypeMetrics {
   total_records_processed: number;
   records_today: number;
   avg_processing_time_seconds: number;
   error_rate: number;
   stale_task_count: number;
   tasks_in_progress: number;
+}
+
+export interface StaffMetric {
+  user_id: number;
+  full_name: string;
+  email: string;
+  indexing: TaskTypeMetrics;
+  qa: TaskTypeMetrics;
 }
 
 export interface ProjectKPIs {
@@ -205,6 +209,21 @@ export interface AvailableStaff {
   full_name: string;
   email: string;
   role: string;
+  shift_role: "indexer" | "qa" | null;
+}
+
+export interface BucketedStaffMember {
+  assignment_id: number;
+  user_id: number;
+  full_name: string;
+  email: string;
+  has_active_work: boolean;
+}
+
+export interface StaffBuckets {
+  unassigned: BucketedStaffMember[];
+  indexer: BucketedStaffMember[];
+  qa: BucketedStaffMember[];
 }
 
 export interface DocumentType {

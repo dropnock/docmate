@@ -1,9 +1,15 @@
+import enum
 from datetime import time
 
-from sqlalchemy import ForeignKey, String, Time
+from sqlalchemy import Enum, ForeignKey, String, Time
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+
+
+class ShiftRole(str, enum.Enum):
+    indexer = "indexer"
+    qa = "qa"
 
 
 class Shift(Base, TimestampMixin):
@@ -39,6 +45,7 @@ class UserProjectAssignment(Base, TimestampMixin):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), nullable=False, index=True)
     shift_id: Mapped[int] = mapped_column(ForeignKey("shifts.id"), nullable=False)
+    shift_role: Mapped[ShiftRole | None] = mapped_column(Enum(ShiftRole), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="project_assignments")

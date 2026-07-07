@@ -9,8 +9,9 @@ from app.models.base import Base, TimestampMixin
 class UserRole(str, enum.Enum):
     admin = "admin"
     de_supervisor = "de_supervisor"
-    de_indexer = "de_indexer"
-    de_qa_agent = "de_qa_agent"
+    de_staff = "de_staff"
+    de_indexer = "de_indexer"      # deprecated: collapsed into de_staff, kept only because Postgres enum values can't be dropped
+    de_qa_agent = "de_qa_agent"    # deprecated: collapsed into de_staff, kept only because Postgres enum values can't be dropped
     customer_supervisor = "customer_supervisor"
     customer_qc_agent = "customer_qc_agent"
 

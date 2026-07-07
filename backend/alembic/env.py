@@ -37,7 +37,13 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # transaction_per_migration: some migrations use `ALTER TYPE ... ADD VALUE`
+    # followed by a later migration that uses the new value — Postgres requires
+    # the ADD VALUE to be committed before it can be referenced, which only
+    # happens if each migration gets its own transaction.
+    context.configure(
+        connection=connection, target_metadata=target_metadata, transaction_per_migration=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

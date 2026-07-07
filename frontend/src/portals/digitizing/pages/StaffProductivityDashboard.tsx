@@ -1,4 +1,4 @@
-import { Card, DatePicker, Select, Typography } from "antd";
+import { Card, DatePicker, Select, Tabs, Typography } from "antd";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@shared/api/client";
@@ -42,7 +42,20 @@ export default function StaffProductivityDashboard({ projectId }: Props) {
           onChange={(d) => d && setDate(d.format("YYYY-MM-DD"))}
         />
       </div>
-      <ProductivityTable data={data ?? []} loading={isLoading} />
+      <Tabs
+        items={[
+          {
+            key: "indexing",
+            label: "Indexing",
+            children: <ProductivityTable data={data ?? []} loading={isLoading} taskType="indexing" />,
+          },
+          {
+            key: "qa",
+            label: "QA",
+            children: <ProductivityTable data={data ?? []} loading={isLoading} taskType="qa" />,
+          },
+        ]}
+      />
     </Card>
   );
 }

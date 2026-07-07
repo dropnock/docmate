@@ -17,6 +17,10 @@ htmlcov/
 .env.*
 !.env.example
 
+# Self-signed local dev TLS cert (regenerate via nginx/certs/generate.sh)
+nginx/certs/dev.crt
+nginx/certs/dev.key
+
 # Alembic — commit each migration file individually
 # (leave blank — we want to track versions/)
 

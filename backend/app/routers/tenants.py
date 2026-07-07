@@ -179,11 +179,21 @@ async def list_projects(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    from app.models.user import Portal
+    from app.models.shift import UserProjectAssignment
+    from app.models.user import Portal, UserRole
 
     query = select(Project).where(Project.tenant_id == current_user._tenant_id)
     if current_user.portal == Portal.customer:
         query = query.where(Project.customer_org_id == current_user.organization_id)
+    elif current_user.role == UserRole.de_staff:
+        # Indexers/QA only see projects they're on the roster for — not every
+        # project in the tenant like supervisors/admins do.
+        query = query.join(
+            UserProjectAssignment,
+            (UserProjectAssignment.project_id == Project.id)
+            & (UserProjectAssignment.user_id == current_user.id)
+            & (UserProjectAssignment.is_active == True),  # noqa: E712
+        ).distinct()
     result = await db.execute(query)
     return list(result.scalars().all())
 

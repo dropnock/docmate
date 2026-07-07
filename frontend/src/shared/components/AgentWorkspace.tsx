@@ -1,5 +1,5 @@
 import { Alert, Badge, Button, Space, Spin, Typography, message } from "antd";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
@@ -101,28 +101,48 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const isLockedByOther = record?.locked_by && record.locked_by !== task.assigned_to;
   const isMyTask = localStatus === "in_progress";
 
-  const startLabel =
-    task.task_type === "qa" ? "Start Quality Check"
-    : task.task_type === "qc" ? "Start Quality Control"
-    : "Start Indexing";
-
   const workspaceLabel =
     task.task_type === "qa" ? "Quality Check"
     : task.task_type === "qc" ? "Quality Control"
     : "Data Entry";
 
-  // ─── Pending: show start button ─────────────────────────────────────────
+  // Opening a pending task immediately starts it — no separate "Start" click
+  // inside the workspace. Guard with a ref so this fires exactly once even
+  // if the component re-renders before the mutation settles.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (localStatus === "pending" && !autoStarted.current) {
+      autoStarted.current = true;
+      startMutation.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [localStatus]);
+
+  // ─── Pending: starting automatically ────────────────────────────────────
   if (localStatus === "pending") {
     return (
       <div style={{ padding: 24 }}>
         <Typography.Title level={4}>Record #{task.record_id}</Typography.Title>
-        <Button
-          type="primary"
-          onClick={() => startMutation.mutate()}
-          loading={startMutation.isPending}
-        >
-          {startLabel}
-        </Button>
+        {startMutation.isError ? (
+          <Space direction="vertical">
+            <Typography.Text type="danger">
+              {(startMutation.error as { response?: { data?: { detail?: string } } })
+                ?.response?.data?.detail ?? "Failed to start task"}
+            </Typography.Text>
+            <Button
+              type="primary"
+              onClick={() => startMutation.mutate()}
+              loading={startMutation.isPending}
+            >
+              Retry
+            </Button>
+          </Space>
+        ) : (
+          <Space>
+            <Spin />
+            <Typography.Text>Starting {workspaceLabel.toLowerCase()}…</Typography.Text>
+          </Space>
+        )}
       </div>
     );
   }

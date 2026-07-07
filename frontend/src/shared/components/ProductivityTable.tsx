@@ -1,6 +1,6 @@
-import { Badge, Table, Tag, Typography } from "antd";
+import { Badge, Table, Tag } from "antd";
 import type { ColumnType } from "antd/es/table";
-import type { StaffMetric } from "@shared/types";
+import type { StaffMetric, TaskTypeMetrics } from "@shared/types";
 
 function fmtTime(secs: number) {
   if (!secs) return "—";
@@ -12,11 +12,13 @@ function fmtTime(secs: number) {
 interface Props {
   data: StaffMetric[];
   loading: boolean;
+  taskType: "indexing" | "qa";
 }
 
-const columns: ColumnType<StaffMetric>[] = [
+type Row = { user_id: number; full_name: string; email: string } & TaskTypeMetrics;
+
+const columns: ColumnType<Row>[] = [
   { title: "Name", dataIndex: "full_name", key: "name" },
-  { title: "Role", dataIndex: "role", key: "role", render: (r) => <Tag>{r}</Tag> },
   { title: "Today", dataIndex: "records_today", key: "today", sorter: (a, b) => a.records_today - b.records_today },
   { title: "Total", dataIndex: "total_records_processed", key: "total", sorter: (a, b) => a.total_records_processed - b.total_records_processed },
   { title: "Avg Time", dataIndex: "avg_processing_time_seconds", key: "avg", render: fmtTime },
@@ -43,12 +45,19 @@ const columns: ColumnType<StaffMetric>[] = [
   },
 ];
 
-export default function ProductivityTable({ data, loading }: Props) {
+export default function ProductivityTable({ data, loading, taskType }: Props) {
+  const rows: Row[] = data.map((d) => ({
+    user_id: d.user_id,
+    full_name: d.full_name,
+    email: d.email,
+    ...d[taskType],
+  }));
+
   return (
     <Table
       rowKey="user_id"
       columns={columns}
-      dataSource={data}
+      dataSource={rows}
       loading={loading}
       size="middle"
       pagination={{ pageSize: 20 }}

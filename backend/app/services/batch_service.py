@@ -9,7 +9,7 @@ from app.models.batch import Batch, BatchStatus
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service, aql_service
+from app.services import audit_service, aql_service, staff_assignment_service
 
 
 async def submit_batch(
@@ -228,6 +228,10 @@ async def assign_qa_agent(
     batch = await db.get(Batch, batch_id)
     if not batch or batch.status != BatchStatus.qa_review:
         raise HTTPException(status_code=400, detail="Batch must be in qa_review to assign QA agent")
+
+    await staff_assignment_service.require_shift_role_for_task_type(
+        db, user_id=agent_id, project_id=batch.project_id, task_type=TaskType.qa,
+    )
 
     project = await db.get(Project, batch.project_id)
     stale_hours = project.stale_threshold_hours if project else 24

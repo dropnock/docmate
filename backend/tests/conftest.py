@@ -3,13 +3,16 @@
 Uses SQLite in-memory so tests need no running PostgreSQL instance.
 Each test gets a fresh database (function-scoped engine).
 """
+from datetime import time
+
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
+from jose import jwt as jose_jwt
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.core.security as security_module  # noqa — patched below for tests
 import app.models  # noqa — register all models with Base
 from app.core.database import get_db
-from app.core.security import create_access_token, get_password_hash
 from app.main import app
 from app.models import (
     AQLConfig,
@@ -29,8 +32,23 @@ from app.models import (
     User,
     UserRole,
 )
+from app.models.shift import Shift, ShiftRole, UserProjectAssignment
 
 _SQLITE_URL = "sqlite+aiosqlite:///:memory:"
+
+_TEST_JWT_SECRET = "test-secret"
+
+
+async def _fake_verify_token(token: str, realm_slug: str) -> dict:
+    """Test double for security._verify_token — skips the real JWKS fetch and
+    RS256 signature check (no live Keycloak in tests) but trusts the claims
+    the test itself embedded via token(), below. All of get_current_user's
+    real logic (realm→portal derivation, X-Portal check, DB lookup by
+    keycloak_sub) still runs unmodified."""
+    return jose_jwt.get_unverified_claims(token)
+
+
+security_module._verify_token = _fake_verify_token
 
 
 @pytest_asyncio.fixture
@@ -61,30 +79,35 @@ async def seed(db: AsyncSession):
 
     admin = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="admin@test.com",
-        hashed_password=get_password_hash("pass123"), full_name="Admin",
+        keycloak_sub="sub-admin", full_name="Admin",
         role=UserRole.admin, portal=Portal.digitizing, is_active=True,
     )
     supervisor = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="sup@test.com",
-        hashed_password=get_password_hash("pass123"), full_name="Supervisor",
+        keycloak_sub="sub-supervisor", full_name="Supervisor",
         role=UserRole.de_supervisor, portal=Portal.digitizing, is_active=True,
     )
     indexer = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="indexer@test.com",
-        hashed_password=get_password_hash("pass123"), full_name="Indexer One",
-        role=UserRole.de_indexer, portal=Portal.digitizing, is_active=True,
+        keycloak_sub="sub-indexer", full_name="Indexer One",
+        role=UserRole.de_staff, portal=Portal.digitizing, is_active=True,
     )
     indexer2 = User(
         tenant_id=tenant.id, organization_id=de_org.id, email="indexer2@test.com",
-        hashed_password=get_password_hash("pass123"), full_name="Indexer Two",
-        role=UserRole.de_indexer, portal=Portal.digitizing, is_active=True,
+        keycloak_sub="sub-indexer2", full_name="Indexer Two",
+        role=UserRole.de_staff, portal=Portal.digitizing, is_active=True,
+    )
+    qa_staff = User(
+        tenant_id=tenant.id, organization_id=de_org.id, email="qastaff@test.com",
+        keycloak_sub="sub-qastaff", full_name="QA Staff",
+        role=UserRole.de_staff, portal=Portal.digitizing, is_active=True,
     )
     qc_agent = User(
         tenant_id=tenant.id, organization_id=cust_org.id, email="qc@test.com",
-        hashed_password=get_password_hash("pass123"), full_name="QC Agent",
+        keycloak_sub="sub-qcagent", full_name="QC Agent",
         role=UserRole.customer_qc_agent, portal=Portal.customer, is_active=True,
     )
-    db.add_all([admin, supervisor, indexer, indexer2, qc_agent])
+    db.add_all([admin, supervisor, indexer, indexer2, qa_staff, qc_agent])
     await db.flush()
 
     project = Project(
@@ -93,6 +116,29 @@ async def seed(db: AsyncSession):
         s3_bucket_status=S3BucketStatus.ready,
     )
     db.add(project)
+    await db.flush()
+
+    shift = Shift(
+        tenant_id=tenant.id, name="Day Shift",
+        start_time=time(9, 0), end_time=time(17, 0),
+    )
+    db.add(shift)
+    await db.flush()
+
+    db.add_all([
+        UserProjectAssignment(
+            user_id=indexer.id, project_id=project.id, shift_id=shift.id,
+            shift_role=ShiftRole.indexer, is_active=True,
+        ),
+        UserProjectAssignment(
+            user_id=indexer2.id, project_id=project.id, shift_id=shift.id,
+            shift_role=ShiftRole.indexer, is_active=True,
+        ),
+        UserProjectAssignment(
+            user_id=qa_staff.id, project_id=project.id, shift_id=shift.id,
+            shift_role=ShiftRole.qa, is_active=True,
+        ),
+    ])
     await db.flush()
 
     aql_config = AQLConfig(
@@ -126,19 +172,20 @@ async def seed(db: AsyncSession):
     return {
         "tenant": tenant, "de_org": de_org, "cust_org": cust_org,
         "admin": admin, "supervisor": supervisor,
-        "indexer": indexer, "indexer2": indexer2, "qc_agent": qc_agent,
-        "project": project, "aql_config": aql_config, "doc_type": doc_type,
+        "indexer": indexer, "indexer2": indexer2, "qa_staff": qa_staff, "qc_agent": qc_agent,
+        "project": project, "shift": shift, "aql_config": aql_config, "doc_type": doc_type,
         "batch": batch, "record": record, "record2": record2,
     }
 
 
 def token(user: User, portal_override: str | None = None) -> str:
-    return create_access_token(
-        user_id=user.id,
-        tenant_id=user.tenant_id,
-        portal=portal_override or user.portal.value,
-        role=user.role.value,
-    )
+    """Builds a JWT-shaped token with the claims get_current_user actually reads
+    (sub, iss) — portal is derived from the realm in `iss`, exactly as in prod.
+    Signature is not checked in tests (see _fake_verify_token above)."""
+    portal = portal_override or user.portal.value
+    realm_slug = "doc" if portal == "digitizing" else "customer-test-realm"
+    claims = {"sub": user.keycloak_sub, "iss": f"http://keycloak.local/realms/{realm_slug}"}
+    return jose_jwt.encode(claims, _TEST_JWT_SECRET, algorithm="HS256")
 
 
 @pytest_asyncio.fixture
