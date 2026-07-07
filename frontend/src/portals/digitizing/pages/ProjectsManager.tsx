@@ -2,18 +2,20 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Table, Button, Modal, Form, Input, InputNumber,
-  DatePicker, Select, Tag, message, Space,
+  DatePicker, Select, message, Space,
 } from "antd";
-import { PlusOutlined, FolderOpenOutlined, EditOutlined } from "@ant-design/icons";
+import { Plus, FolderOpen, Pencil } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import api from "@shared/api/client";
+import { useProjects } from "@shared/hooks/useProjects";
+import StatusDot from "@shared/components/StatusDot";
 import type { Project, Organization } from "@shared/types";
 
-const STATUS_COLOR: Record<string, string> = {
-  ready: "green",
-  provisioning: "gold",
-  error: "red",
+const STATUS_LABEL: Record<string, string> = {
+  ready: "Ready",
+  provisioning: "Provisioning",
+  error: "Error",
 };
 
 interface Props {
@@ -29,10 +31,7 @@ export default function ProjectsManager({ onOpen }: Props) {
   const [editForm] = Form.useForm();
   const qc = useQueryClient();
 
-  const { data: projects = [], isLoading } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
+  const { data: projects = [], isLoading } = useProjects();
 
   const { data: orgs = [] } = useQuery<Organization[]>({
     queryKey: ["organizations"],
@@ -129,7 +128,7 @@ export default function ProjectsManager({ onOpen }: Props) {
       dataIndex: "s3_bucket_status",
       key: "s3_bucket_status",
       width: 100,
-      render: (v: string) => <Tag color={STATUS_COLOR[v] ?? "default"}>{v}</Tag>,
+      render: (v: string) => <StatusDot filled={v === "ready"} label={STATUS_LABEL[v] ?? v} />,
     },
     {
       title: "",
@@ -141,7 +140,7 @@ export default function ProjectsManager({ onOpen }: Props) {
             <Button
               size="small"
               type="primary"
-              icon={<FolderOpenOutlined />}
+              icon={<FolderOpen size={14} />}
               onClick={() => onOpen(project.id)}
             >
               Open
@@ -149,7 +148,7 @@ export default function ProjectsManager({ onOpen }: Props) {
           )}
           <Button
             size="small"
-            icon={<EditOutlined />}
+            icon={<Pencil size={14} />}
             onClick={() => openEdit(project)}
           >
             Edit
@@ -161,9 +160,9 @@ export default function ProjectsManager({ onOpen }: Props) {
 
   return (
     <>
-      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
+      <Space wrap style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Projects</span>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+        <Button type="primary" icon={<Plus size={16} />} onClick={() => setCreateOpen(true)}>
           New Project
         </Button>
       </Space>

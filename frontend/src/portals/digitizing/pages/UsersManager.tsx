@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Table, Button, Modal, Form, Input, Select,
-  Tag, message, Badge, Space, Popconfirm,
+  Card, Table, Button, Modal, Form, Input, Select,
+  Tag, message, Space, Popconfirm,
 } from "antd";
-import { PlusOutlined, EditOutlined } from "@ant-design/icons";
+import { Plus, Pencil } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
+import PageHeader from "@shared/components/PageHeader";
+import StatusDot from "@shared/components/StatusDot";
 import type { Organization, UserRecord } from "@shared/types";
 
 const ROLES = [
@@ -21,14 +23,6 @@ const PORTALS = [
   { value: "digitizing", label: "Digitizing" },
   { value: "customer", label: "Customer" },
 ];
-
-const ROLE_COLOR: Record<string, string> = {
-  admin: "red",
-  de_supervisor: "blue",
-  de_staff: "cyan",
-  customer_supervisor: "purple",
-  customer_qc_agent: "magenta",
-};
 
 function formatDetail(detail: unknown): string {
   if (typeof detail === "string") return detail;
@@ -126,19 +120,14 @@ export default function UsersManager() {
       title: "Role",
       dataIndex: "role",
       key: "role",
-      render: (v: string) => <Tag color={ROLE_COLOR[v] ?? "default"}>{v.replace(/_/g, " ")}</Tag>,
+      render: (v: string) => <Tag>{v.replace(/_/g, " ")}</Tag>,
     },
     { title: "Portal", dataIndex: "portal", key: "portal" },
     {
       title: "Status",
       dataIndex: "is_active",
       key: "is_active",
-      render: (v: boolean) =>
-        v ? (
-          <Badge status="success" text="Active" />
-        ) : (
-          <Badge status="default" text="Inactive" />
-        ),
+      render: (v: boolean) => <StatusDot filled={v} label={v ? "Active" : "Inactive"} />,
     },
     {
       title: "Actions",
@@ -148,7 +137,7 @@ export default function UsersManager() {
         <Space>
           <Button
             size="small"
-            icon={<EditOutlined />}
+            icon={<Pencil size={14} />}
             onClick={() => openEdit(record)}
           >
             Edit
@@ -177,21 +166,25 @@ export default function UsersManager() {
 
   return (
     <>
-      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 20, fontWeight: 600 }}>Users</span>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
-          New User
-        </Button>
-      </Space>
-
-      <Input.Search
-        placeholder="Search by name, email, role or portal…"
-        allowClear
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ marginBottom: 16, maxWidth: 420 }}
+      <PageHeader
+        title="Users"
+        extra={
+          <Button type="primary" icon={<Plus size={16} />} onClick={() => setCreateOpen(true)}>
+            New User
+          </Button>
+        }
       />
 
-      <Table dataSource={filteredUsers} columns={columns} rowKey="id" loading={isLoading} />
+      <Card>
+        <Input.Search
+          placeholder="Search by name, email, role or portal…"
+          allowClear
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ marginBottom: 16, maxWidth: 420 }}
+        />
+
+        <Table dataSource={filteredUsers} columns={columns} rowKey="id" loading={isLoading} scroll={{ x: "max-content" }} />
+      </Card>
 
       {/* Create user modal */}
       <Modal

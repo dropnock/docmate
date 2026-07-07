@@ -1,26 +1,39 @@
-import { useState, useEffect } from "react";
-import { Layout, Menu, Typography, Button, Select, Space, Spin, Result } from "antd";
-import { ProjectOutlined, CheckCircleOutlined, HistoryOutlined, InboxOutlined } from "@ant-design/icons";
-import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { lazy, Suspense, useState, useEffect } from "react";
+import { Drawer, Layout, Menu, Spin, Result } from "antd";
+import { BarChart3, CheckCircle2, History, List } from "lucide-react";
+import { useQuery, QueryClientProvider } from "@tanstack/react-query";
+import { createQueryClient } from "@shared/query/queryClient";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { initKeycloak, logout } from "@shared/api/keycloak";
-import ProjectKPIDashboard from "../digitizing/pages/ProjectKPIDashboard";
-import RecordHistory from "../digitizing/pages/RecordHistory";
-import QCWorkspace from "./pages/QCWorkspace";
-import CustomerLotManager from "./pages/CustomerLotManager";
+import ProjectScopedRoute from "@shared/routing/ProjectScopedRoute";
+import PageSkeleton from "@shared/components/PageSkeleton";
+import AppHeader from "@shared/components/AppHeader";
 import api from "@shared/api/client";
-import type { Project, UserRecord } from "@shared/types";
+import type { UserRecord } from "@shared/types";
 
-const { Header, Sider, Content } = Layout;
-const queryClient = new QueryClient();
+const ProjectKPIDashboard = lazy(() => import("../digitizing/pages/ProjectKPIDashboard"));
+const RecordHistory = lazy(() => import("../digitizing/pages/RecordHistory"));
+const QCWorkspace = lazy(() => import("./pages/QCWorkspace"));
+const CustomerLotManager = lazy(() => import("./pages/CustomerLotManager"));
+
+const { Sider, Content } = Layout;
+const queryClient = createQueryClient();
 
 const NAV_ITEMS = [
-  { key: "lots", label: "Lots", icon: <InboxOutlined /> },
-  { key: "qc", label: "QC Workspace", icon: <CheckCircleOutlined /> },
-  { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
-  { key: "history", label: "Record History", icon: <HistoryOutlined /> },
+  { key: "/lots", label: "Lots", icon: <List size={16} /> },
+  { key: "/qc", label: "QC Workspace", icon: <CheckCircle2 size={16} /> },
+  { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
+  { key: "/history", label: "Record History", icon: <History size={16} /> },
 ];
 
-const PROJECT_SCOPED = new Set(["kpi", "history", "lots"]);
+const FULL_BLEED_ROUTES = new Set(["/qc"]);
 
 function getSubdomain(): string | null {
   const parts = window.location.hostname.split(".");
@@ -28,73 +41,103 @@ function getSubdomain(): string | null {
 }
 
 function AppInner() {
-  const [page, setPage] = useState("qc");
-  const [projectId, setProjectId] = useState<number | null>(null);
+  const [siderCollapsed, setSiderCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const { data: user } = useQuery<UserRecord>({
     queryKey: ["me"],
     queryFn: () => api.get("/users/me").then((r) => r.data),
   });
 
-  const { data: projects = [] } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
-
-  const showProjectSelector = PROJECT_SCOPED.has(page);
+  const isWorkspacePage = FULL_BLEED_ROUTES.has(location.pathname);
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography.Title level={4} style={{ color: "white", margin: 0 }}>
-          DocMate — Customer Portal
-        </Typography.Title>
-        <Space>
-          {user && (
-            <Typography.Text style={{ color: "rgba(255,255,255,0.65)" }}>
-              {user.full_name}
-            </Typography.Text>
-          )}
-          <Button onClick={logout} type="text" style={{ color: "white" }}>
-            Sign Out
-          </Button>
-        </Space>
-      </Header>
+      <AppHeader
+        portalLabel="Customer Portal"
+        userName={user?.full_name}
+        onSignOut={logout}
+        mobileNavOpen={mobileNavOpen}
+        onToggleMobileNav={() => setMobileNavOpen((v) => !v)}
+      />
       <Layout>
-        <Sider width={220} theme="light">
+        <Sider
+          className="docmate-desktop-sider"
+          width={220}
+          collapsedWidth={64}
+          collapsible
+          collapsed={siderCollapsed}
+          onCollapse={(v) => setSiderCollapsed(v)}
+          theme="light"
+        >
           <Menu
             mode="inline"
-            selectedKeys={[page]}
+            selectedKeys={[location.pathname]}
             items={NAV_ITEMS}
-            onClick={({ key }) => setPage(key)}
+            onClick={({ key }) => navigate(`${key}${location.search}`)}
+            style={{ paddingTop: 8 }}
           />
         </Sider>
-        <Content style={{ padding: page === "qc" ? 0 : 24 }}>
-          {showProjectSelector && (
-            <div style={{ marginBottom: 20 }}>
-              <Space>
-                <span style={{ color: "#595959" }}>Project:</span>
-                <Select
-                  placeholder="Select project"
-                  style={{ width: 220 }}
-                  value={projectId}
-                  onChange={setProjectId}
-                  options={projects.map((p) => ({ value: p.id, label: p.name }))}
-                />
-              </Space>
-            </div>
-          )}
-          {page === "lots" && projectId && (
-            <CustomerLotManager projectId={projectId} role={user?.role ?? ""} />
-          )}
-          {page === "qc" && <QCWorkspace />}
-          {page === "kpi" && projectId && <ProjectKPIDashboard projectId={projectId} />}
-          {showProjectSelector && !projectId && (
-            <div style={{ color: "#8c8c8c", textAlign: "center", marginTop: 40 }}>
-              Select a project above to continue.
-            </div>
-          )}
-          {page === "history" && projectId && <RecordHistory projectId={projectId} />}
+
+        <Drawer
+          placement="left"
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          closable={false}
+          width={260}
+          styles={{ body: { padding: 0 } }}
+        >
+          <Menu
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            items={NAV_ITEMS}
+            onClick={({ key }) => {
+              navigate(`${key}${location.search}`);
+              setMobileNavOpen(false);
+            }}
+            style={{ paddingTop: 8 }}
+          />
+        </Drawer>
+
+        <Content
+          className={isWorkspacePage ? undefined : "docmate-content-pad"}
+          style={{ padding: isWorkspacePage ? 0 : undefined }}
+        >
+          <Suspense fallback={<PageSkeleton />}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/qc" replace />} />
+              <Route
+                path="/lots"
+                element={
+                  <ProjectScopedRoute>
+                    {(projectId) => (
+                      <CustomerLotManager projectId={projectId} role={user?.role ?? ""} />
+                    )}
+                  </ProjectScopedRoute>
+                }
+              />
+              <Route path="/qc" element={<QCWorkspace />} />
+              <Route
+                path="/kpis"
+                element={
+                  <ProjectScopedRoute>
+                    {(projectId) => <ProjectKPIDashboard projectId={projectId} />}
+                  </ProjectScopedRoute>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <ProjectScopedRoute>
+                    {(projectId) => <RecordHistory projectId={projectId} />}
+                  </ProjectScopedRoute>
+                }
+              />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </Content>
       </Layout>
     </Layout>
@@ -146,7 +189,9 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppInner />
+      <BrowserRouter>
+        <AppInner />
+      </BrowserRouter>
     </QueryClientProvider>
   );
 }

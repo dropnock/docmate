@@ -6,20 +6,24 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Cabinet, CabinetRecord, Lot, LotDetail } from "@shared/types";
+import { useCabinets } from "@shared/hooks/useCabinets";
+import StatusDot from "@shared/components/StatusDot";
+import type { CabinetRecord, Lot, LotDetail } from "@shared/types";
 
 interface Props {
   projectId: number;
 }
 
-const LOT_STATUS_COLOR: Record<string, string> = {
-  draft: "default",
-  released: "blue",
-  qc_in_progress: "processing",
-  passed: "success",
-  failed: "error",
-  remediation: "warning",
+const LOT_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  released: "Released",
+  qc_in_progress: "QC In Progress",
+  passed: "Passed",
+  failed: "Failed",
+  remediation: "Remediation",
 };
+
+const LOT_STATUS_FILLED = new Set(["passed"]);
 
 export default function LotManager({ projectId }: Props) {
   const qc = useQueryClient();
@@ -36,10 +40,7 @@ export default function LotManager({ projectId }: Props) {
   });
 
   // One cabinet per project — auto-load
-  const { data: cabinets = [] } = useQuery<Cabinet[]>({
-    queryKey: ["cabinets", projectId],
-    queryFn: () => api.get(`/cabinets/project/${projectId}`).then((r) => r.data),
-  });
+  const { data: cabinets = [] } = useCabinets(projectId);
   const cabinet = cabinets[0];
 
   // QA-passed records in the project cabinet
@@ -96,7 +97,7 @@ export default function LotManager({ projectId }: Props) {
       title: "Status",
       dataIndex: "status",
       render: (s: string) => (
-        <Tag color={LOT_STATUS_COLOR[s] ?? "default"}>{s.replace(/_/g, " ")}</Tag>
+        <StatusDot filled={LOT_STATUS_FILLED.has(s)} label={LOT_STATUS_LABEL[s] ?? s.replace(/_/g, " ")} />
       ),
     },
     {
@@ -140,7 +141,7 @@ export default function LotManager({ projectId }: Props) {
     {
       title: "Sampled",
       dataIndex: "is_sampled",
-      render: (v: boolean) => v ? <Tag color="blue">Yes</Tag> : "—",
+      render: (v: boolean) => v ? <StatusDot filled label="Yes" /> : "—",
     },
   ];
 
@@ -251,9 +252,10 @@ export default function LotManager({ projectId }: Props) {
           <>
             <Row gutter={16} style={{ marginBottom: 16 }}>
               <Col>
-                <Tag color={LOT_STATUS_COLOR[lotDetail.status] ?? "default"} style={{ fontSize: 14 }}>
-                  {lotDetail.status.replace(/_/g, " ")}
-                </Tag>
+                <StatusDot
+                  filled={LOT_STATUS_FILLED.has(lotDetail.status)}
+                  label={LOT_STATUS_LABEL[lotDetail.status] ?? lotDetail.status.replace(/_/g, " ")}
+                />
               </Col>
               {lotDetail.accuracy_rate !== null && (
                 <Col>

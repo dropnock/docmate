@@ -4,20 +4,13 @@ import {
   Button, Card, Col, Drawer, Input, Row, Select, Tag, message,
   Space, Empty, Typography, Segmented, Badge, Tooltip,
 } from "antd";
-import { UserAddOutlined } from "@ant-design/icons";
+import { UserPlus } from "lucide-react";
 import type { AxiosError } from "axios";
 import type { ColumnsType } from "antd/es/table";
 import { Table } from "antd";
 import api from "@shared/api/client";
-import type { Shift, AvailableStaff, UserRecord, StaffBuckets, BucketedStaffMember } from "@shared/types";
-
-const ROLE_COLOR: Record<string, string> = {
-  de_staff: "blue",
-  de_supervisor: "green",
-  customer_supervisor: "purple",
-  customer_qc_agent: "orange",
-  admin: "red",
-};
+import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
+import type { Shift, UserRecord, StaffBuckets, BucketedStaffMember } from "@shared/types";
 
 const ROLE_LABEL: Record<string, string> = {
   de_staff: "DE Staff",
@@ -80,12 +73,7 @@ export default function StaffAssignment({ projectId }: Props) {
     enabled: !!selectedShiftId,
   });
 
-  const { data: drawerAssigned = [] } = useQuery<AvailableStaff[]>({
-    queryKey: ["available-staff", projectId, drawerShiftId],
-    queryFn: () =>
-      api.get(`/projects/${projectId}/available-staff?shift_id=${drawerShiftId}`).then((r) => r.data),
-    enabled: !!drawerShiftId,
-  });
+  const { data: drawerAssigned = [] } = useAvailableStaff(projectId, drawerShiftId);
 
   const assignStaff = useMutation({
     mutationFn: ({ user_id, shift_id }: { user_id: number; shift_id: number }) =>
@@ -184,8 +172,8 @@ export default function StaffAssignment({ projectId }: Props) {
       dataIndex: "full_name",
       render: (name: string, u: UserRecord) => (
         <Space>
-          <span style={assignedIdSet.has(u.id) ? { color: "#bfbfbf" } : undefined}>{name}</span>
-          {assignedIdSet.has(u.id) && <Tag color="default">Assigned</Tag>}
+          <span style={assignedIdSet.has(u.id) ? { color: "#64748B" } : undefined}>{name}</span>
+          {assignedIdSet.has(u.id) && <Tag>Assigned</Tag>}
         </Space>
       ),
     },
@@ -193,16 +181,14 @@ export default function StaffAssignment({ projectId }: Props) {
       title: "Email",
       dataIndex: "email",
       render: (email: string, u: UserRecord) => (
-        <span style={assignedIdSet.has(u.id) ? { color: "#bfbfbf" } : undefined}>{email}</span>
+        <span style={assignedIdSet.has(u.id) ? { color: "#64748B" } : undefined}>{email}</span>
       ),
     },
     {
       title: "Role",
       dataIndex: "role",
-      render: (v: string, u: UserRecord) => (
-        <Tag color={assignedIdSet.has(u.id) ? "default" : (ROLE_COLOR[v] ?? "default")}>
-          {(ROLE_LABEL[v] ?? v).replace(/_/g, " ")}
-        </Tag>
+      render: (v: string) => (
+        <Tag>{(ROLE_LABEL[v] ?? v).replace(/_/g, " ")}</Tag>
       ),
     },
   ];
@@ -219,7 +205,13 @@ export default function StaffAssignment({ projectId }: Props) {
       render: (name: string, m: BucketedStaffMember) => (
         <Space direction="vertical" size={0} style={{ maxWidth: "100%" }}>
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
-          {m.has_active_work && <Tag color="orange" style={{ marginTop: 2 }}>Active task</Tag>}
+          {m.has_active_work && (
+            <Tag
+              style={{ marginTop: 2, color: "#1E40AF", background: "#EFF6FF", border: "1px solid #1E40AF" }}
+            >
+              Active task
+            </Tag>
+          )}
         </Space>
       ),
     },
@@ -262,9 +254,9 @@ export default function StaffAssignment({ projectId }: Props) {
 
   return (
     <>
-      <Space style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
+      <Space wrap style={{ marginBottom: 16, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Staff Assignment</span>
-        <Button type="primary" icon={<UserAddOutlined />} onClick={openDrawer}>
+        <Button type="primary" icon={<UserPlus size={16} />} onClick={openDrawer}>
           Add Staff
         </Button>
       </Space>
@@ -373,7 +365,7 @@ export default function StaffAssignment({ projectId }: Props) {
 
           {selectedUserIds.length > 0 && (
             <Typography.Text type="secondary">
-              <Badge count={selectedUserIds.length} color="blue" /> user{selectedUserIds.length > 1 ? "s" : ""} selected
+              <Badge count={selectedUserIds.length} color="#1E40AF" /> user{selectedUserIds.length > 1 ? "s" : ""} selected
             </Typography.Text>
           )}
 
@@ -382,6 +374,7 @@ export default function StaffAssignment({ projectId }: Props) {
             columns={userColumns}
             rowKey="id"
             size="small"
+            scroll={{ x: "max-content" }}
             pagination={{ pageSize: 15, showSizeChanger: false }}
             rowSelection={{
               selectedRowKeys: selectedUserIds,

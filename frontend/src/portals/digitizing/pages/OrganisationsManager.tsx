@@ -2,33 +2,75 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Table, Button, Modal, Form, Input, Select,
-  Tag, Space, message, Badge, Drawer, Typography,
+  Space, message, Drawer, Typography,
 } from "antd";
-import { PlusOutlined, DatabaseOutlined, FolderOutlined } from "@ant-design/icons";
+import { Plus, Database, FolderOpen } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
+import { useProjects } from "@shared/hooks/useProjects";
+import StatusDot from "@shared/components/StatusDot";
 import type { Organization, Project } from "@shared/types";
 
 const TYPE_OPTIONS = [
   { value: "customer", label: "Customer" },
 ];
 
-const TYPE_COLOR: Record<string, string> = {
-  digitizing_entity: "blue",
-  customer: "green",
+const TYPE_LABEL: Record<string, string> = {
+  digitizing_entity: "Digitizing Entity",
+  customer: "Customer",
 };
 
-const BUCKET_STATUS_BADGE: Record<string, "success" | "processing" | "error" | "default"> = {
-  ready: "success",
-  provisioning: "processing",
-  error: "error",
+const PROJECT_STATUS_LABEL: Record<string, string> = {
+  ready: "Ready",
+  provisioning: "Provisioning",
+  error: "Error",
 };
 
-const PROJECT_STATUS_COLOR: Record<string, string> = {
-  ready: "green",
-  provisioning: "gold",
-  error: "red",
-};
+/** Type badge — filled primary for the internal entity, outlined primary for
+ * customers. No other colors, per design spec. */
+function TypeBadge({ type }: { type: string }) {
+  const isInternal = type === "digitizing_entity";
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 10px",
+        borderRadius: 6,
+        fontSize: 12,
+        fontWeight: 500,
+        ...(isInternal
+          ? { background: "#1E40AF", color: "#FFFFFF" }
+          : { background: "#FFFFFF", color: "#1E40AF", border: "1px solid #1E40AF" }),
+      }}
+    >
+      {TYPE_LABEL[type] ?? type}
+    </span>
+  );
+}
+
+function BucketStatusDot({ status }: { status: string | null }) {
+  if (!status) return <span style={{ color: "#64748B" }}>—</span>;
+  return <StatusDot filled={status === "ready"} label={PROJECT_STATUS_LABEL[status] ?? status} />;
+}
+
+function CodeChip({ children }: { children: string }) {
+  return (
+    <span
+      className="docmate-code-chip"
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 6,
+        fontSize: 12,
+        color: "#0F172A",
+        background: "#F8FAFC",
+        border: "1px solid #E2E8F0",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
 
 export default function OrganisationsManager() {
   const [search, setSearch] = useState("");
@@ -44,10 +86,7 @@ export default function OrganisationsManager() {
       query.state.data?.some((o) => o.s3_bucket_status === "provisioning") ? 5000 : false,
   });
 
-  const { data: allProjects = [] } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
+  const { data: allProjects = [] } = useProjects();
 
   const create = useMutation({
     mutationFn: (values: Record<string, unknown>) =>
@@ -93,8 +132,8 @@ export default function OrganisationsManager() {
       title: "S3",
       dataIndex: "s3_bucket_status",
       key: "s3_bucket_status",
-      width: 100,
-      render: (v: string) => <Tag color={PROJECT_STATUS_COLOR[v] ?? "default"}>{v}</Tag>,
+      width: 120,
+      render: (v: string) => <BucketStatusDot status={v} />,
     },
   ];
 
@@ -104,27 +143,18 @@ export default function OrganisationsManager() {
       title: "Type",
       dataIndex: "type",
       key: "type",
-      render: (v: string) => (
-        <Tag color={TYPE_COLOR[v] ?? "default"}>
-          {v === "digitizing_entity" ? "Digitizing Entity" : "Customer"}
-        </Tag>
-      ),
+      render: (v: string) => <TypeBadge type={v} />,
     },
     {
       title: "S3 Bucket",
       key: "bucket",
       render: (_: unknown, org: Organization) => {
-        if (!org.s3_bucket_name) return <Tag>—</Tag>;
+        if (!org.s3_bucket_name) return <span style={{ color: "#64748B" }}>—</span>;
         return (
-          <Space>
-            <DatabaseOutlined style={{ color: "#8c8c8c" }} />
-            <span style={{ fontFamily: "monospace", fontSize: 12 }}>{org.s3_bucket_name}</span>
-            {org.s3_bucket_status && (
-              <Badge
-                status={BUCKET_STATUS_BADGE[org.s3_bucket_status] ?? "default"}
-                text={org.s3_bucket_status}
-              />
-            )}
+          <Space size={8}>
+            <Database size={14} color="#64748B" />
+            <CodeChip>{org.s3_bucket_name}</CodeChip>
+            {org.s3_bucket_status && <BucketStatusDot status={org.s3_bucket_status} />}
           </Space>
         );
       },
@@ -134,20 +164,16 @@ export default function OrganisationsManager() {
       dataIndex: "realm_slug",
       key: "realm_slug",
       render: (v: string | null) =>
-        v ? (
-          <Tag color="purple" style={{ fontFamily: "monospace" }}>{v}</Tag>
-        ) : (
-          <Tag>—</Tag>
-        ),
+        v ? <CodeChip>{v}</CodeChip> : <span style={{ color: "#64748B" }}>—</span>,
     },
     {
       title: "",
       key: "actions",
-      width: 110,
+      width: 130,
       render: (_: unknown, org: Organization) => (
         <Button
           size="small"
-          icon={<FolderOutlined />}
+          icon={<FolderOpen size={14} />}
           onClick={(e) => { e.stopPropagation(); setSelectedOrg(org); }}
         >
           Projects
@@ -158,9 +184,9 @@ export default function OrganisationsManager() {
 
   return (
     <>
-      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
-        <span style={{ fontSize: 20, fontWeight: 600 }}>Organisations</span>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>
+      <Space wrap style={{ marginBottom: 32, width: "100%", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 28, fontWeight: 700, color: "#0F172A" }}>Organisations</span>
+        <Button type="primary" icon={<Plus size={16} />} onClick={() => setOpen(true)}>
           New Organisation
         </Button>
       </Space>
@@ -169,22 +195,75 @@ export default function OrganisationsManager() {
         placeholder="Search by name or type…"
         allowClear
         onChange={(e) => setSearch(e.target.value)}
-        style={{ marginBottom: 16, maxWidth: 360 }}
+        style={{ marginBottom: 32, maxWidth: 360 }}
       />
 
-      <Table
-        dataSource={filteredOrgs}
-        columns={columns}
-        rowKey="id"
-        loading={isLoading}
-        onRow={(org) => ({ onClick: () => setSelectedOrg(org), style: { cursor: "pointer" } })}
-      />
+      <div className="docmate-table-view">
+        <Table
+          dataSource={filteredOrgs}
+          columns={columns}
+          rowKey="id"
+          loading={isLoading}
+          onRow={(org) => ({ onClick: () => setSelectedOrg(org), style: { cursor: "pointer" } })}
+          style={{ borderRadius: 12, overflow: "hidden" }}
+        />
+      </div>
+
+      {/* Stacked cards below 768px — no horizontal scrolling */}
+      <div className="docmate-card-view">
+        <Space direction="vertical" size={12} style={{ width: "100%" }}>
+          {filteredOrgs.map((org) => (
+            <div
+              key={org.id}
+              onClick={() => setSelectedOrg(org)}
+              style={{
+                border: "1px solid #E2E8F0",
+                borderRadius: 12,
+                padding: 20,
+                background: "#FFFFFF",
+                cursor: "pointer",
+              }}
+            >
+              <Space wrap style={{ width: "100%", justifyContent: "space-between", marginBottom: 12 }}>
+                <span style={{ fontWeight: 600, color: "#0F172A" }}>{org.name}</span>
+                <TypeBadge type={org.type} />
+              </Space>
+
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>S3 Bucket</div>
+                {org.s3_bucket_name ? (
+                  <Space size={8}>
+                    <CodeChip>{org.s3_bucket_name}</CodeChip>
+                    {org.s3_bucket_status && <BucketStatusDot status={org.s3_bucket_status} />}
+                  </Space>
+                ) : (
+                  <span style={{ color: "#64748B" }}>—</span>
+                )}
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: "#64748B", marginBottom: 4 }}>Realm</div>
+                {org.realm_slug ? <CodeChip>{org.realm_slug}</CodeChip> : <span style={{ color: "#64748B" }}>—</span>}
+              </div>
+
+              <Button
+                block
+                size="small"
+                icon={<FolderOpen size={14} />}
+                onClick={(e) => { e.stopPropagation(); setSelectedOrg(org); }}
+              >
+                Projects
+              </Button>
+            </div>
+          ))}
+        </Space>
+      </div>
 
       {/* Projects drawer */}
       <Drawer
         title={
           <Space>
-            <FolderOutlined />
+            <FolderOpen size={16} />
             <span>Projects — {selectedOrg?.name}</span>
           </Space>
         }
@@ -222,7 +301,7 @@ export default function OrganisationsManager() {
             <Select options={TYPE_OPTIONS} />
           </Form.Item>
         </Form>
-        <div style={{ color: "#8c8c8c", fontSize: 12, marginTop: 8 }}>
+        <div style={{ color: "#64748B", fontSize: 12, marginTop: 8 }}>
           Creating a customer organisation will automatically provision a Keycloak realm and an S3 bucket.
         </div>
       </Modal>

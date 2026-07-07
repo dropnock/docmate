@@ -1,0 +1,87 @@
+@import "antd/dist/reset.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #f8fafc;
+}
+
+code,
+.docmate-code-chip {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.ant-menu-item-group-title {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.docmate-desktop-sider {
+  border-right: 1px solid #e2e8f0;
+}
+
+.docmate-content-pad {
+  padding: 16px;
+}
+
+@media (min-width: 1024px) {
+  .docmate-content-pad {
+    padding: 40px;
+  }
+}
+
+.docmate-card-view {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .docmate-table-view {
+    display: none;
+  }
+  .docmate-card-view {
+    display: block;
+  }
+}
+
+.docmate-mobile-nav-toggle {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .docmate-mobile-nav-toggle {
+    display: inline-flex !important;
+  }
+  .docmate-desktop-sider {
+    display: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .docmate-header-username {
+    display: none !important;
+  }
+}
+
+/* Visible keyboard focus rings on every interactive element, app-wide. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+.ant-menu-item:focus-visible,
+.ant-btn:focus-visible,
+.ant-tag:focus-visible,
+.ant-select:focus-visible,
+.ant-select-selector:focus-visible {
+  outline: 2px solid #1e40af;
+  outline-offset: 2px;
+}

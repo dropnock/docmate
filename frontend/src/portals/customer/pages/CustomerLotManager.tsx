@@ -6,21 +6,26 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { AvailableStaff, DocumentType, Lot, LotDetail } from "@shared/types";
+import PageHeader from "@shared/components/PageHeader";
+import StatusDot from "@shared/components/StatusDot";
+import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
+import type { AvailableStaff, Lot, LotDetail } from "@shared/types";
 
 interface Props {
   projectId: number;
   role: string;
 }
 
-const LOT_STATUS_COLOR: Record<string, string> = {
-  draft: "default",
-  released: "blue",
-  qc_in_progress: "processing",
-  passed: "success",
-  failed: "error",
-  remediation: "warning",
+const LOT_STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  released: "Released",
+  qc_in_progress: "QC In Progress",
+  passed: "Passed",
+  failed: "Failed",
+  remediation: "Remediation",
 };
+
+const LOT_STATUS_FILLED = new Set(["passed"]);
 
 export default function CustomerLotManager({ projectId, role }: Props) {
   const isSupervisor = role === "customer_supervisor";
@@ -49,10 +54,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
     queryFn: () => api.get(`/projects/${projectId}/qc-agents`).then((r) => r.data),
   });
 
-  const { data: docTypes = [] } = useQuery<DocumentType[]>({
-    queryKey: ["doc-types", projectId],
-    queryFn: () => api.get(`/projects/${projectId}/document-types`).then((r) => r.data),
-  });
+  const { data: docTypes = [] } = useDocumentTypes(projectId);
 
   const applySampleMutation = useMutation({
     mutationFn: ({ lotId, rate }: { lotId: number; rate: number }) =>
@@ -126,7 +128,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
       title: "Status",
       dataIndex: "status",
       render: (s: string) => (
-        <Tag color={LOT_STATUS_COLOR[s] ?? "default"}>{s.replace(/_/g, " ")}</Tag>
+        <StatusDot filled={LOT_STATUS_FILLED.has(s)} label={LOT_STATUS_LABEL[s] ?? s.replace(/_/g, " ")} />
       ),
     },
     {
@@ -142,7 +144,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
       dataIndex: "accuracy_rate",
       render: (v: number | null) =>
         v !== null ? (
-          <Tag color={v >= 0.9 ? "success" : "error"}>{(v * 100).toFixed(1)}%</Tag>
+          <StatusDot filled={v >= 0.9} label={`${(v * 100).toFixed(1)}%`} />
         ) : "—",
     },
     ...(isSupervisor
@@ -162,7 +164,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
 
   return (
     <div>
-      <Typography.Title level={4}>Lots</Typography.Title>
+      <PageHeader title="Lots" />
 
       {lotLoading ? (
         <Spin />
@@ -190,9 +192,10 @@ export default function CustomerLotManager({ projectId, role }: Props) {
           <>
             <Row gutter={8} align="middle" style={{ marginBottom: 16 }}>
               <Col>
-                <Tag color={LOT_STATUS_COLOR[lotDetail.status] ?? "default"} style={{ fontSize: 14 }}>
-                  {lotDetail.status.replace(/_/g, " ")}
-                </Tag>
+                <StatusDot
+                  filled={LOT_STATUS_FILLED.has(lotDetail.status)}
+                  label={LOT_STATUS_LABEL[lotDetail.status] ?? lotDetail.status.replace(/_/g, " ")}
+                />
               </Col>
               {lotDetail.accuracy_rate !== null && (
                 <Col>
@@ -368,7 +371,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
                   {
                     title: "QC Sample",
                     dataIndex: "is_sampled",
-                    render: (v: boolean) => v ? <Tag color="blue">Sampled</Tag> : "—",
+                    render: (v: boolean) => v ? <StatusDot filled label="Sampled" /> : "—",
                   },
                 ]}
               />

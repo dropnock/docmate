@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AxiosError } from "axios";
 import api from "@shared/api/client";
-import type { AvailableStaff, Task } from "@shared/types";
+import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
+import type { Task } from "@shared/types";
 
 const REQUIRED_SHIFT_ROLE: Record<string, "indexer" | "qa" | undefined> = {
   indexing: "indexer",
@@ -24,14 +25,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     refetchInterval: 30_000,
   });
 
-  const { data: staff } = useQuery<AvailableStaff[]>({
-    queryKey: ["available-staff", projectId, shiftId],
-    queryFn: () =>
-      api
-        .get(`/projects/${projectId}/available-staff`, { params: { shift_id: shiftId ?? 0 } })
-        .then((r) => r.data),
-    enabled: !!shiftId,
-  });
+  const { data: staff } = useAvailableStaff(projectId, shiftId);
 
   const bulkMutation = useMutation({
     mutationFn: () =>
@@ -74,7 +68,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     { title: "Task ID", dataIndex: "id" },
     { title: "Record", dataIndex: "record_id" },
     { title: "Type", dataIndex: "task_type", render: (t: string) => <Tag>{t}</Tag> },
-    { title: "Status", dataIndex: "status", render: (s: string) => <Tag color="warning">{s}</Tag> },
+    { title: "Status", dataIndex: "status", render: (s: string) => <Tag>{s}</Tag> },
     { title: "Due", dataIndex: "due_at", render: (d: string) => d?.slice(0, 19) },
     {
       title: "Reassign",
