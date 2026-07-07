@@ -6,7 +6,9 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { AvailableStaff, DocumentType, Lot, LotDetail } from "@shared/types";
+import PageHeader from "@shared/components/PageHeader";
+import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
+import type { AvailableStaff, Lot, LotDetail } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -49,10 +51,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
     queryFn: () => api.get(`/projects/${projectId}/qc-agents`).then((r) => r.data),
   });
 
-  const { data: docTypes = [] } = useQuery<DocumentType[]>({
-    queryKey: ["doc-types", projectId],
-    queryFn: () => api.get(`/projects/${projectId}/document-types`).then((r) => r.data),
-  });
+  const { data: docTypes = [] } = useDocumentTypes(projectId);
 
   const applySampleMutation = useMutation({
     mutationFn: ({ lotId, rate }: { lotId: number; rate: number }) =>
@@ -162,7 +161,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
 
   return (
     <div>
-      <Typography.Title level={4}>Lots</Typography.Title>
+      <PageHeader title="Lots" />
 
       {lotLoading ? (
         <Spin />

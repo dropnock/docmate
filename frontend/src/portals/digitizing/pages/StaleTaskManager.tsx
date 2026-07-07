@@ -3,7 +3,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AxiosError } from "axios";
 import api from "@shared/api/client";
-import type { AvailableStaff, Task } from "@shared/types";
+import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
+import type { Task } from "@shared/types";
 
 const REQUIRED_SHIFT_ROLE: Record<string, "indexer" | "qa" | undefined> = {
   indexing: "indexer",
@@ -24,14 +25,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     refetchInterval: 30_000,
   });
 
-  const { data: staff } = useQuery<AvailableStaff[]>({
-    queryKey: ["available-staff", projectId, shiftId],
-    queryFn: () =>
-      api
-        .get(`/projects/${projectId}/available-staff`, { params: { shift_id: shiftId ?? 0 } })
-        .then((r) => r.data),
-    enabled: !!shiftId,
-  });
+  const { data: staff } = useAvailableStaff(projectId, shiftId);
 
   const bulkMutation = useMutation({
     mutationFn: () =>

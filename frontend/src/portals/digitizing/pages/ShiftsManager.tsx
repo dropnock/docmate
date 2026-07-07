@@ -7,7 +7,8 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined, DisconnectOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Shift, ShiftProjectAssignment, Project } from "@shared/types";
+import { useProjects } from "@shared/hooks/useProjects";
+import type { Shift, ShiftProjectAssignment } from "@shared/types";
 
 const TIMEZONES = [
   { value: "America/Jamaica",       label: "Jamaica (UTC−5, no DST)" },
@@ -33,10 +34,7 @@ export default function ShiftsManager() {
     queryFn: () => api.get("/shifts").then((r) => r.data),
   });
 
-  const { data: projects = [] } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
+  const { data: projects = [] } = useProjects();
 
   const create = useMutation({
     mutationFn: (values: Record<string, unknown>) =>

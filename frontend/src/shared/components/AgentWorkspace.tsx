@@ -22,7 +22,10 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   // Fetch view URL + content_type once task is in_progress.
   // staleTime: Infinity + refetchOnWindowFocus: false prevent a new presigned URL from
   // being generated while the image is loading, which would destroy the OSD viewer
-  // mid-flight and produce NS_BINDING_ABORTED.
+  // mid-flight and produce NS_BINDING_ABORTED. This override must survive the
+  // QueryClient's global staleTime default (see shared/query/queryClient.ts) —
+  // per-query options always win over defaults, but don't remove this thinking
+  // it's now redundant.
   const { data: viewData, isLoading: viewLoading } = useQuery({
     queryKey: ["record-view-url", task.record_id],
     queryFn: () =>

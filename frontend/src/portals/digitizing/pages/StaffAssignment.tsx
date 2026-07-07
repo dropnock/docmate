@@ -9,7 +9,8 @@ import type { AxiosError } from "axios";
 import type { ColumnsType } from "antd/es/table";
 import { Table } from "antd";
 import api from "@shared/api/client";
-import type { Shift, AvailableStaff, UserRecord, StaffBuckets, BucketedStaffMember } from "@shared/types";
+import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
+import type { Shift, UserRecord, StaffBuckets, BucketedStaffMember } from "@shared/types";
 
 const ROLE_COLOR: Record<string, string> = {
   de_staff: "blue",
@@ -80,12 +81,7 @@ export default function StaffAssignment({ projectId }: Props) {
     enabled: !!selectedShiftId,
   });
 
-  const { data: drawerAssigned = [] } = useQuery<AvailableStaff[]>({
-    queryKey: ["available-staff", projectId, drawerShiftId],
-    queryFn: () =>
-      api.get(`/projects/${projectId}/available-staff?shift_id=${drawerShiftId}`).then((r) => r.data),
-    enabled: !!drawerShiftId,
-  });
+  const { data: drawerAssigned = [] } = useAvailableStaff(projectId, drawerShiftId);
 
   const assignStaff = useMutation({
     mutationFn: ({ user_id, shift_id }: { user_id: number; shift_id: number }) =>
@@ -382,6 +378,7 @@ export default function StaffAssignment({ projectId }: Props) {
             columns={userColumns}
             rowKey="id"
             size="small"
+            scroll={{ x: "max-content" }}
             pagination={{ pageSize: 15, showSizeChanger: false }}
             rowSelection={{
               selectedRowKeys: selectedUserIds,

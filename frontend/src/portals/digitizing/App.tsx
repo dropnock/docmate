@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { lazy, Suspense, useState, useEffect } from "react";
 import { WorkspaceErrorBoundary } from "@shared/components/WorkspaceErrorBoundary";
-import { Layout, Menu, Typography, Button, Select, Space, Spin } from "antd";
+import { Layout, Menu, Spin } from "antd";
 import {
   ProjectOutlined,
   TeamOutlined,
@@ -15,80 +15,69 @@ import {
   CheckSquareOutlined,
   ClockCircleOutlined,
 } from "@ant-design/icons";
-import { useQuery, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useQuery, QueryClientProvider } from "@tanstack/react-query";
+import { createQueryClient } from "@shared/query/queryClient";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { initKeycloak, logout } from "@shared/api/keycloak";
-import StaffProductivityDashboard from "./pages/StaffProductivityDashboard";
-import ProjectKPIDashboard from "./pages/ProjectKPIDashboard";
-import StaleTaskManager from "./pages/StaleTaskManager";
-import RecordHistory from "./pages/RecordHistory";
-import ProjectsManager from "./pages/ProjectsManager";
-import UsersManager from "./pages/UsersManager";
-import StaffAssignment from "./pages/StaffAssignment";
-import OrganisationsManager from "./pages/OrganisationsManager";
-import ShiftsManager from "./pages/ShiftsManager";
-import MyTasks from "./pages/MyTasks";
-import CabinetManager from "./pages/CabinetManager";
-import CabinetAssignment from "./pages/CabinetAssignment";
-import LotManager from "./pages/LotManager";
+import ProjectScopedRoute from "@shared/routing/ProjectScopedRoute";
+import RequireRole from "@shared/routing/RequireRole";
+import PageSkeleton from "@shared/components/PageSkeleton";
+import AppHeader from "@shared/components/AppHeader";
 import api from "@shared/api/client";
-import type { UserRecord, Project } from "@shared/types";
+import type { UserRecord } from "@shared/types";
 
-const { Header, Sider, Content } = Layout;
-const qc = new QueryClient();
+const StaffProductivityDashboard = lazy(() => import("./pages/StaffProductivityDashboard"));
+const ProjectKPIDashboard = lazy(() => import("./pages/ProjectKPIDashboard"));
+const StaleTaskManager = lazy(() => import("./pages/StaleTaskManager"));
+const RecordHistory = lazy(() => import("./pages/RecordHistory"));
+const ProjectsManager = lazy(() => import("./pages/ProjectsManager"));
+const UsersManager = lazy(() => import("./pages/UsersManager"));
+const StaffAssignment = lazy(() => import("./pages/StaffAssignment"));
+const OrganisationsManager = lazy(() => import("./pages/OrganisationsManager"));
+const ShiftsManager = lazy(() => import("./pages/ShiftsManager"));
+const MyTasks = lazy(() => import("./pages/MyTasks"));
+const CabinetManager = lazy(() => import("./pages/CabinetManager"));
+const CabinetAssignment = lazy(() => import("./pages/CabinetAssignment"));
+const LotManager = lazy(() => import("./pages/LotManager"));
+
+const { Sider, Content } = Layout;
+const qc = createQueryClient();
 
 const SUPERVISOR_PAGES = [
-  { key: "cabinet-assign", label: "Cabinet Assignment", icon: <InboxOutlined /> },
-  { key: "lots", label: "Lots", icon: <UnorderedListOutlined /> },
-  { key: "staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
-  { key: "stale", label: "Stale Tasks", icon: <WarningOutlined /> },
-  { key: "productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
-  { key: "kpi", label: "Project KPIs", icon: <ProjectOutlined /> },
-  { key: "history", label: "Record History", icon: <HistoryOutlined /> },
+  { key: "/cabinet-assignment", label: "Cabinet Assignment", icon: <InboxOutlined /> },
+  { key: "/lots", label: "Lots", icon: <UnorderedListOutlined /> },
+  { key: "/staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
+  { key: "/stale-tasks", label: "Stale Tasks", icon: <WarningOutlined /> },
+  { key: "/productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
+  { key: "/kpis", label: "Project KPIs", icon: <ProjectOutlined /> },
+  { key: "/history", label: "Record History", icon: <HistoryOutlined /> },
 ];
 
 const AGENT_PAGES = [
-  { key: "mytasks", label: "My Tasks", icon: <CheckSquareOutlined /> },
+  { key: "/my-tasks", label: "My Tasks", icon: <CheckSquareOutlined /> },
 ];
 
 const ADMIN_PAGES = [
-  { key: "projects", label: "Projects", icon: <FolderOpenOutlined /> },
-  { key: "cabinets", label: "Cabinets", icon: <FolderOpenOutlined /> },
-  { key: "organisations", label: "Organisations", icon: <BankOutlined /> },
-  { key: "shifts", label: "Shifts", icon: <ClockCircleOutlined /> },
-  { key: "users", label: "Users", icon: <UserOutlined /> },
+  { key: "/projects", label: "Projects", icon: <FolderOpenOutlined /> },
+  { key: "/cabinets", label: "Cabinets", icon: <FolderOpenOutlined /> },
+  { key: "/organisations", label: "Organisations", icon: <BankOutlined /> },
+  { key: "/shifts", label: "Shifts", icon: <ClockCircleOutlined /> },
+  { key: "/users", label: "Users", icon: <UserOutlined /> },
 ];
 
-const PROJECT_SCOPED_PAGES = new Set([
-  "staff-assignment", "stale", "productivity", "kpi", "history",
-  "cabinet-assign", "lots", "cabinets",
-]);
-
-function ProjectSelector({
-  projectId,
-  onChange,
-}: {
-  projectId: number | null;
-  onChange: (id: number) => void;
-}) {
-  const { data: projects = [] } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
-  return (
-    <Select
-      placeholder="Select project"
-      style={{ width: 220 }}
-      value={projectId}
-      onChange={onChange}
-      options={projects.map((p) => ({ value: p.id, label: p.name }))}
-    />
-  );
-}
+const FULL_BLEED_ROUTES = new Set(["/my-tasks"]);
 
 function AppInner() {
-  const [page, setPage] = useState("productivity");
-  const [projectId, setProjectId] = useState<number | null>(null);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const { data: user, isLoading } = useQuery<UserRecord>({
     queryKey: ["me"],
@@ -113,26 +102,12 @@ function AppInner() {
       : []),
   ];
 
-  const showProjectSelector = PROJECT_SCOPED_PAGES.has(page);
-
-  // When an agent is in the workspace, give the full area to the split-pane
-  const isWorkspacePage = isAgent && page === "mytasks";
+  const isWorkspacePage = FULL_BLEED_ROUTES.has(location.pathname);
+  const defaultRoute = isSupervisor ? "/productivity" : "/my-tasks";
 
   return (
     <Layout style={{ height: "100vh" }}>
-      <Header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <Typography.Title level={4} style={{ color: "white", margin: 0 }}>
-          DocMate — Digitizing
-        </Typography.Title>
-        <Space>
-          <Typography.Text style={{ color: "rgba(255,255,255,0.65)" }}>
-            {user.full_name}
-          </Typography.Text>
-          <Button onClick={logout} type="text" style={{ color: "white" }}>
-            Sign Out
-          </Button>
-        </Space>
-      </Header>
+      <AppHeader title="DocMate — Digitizing" userName={user.full_name} onSignOut={logout} />
 
       <Layout style={{ height: "calc(100vh - 64px)" }}>
         <Sider
@@ -141,14 +116,15 @@ function AppInner() {
           collapsible
           collapsed={siderCollapsed}
           onCollapse={(v) => setSiderCollapsed(v)}
+          breakpoint="lg"
           theme="light"
           style={{ overflow: "auto" }}
         >
           <Menu
             mode="inline"
-            selectedKeys={[page]}
+            selectedKeys={[location.pathname]}
             items={navItems}
-            onClick={({ key }) => setPage(key)}
+            onClick={({ key }) => navigate(`${key}${location.search}`)}
             style={{ height: "100%", borderRight: 0 }}
           />
         </Sider>
@@ -161,58 +137,138 @@ function AppInner() {
             boxSizing: "border-box",
           }}
         >
-          {showProjectSelector && (
-            <div style={{ marginBottom: 20 }}>
-              <Space>
-                <span style={{ color: "#595959" }}>Project:</span>
-                <ProjectSelector projectId={projectId} onChange={setProjectId} />
-              </Space>
-            </div>
-          )}
+          <Suspense fallback={<PageSkeleton />}>
+            <Routes>
+              <Route path="/" element={<Navigate to={defaultRoute} replace />} />
 
-          {showProjectSelector && !projectId ? (
-            <div style={{ color: "#8c8c8c", marginTop: 40, textAlign: "center" }}>
-              Select a project above to continue.
-            </div>
-          ) : (
-            <>
-              {page === "cabinets" && projectId && isAdmin && (
-                <CabinetManager projectId={projectId} />
-              )}
-              {page === "cabinet-assign" && projectId && isSupervisor && (
-                <CabinetAssignment projectId={projectId} />
-              )}
-              {page === "lots" && projectId && isSupervisor && (
-                <LotManager projectId={projectId} />
-              )}
-              {page === "staff-assignment" && projectId && isSupervisor && (
-                <StaffAssignment projectId={projectId} />
-              )}
-              {page === "stale" && projectId && isSupervisor && (
-                <StaleTaskManager projectId={projectId} />
-              )}
-              {page === "productivity" && projectId && isSupervisor && (
-                <StaffProductivityDashboard projectId={projectId} />
-              )}
-              {page === "kpi" && projectId && isSupervisor && (
-                <ProjectKPIDashboard projectId={projectId} />
-              )}
-              {page === "history" && projectId && isSupervisor && <RecordHistory projectId={projectId} />}
-              {page === "mytasks" && isAgent && (
-                <WorkspaceErrorBoundary>
-                  <MyTasks />
-                </WorkspaceErrorBoundary>
-              )}
-              {page === "projects" && isAdmin && (
-                <ProjectsManager
-                  onOpen={(id) => { setProjectId(id); setPage("cabinets"); }}
-                />
-              )}
-              {page === "organisations" && isAdmin && <OrganisationsManager />}
-              {page === "shifts" && isAdmin && <ShiftsManager />}
-              {page === "users" && isAdmin && <UsersManager />}
-            </>
-          )}
+              <Route
+                path="/cabinets"
+                element={
+                  <RequireRole allow={isAdmin}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <CabinetManager projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/cabinet-assignment"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <CabinetAssignment projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/lots"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <LotManager projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/staff-assignment"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <StaffAssignment projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/stale-tasks"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <StaleTaskManager projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/productivity"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <StaffProductivityDashboard projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/kpis"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <ProjectKPIDashboard projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/history"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <RecordHistory projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/my-tasks"
+                element={
+                  <RequireRole allow={isAgent}>
+                    <WorkspaceErrorBoundary>
+                      <MyTasks />
+                    </WorkspaceErrorBoundary>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/projects"
+                element={
+                  <RequireRole allow={isAdmin}>
+                    <ProjectsManager
+                      onOpen={(id) => navigate(`/cabinets?project=${id}`)}
+                    />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/organisations"
+                element={
+                  <RequireRole allow={isAdmin}>
+                    <OrganisationsManager />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/shifts"
+                element={
+                  <RequireRole allow={isAdmin}>
+                    <ShiftsManager />
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/users"
+                element={
+                  <RequireRole allow={isAdmin}>
+                    <UsersManager />
+                  </RequireRole>
+                }
+              />
+
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </Content>
       </Layout>
     </Layout>
@@ -232,7 +288,9 @@ export default function App() {
 
   return (
     <QueryClientProvider client={qc}>
-      <AppInner />
+      <BrowserRouter>
+        <AppInner />
+      </BrowserRouter>
     </QueryClientProvider>
   );
 }

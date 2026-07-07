@@ -7,7 +7,9 @@ import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Cabinet, CabinetRecord, DocumentType } from "@shared/types";
+import { useCabinets } from "@shared/hooks/useCabinets";
+import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
+import type { CabinetRecord, DocumentType } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -43,10 +45,7 @@ export default function CabinetManager({ projectId }: Props) {
   const [dtName, setDtName] = useState("");
   const [dtSchemaText, setDtSchemaText] = useState("");
 
-  const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
-    queryKey: ["cabinets", projectId],
-    queryFn: () => api.get(`/cabinets/project/${projectId}`).then((r) => r.data),
-  });
+  const { data: cabinets = [], isLoading: cabLoading } = useCabinets(projectId);
 
   // One cabinet per project — always use the first
   const cabinet = cabinets[0];
@@ -109,10 +108,7 @@ export default function CabinetManager({ projectId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uploadStats]);
 
-  const { data: documentTypes = [], isLoading: dtLoading } = useQuery<DocumentType[]>({
-    queryKey: ["document-types", projectId],
-    queryFn: () => api.get(`/projects/${projectId}/document-types`).then((r) => r.data),
-  });
+  const { data: documentTypes = [], isLoading: dtLoading } = useDocumentTypes(projectId);
 
   const saveDtMutation = useMutation({
     mutationFn: async () => {

@@ -6,7 +6,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { Cabinet, CabinetRecord, Lot, LotDetail } from "@shared/types";
+import { useCabinets } from "@shared/hooks/useCabinets";
+import type { CabinetRecord, Lot, LotDetail } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -36,10 +37,7 @@ export default function LotManager({ projectId }: Props) {
   });
 
   // One cabinet per project — auto-load
-  const { data: cabinets = [] } = useQuery<Cabinet[]>({
-    queryKey: ["cabinets", projectId],
-    queryFn: () => api.get(`/cabinets/project/${projectId}`).then((r) => r.data),
-  });
+  const { data: cabinets = [] } = useCabinets(projectId);
   const cabinet = cabinets[0];
 
   // QA-passed records in the project cabinet

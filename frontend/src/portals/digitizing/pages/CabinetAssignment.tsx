@@ -6,7 +6,10 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
-import type { AvailableStaff, Batch, Cabinet, CabinetRecord, DocumentType, Shift } from "@shared/types";
+import { useCabinets } from "@shared/hooks/useCabinets";
+import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
+import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
+import type { Batch, CabinetRecord, Shift } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -27,10 +30,7 @@ export default function CabinetAssignment({ projectId }: Props) {
   const [qaAssign, setQaAssign] = useState<Record<number, number>>({});
 
   // One cabinet per project — auto-load
-  const { data: cabinets = [], isLoading: cabLoading } = useQuery<Cabinet[]>({
-    queryKey: ["cabinets", projectId],
-    queryFn: () => api.get(`/cabinets/project/${projectId}`).then((r) => r.data),
-  });
+  const { data: cabinets = [], isLoading: cabLoading } = useCabinets(projectId);
   const cabinet = cabinets[0];
 
   const { data: shifts = [] } = useQuery<Shift[]>({
@@ -38,10 +38,7 @@ export default function CabinetAssignment({ projectId }: Props) {
     queryFn: () => api.get(`/projects/${projectId}/shifts`).then((r) => r.data),
   });
 
-  const { data: docTypes = [] } = useQuery<DocumentType[]>({
-    queryKey: ["doc-types", projectId],
-    queryFn: () => api.get(`/projects/${projectId}/document-types`).then((r) => r.data),
-  });
+  const { data: docTypes = [] } = useDocumentTypes(projectId);
 
   const { data: records = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
     queryKey: ["cabinet-records", cabinet?.id, "pending"],
@@ -50,13 +47,7 @@ export default function CabinetAssignment({ projectId }: Props) {
     enabled: !!cabinet,
   });
 
-  const { data: staff = [] } = useQuery<AvailableStaff[]>({
-    queryKey: ["available-staff", projectId, selectedShift],
-    queryFn: () =>
-      api.get(`/projects/${projectId}/available-staff`, { params: { shift_id: selectedShift } })
-        .then((r) => r.data),
-    enabled: !!selectedShift,
-  });
+  const { data: staff = [] } = useAvailableStaff(projectId, selectedShift);
 
   const indexerStaff = staff.filter((s) => s.shift_role === "indexer");
   const qaStaff = staff.filter((s) => s.shift_role === "qa");
@@ -80,25 +71,43 @@ export default function CabinetAssignment({ projectId }: Props) {
       const staffWithAlloc = indexerStaff.filter((s) => (agentAllocations[s.id] ?? 0) > 0);
       if (!staffWithAlloc.length) throw new Error("Set allocation counts for at least one agent");
 
+      // Slicing is sequential/stateful (each agent's chunk continues where the
+      // last left off), so build the {agent, slice} pairs synchronously first —
+      // then fire all batch-creation requests in parallel instead of awaiting
+      // them one at a time.
       let offset = 0;
+      const pairs: { agent: typeof staffWithAlloc[number]; slice: typeof pendingRecords }[] = [];
       for (const agent of staffWithAlloc) {
         const count = agentAllocations[agent.id] ?? 0;
         const slice = pendingRecords.slice(offset, offset + count);
-        if (!slice.length) continue;
-        await api.post(`/cabinets/${cabinet.id}/batches`, {
-          project_id: projectId,
-          document_type_id: selectedDocType,
-          record_ids: slice.map((r) => r.id),
-          agent_id: agent.id,
-        });
+        if (slice.length) pairs.push({ agent, slice });
         offset += count;
       }
+
+      const results = await Promise.allSettled(
+        pairs.map(({ agent, slice }) =>
+          api.post(`/cabinets/${cabinet.id}/batches`, {
+            project_id: projectId,
+            document_type_id: selectedDocType,
+            record_ids: slice.map((r) => r.id),
+            agent_id: agent.id,
+          })
+        )
+      );
+      const succeeded = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.length - succeeded;
+      return { succeeded, failed };
     },
-    onSuccess: () => {
-      message.success("Indexing batches created");
-      qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
-      qc.invalidateQueries({ queryKey: ["project-batches", projectId] });
-      setAgentAllocations({});
+    onSuccess: ({ succeeded, failed }) => {
+      if (succeeded > 0) {
+        message.success(`${succeeded} batch${succeeded > 1 ? "es" : ""} created`);
+        qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
+        qc.invalidateQueries({ queryKey: ["project-batches", projectId] });
+        setAgentAllocations({});
+      }
+      if (failed > 0) {
+        message.error(`${failed} batch${failed > 1 ? "es" : ""} failed to create`);
+      }
     },
     onError: (e: Error) => message.error(e.message || "Failed to create batches"),
   });
@@ -256,6 +265,7 @@ export default function CabinetAssignment({ projectId }: Props) {
                 dataSource={batches}
                 pagination={false}
                 columns={batchColumns}
+                scroll={{ x: "max-content" }}
               />
             )}
           </Card>

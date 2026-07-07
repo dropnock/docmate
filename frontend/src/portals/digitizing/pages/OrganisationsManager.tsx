@@ -7,6 +7,7 @@ import {
 import { PlusOutlined, DatabaseOutlined, FolderOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
+import { useProjects } from "@shared/hooks/useProjects";
 import type { Organization, Project } from "@shared/types";
 
 const TYPE_OPTIONS = [
@@ -44,10 +45,7 @@ export default function OrganisationsManager() {
       query.state.data?.some((o) => o.s3_bucket_status === "provisioning") ? 5000 : false,
   });
 
-  const { data: allProjects = [] } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
+  const { data: allProjects = [] } = useProjects();
 
   const create = useMutation({
     mutationFn: (values: Record<string, unknown>) =>

@@ -8,6 +8,7 @@ import { PlusOutlined, FolderOpenOutlined, EditOutlined } from "@ant-design/icon
 import type { ColumnsType } from "antd/es/table";
 import dayjs from "dayjs";
 import api from "@shared/api/client";
+import { useProjects } from "@shared/hooks/useProjects";
 import type { Project, Organization } from "@shared/types";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -29,10 +30,7 @@ export default function ProjectsManager({ onOpen }: Props) {
   const [editForm] = Form.useForm();
   const qc = useQueryClient();
 
-  const { data: projects = [], isLoading } = useQuery<Project[]>({
-    queryKey: ["projects"],
-    queryFn: () => api.get("/projects").then((r) => r.data),
-  });
+  const { data: projects = [], isLoading } = useProjects();
 
   const { data: orgs = [] } = useQuery<Organization[]>({
     queryKey: ["organizations"],
