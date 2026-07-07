@@ -28,20 +28,25 @@ const columns: ColumnType<Row>[] = [
     key: "error",
     render: (r) => {
       const pct = (r * 100).toFixed(1);
-      return <span style={{ color: r > 0.05 ? "red" : "inherit" }}>{pct}%</span>;
+      return <span style={{ color: "#0F172A", fontWeight: r > 0.05 ? 700 : 400 }}>{pct}%</span>;
     },
   },
   {
     title: "Stale",
     dataIndex: "stale_task_count",
     key: "stale",
-    render: (n) => n > 0 ? <Badge count={n} /> : "—",
+    render: (n) => n > 0 ? <Badge count={n} color="#1E40AF" /> : "—",
   },
   {
     title: "In Progress",
     dataIndex: "tasks_in_progress",
     key: "inprog",
-    render: (n) => n > 0 ? <Tag color="processing">{n}</Tag> : "—",
+    render: (n) =>
+      n > 0 ? (
+        <Tag style={{ color: "#1E40AF", background: "#EFF6FF", border: "1px solid #1E40AF" }}>{n}</Tag>
+      ) : (
+        "—"
+      ),
   },
 ];
 

@@ -188,7 +188,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                 <OpenSeadragonViewer imageUrl={viewData.view_url} />
               )
             ) : (
-              <div style={{ padding: 24, color: "#888" }}>No file attached to this record.</div>
+              <div style={{ padding: 24, color: "#64748B" }}>No file attached to this record.</div>
             )
           }
           right={
@@ -198,9 +198,9 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
               <div
                 style={{
                   padding: "6px 14px",
-                  borderBottom: "1px solid #f0f0f0",
+                  borderBottom: "1px solid #E2E8F0",
                   flexShrink: 0,
-                  background: "#fff",
+                  background: "#FFFFFF",
                 }}
               >
                 <Typography.Text strong style={{ fontSize: 13 }}>
@@ -208,7 +208,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                 </Typography.Text>
                 <Badge
                   count={`v${record?.current_version ?? 1}`}
-                  style={{ background: "#108ee9" }}
+                  style={{ background: "#1E40AF" }}
                 />
               </div>
 
@@ -231,8 +231,8 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
               <div
                 style={{
                   padding: "8px 14px",
-                  borderTop: "1px solid #f0f0f0",
-                  background: "#fafafa",
+                  borderTop: "1px solid #E2E8F0",
+                  background: "#F8FAFC",
                   flexShrink: 0,
                 }}
               >

@@ -1,20 +1,20 @@
 import { lazy, Suspense, useState, useEffect } from "react";
 import { WorkspaceErrorBoundary } from "@shared/components/WorkspaceErrorBoundary";
-import { Layout, Menu, Spin } from "antd";
+import { Drawer, Layout, Menu, Spin } from "antd";
 import {
-  ProjectOutlined,
-  TeamOutlined,
-  UnorderedListOutlined,
-  WarningOutlined,
-  HistoryOutlined,
-  FolderOpenOutlined,
-  UserOutlined,
-  UsergroupAddOutlined,
-  BankOutlined,
-  InboxOutlined,
-  CheckSquareOutlined,
-  ClockCircleOutlined,
-} from "@ant-design/icons";
+  Archive,
+  List,
+  Users,
+  AlertTriangle,
+  Gauge,
+  BarChart3,
+  History,
+  FolderOpen,
+  Landmark,
+  Clock,
+  User,
+  CheckSquare,
+} from "lucide-react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@shared/query/queryClient";
 import {
@@ -51,31 +51,32 @@ const { Sider, Content } = Layout;
 const qc = createQueryClient();
 
 const SUPERVISOR_PAGES = [
-  { key: "/cabinet-assignment", label: "Cabinet Assignment", icon: <InboxOutlined /> },
-  { key: "/lots", label: "Lots", icon: <UnorderedListOutlined /> },
-  { key: "/staff-assignment", label: "Staff Assignment", icon: <UsergroupAddOutlined /> },
-  { key: "/stale-tasks", label: "Stale Tasks", icon: <WarningOutlined /> },
-  { key: "/productivity", label: "Staff Productivity", icon: <TeamOutlined /> },
-  { key: "/kpis", label: "Project KPIs", icon: <ProjectOutlined /> },
-  { key: "/history", label: "Record History", icon: <HistoryOutlined /> },
+  { key: "/cabinet-assignment", label: "Cabinet Assignment", icon: <Archive size={16} /> },
+  { key: "/lots", label: "Lots", icon: <List size={16} /> },
+  { key: "/staff-assignment", label: "Staff Assignment", icon: <Users size={16} /> },
+  { key: "/stale-tasks", label: "Stale Tasks", icon: <AlertTriangle size={16} /> },
+  { key: "/productivity", label: "Staff Productivity", icon: <Gauge size={16} /> },
+  { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
+  { key: "/history", label: "Record History", icon: <History size={16} /> },
 ];
 
 const AGENT_PAGES = [
-  { key: "/my-tasks", label: "My Tasks", icon: <CheckSquareOutlined /> },
+  { key: "/my-tasks", label: "My Tasks", icon: <CheckSquare size={16} /> },
 ];
 
 const ADMIN_PAGES = [
-  { key: "/projects", label: "Projects", icon: <FolderOpenOutlined /> },
-  { key: "/cabinets", label: "Cabinets", icon: <FolderOpenOutlined /> },
-  { key: "/organisations", label: "Organisations", icon: <BankOutlined /> },
-  { key: "/shifts", label: "Shifts", icon: <ClockCircleOutlined /> },
-  { key: "/users", label: "Users", icon: <UserOutlined /> },
+  { key: "/projects", label: "Projects", icon: <FolderOpen size={16} /> },
+  { key: "/cabinets", label: "Cabinets", icon: <Archive size={16} /> },
+  { key: "/organisations", label: "Organisations", icon: <Landmark size={16} /> },
+  { key: "/shifts", label: "Shifts", icon: <Clock size={16} /> },
+  { key: "/users", label: "Users", icon: <User size={16} /> },
 ];
 
 const FULL_BLEED_ROUTES = new Set(["/my-tasks"]);
 
 function AppInner() {
   const [siderCollapsed, setSiderCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -107,16 +108,22 @@ function AppInner() {
 
   return (
     <Layout style={{ height: "100vh" }}>
-      <AppHeader title="DocMate — Digitizing" userName={user.full_name} onSignOut={logout} />
+      <AppHeader
+        portalLabel="Digitizing"
+        userName={user.full_name}
+        onSignOut={logout}
+        mobileNavOpen={mobileNavOpen}
+        onToggleMobileNav={() => setMobileNavOpen((v) => !v)}
+      />
 
       <Layout style={{ height: "calc(100vh - 64px)" }}>
         <Sider
+          className="docmate-desktop-sider"
           width={220}
           collapsedWidth={64}
           collapsible
           collapsed={siderCollapsed}
           onCollapse={(v) => setSiderCollapsed(v)}
-          breakpoint="lg"
           theme="light"
           style={{ overflow: "auto" }}
         >
@@ -125,14 +132,35 @@ function AppInner() {
             selectedKeys={[location.pathname]}
             items={navItems}
             onClick={({ key }) => navigate(`${key}${location.search}`)}
-            style={{ height: "100%", borderRight: 0 }}
+            style={{ height: "100%", borderRight: 0, paddingTop: 8 }}
           />
         </Sider>
 
+        <Drawer
+          placement="left"
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          closable={false}
+          width={260}
+          styles={{ body: { padding: 0 } }}
+        >
+          <Menu
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            items={navItems}
+            onClick={({ key }) => {
+              navigate(`${key}${location.search}`);
+              setMobileNavOpen(false);
+            }}
+            style={{ borderRight: 0, paddingTop: 8 }}
+          />
+        </Drawer>
+
         <Content
+          className={isWorkspacePage ? undefined : "docmate-content-pad"}
           style={{
             height: "100%",
-            padding: isWorkspacePage ? 0 : 24,
+            padding: isWorkspacePage ? 0 : undefined,
             overflow: isWorkspacePage ? "hidden" : "auto",
             boxSizing: "border-box",
           }}

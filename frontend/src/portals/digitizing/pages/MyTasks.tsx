@@ -1,19 +1,20 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  List, Button, Tag, Typography, Spin, Empty, Badge,
+  List, Button, Typography, Spin, Empty, Badge,
 } from "antd";
-import { ArrowLeftOutlined } from "@ant-design/icons";
+import { ArrowLeft } from "lucide-react";
 import api from "@shared/api/client";
 import AgentWorkspace from "@shared/components/AgentWorkspace";
+import StatusDot from "@shared/components/StatusDot";
 import type { Task } from "@shared/types";
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: "default",
-  in_progress: "processing",
-  completed: "success",
-  failed: "error",
-  stale: "warning",
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  in_progress: "In Progress",
+  completed: "Completed",
+  failed: "Failed",
+  stale: "Stale",
 };
 
 const TASK_TYPE_LABEL: Record<string, string> = {
@@ -38,13 +39,13 @@ export default function MyTasks() {
         <div
           style={{
             padding: "6px 16px",
-            borderBottom: "1px solid #f0f0f0",
-            background: "#fff",
+            borderBottom: "1px solid #E2E8F0",
+            background: "#FFFFFF",
             flexShrink: 0,
           }}
         >
           <Button
-            icon={<ArrowLeftOutlined />}
+            icon={<ArrowLeft size={16} />}
             onClick={() => {
               setActiveTask(null);
               qc.invalidateQueries({ queryKey: ["my-tasks"] });
@@ -95,14 +96,17 @@ export default function MyTasks() {
                     Record #{task.record_id}
                     <Badge
                       count={TASK_TYPE_LABEL[task.task_type] ?? task.task_type}
-                      style={{ background: "#108ee9", marginLeft: 8 }}
+                      style={{ background: "#1E40AF", marginLeft: 8 }}
                     />
                   </Typography.Text>
                 }
                 description={
                   <Typography.Text type="secondary">
                     Batch #{task.batch_id} ·{" "}
-                    <Tag color={STATUS_COLOR[task.status] ?? "default"}>{task.status}</Tag>
+                    <StatusDot
+                      filled={task.status === "completed"}
+                      label={STATUS_LABEL[task.status] ?? task.status}
+                    />
                     {task.due_at && ` · Due ${new Date(task.due_at).toLocaleString()}`}
                   </Typography.Text>
                 }

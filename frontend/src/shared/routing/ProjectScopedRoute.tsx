@@ -37,14 +37,14 @@ export default function ProjectScopedRoute({ children }: Props) {
     <>
       <div style={{ marginBottom: 20 }}>
         <Space>
-          <span style={{ color: "#595959" }}>Project:</span>
+          <span style={{ color: "#64748B" }}>Project:</span>
           <ProjectSelector projectId={projectId} onChange={setProjectId} />
         </Space>
       </div>
       {projectId ? (
         children(projectId)
       ) : (
-        <div style={{ color: "#8c8c8c", marginTop: 40, textAlign: "center" }}>
+        <div style={{ color: "#64748B", marginTop: 40, textAlign: "center" }}>
           Select a project above to continue.
         </div>
       )}

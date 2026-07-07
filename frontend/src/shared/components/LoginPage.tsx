@@ -24,7 +24,7 @@ export default function LoginPage({ onLogin, portalLabel }: Props) {
   };
 
   return (
-    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "#f0f2f5" }}>
+    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", background: "#F8FAFC" }}>
       <Card style={{ width: 400 }}>
         <Typography.Title level={3} style={{ textAlign: "center" }}>
           DocMate — {portalLabel}

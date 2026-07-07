@@ -9,7 +9,6 @@ import {
   List,
   Modal,
   Spin,
-  Tag,
   Typography,
   message,
 } from "antd";
@@ -19,6 +18,7 @@ import api from "@shared/api/client";
 import type { DocRecord, Task } from "@shared/types";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
+import StatusDot from "@shared/components/StatusDot";
 
 export default function QCWorkspace() {
   const qc = useQueryClient();
@@ -131,9 +131,7 @@ export default function QCWorkspace() {
                   description={
                     <>
                       Batch #{task.batch_id} ·{" "}
-                      <Tag color={task.status === "in_progress" ? "processing" : "default"}>
-                        {task.status}
-                      </Tag>
+                      <StatusDot filled={task.status === "in_progress"} label={task.status} />
                       {task.due_at && (
                         <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
                           Due: {new Date(task.due_at).toLocaleString()}
@@ -182,8 +180,8 @@ export default function QCWorkspace() {
           alignItems: "center",
           gap: 12,
           padding: "8px 16px",
-          borderBottom: "1px solid #f0f0f0",
-          background: "#fff",
+          borderBottom: "1px solid #E2E8F0",
+          background: "#FFFFFF",
         }}
       >
         <Button size="small" onClick={() => setActiveTask(null)}>
@@ -194,11 +192,9 @@ export default function QCWorkspace() {
         </Typography.Text>
         <Badge
           count={`v${record?.current_version ?? 1}`}
-          style={{ background: "#108ee9" }}
+          style={{ background: "#1E40AF" }}
         />
-        <Tag color={activeTask.status === "in_progress" ? "processing" : "default"}>
-          {activeTask.status}
-        </Tag>
+        <StatusDot filled={activeTask.status === "in_progress"} label={activeTask.status} />
         <div style={{ flex: 1 }} />
         {activeTask.status === "pending" && (
           <Button
@@ -245,7 +241,7 @@ export default function QCWorkspace() {
                 <OpenSeadragonViewer imageUrl={viewData.view_url} />
               )
             ) : (
-              <div style={{ padding: 24, color: "#999" }}>
+              <div style={{ padding: 24, color: "#64748B" }}>
                 {activeTask.status === "pending"
                   ? "Start the task to load the image."
                   : "No image available for this record."}

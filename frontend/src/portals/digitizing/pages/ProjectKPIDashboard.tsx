@@ -60,7 +60,7 @@ export default function ProjectKPIDashboard({ projectId }: Props) {
             <Statistic
               title="On Track"
               value={kpis?.on_track === null ? "—" : kpis?.on_track ? "Yes" : "No"}
-              valueStyle={{ color: kpis?.on_track ? "#3f8600" : "#cf1322" }}
+              valueStyle={{ color: "#0F172A" }}
             />
           </Card>
         </Col>
@@ -77,9 +77,7 @@ export default function ProjectKPIDashboard({ projectId }: Props) {
         </Col>
         <Col xs={24} sm={12} md={8} lg={6}>
           <Card title="AQL Status">
-            <Tag color={aql?.current_status === "tightened" ? "red" : aql?.current_status === "reduced" ? "green" : "blue"}>
-              {aql?.current_status?.toUpperCase()}
-            </Tag>
+            <Tag>{aql?.current_status?.toUpperCase()}</Tag>
             <div style={{ marginTop: 8, fontSize: 12 }}>Level: {aql?.current_aql_level}</div>
             <div style={{ fontSize: 12 }}>Consecutive failures: {aql?.consecutive_failures}</div>
           </Card>

@@ -68,7 +68,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     { title: "Task ID", dataIndex: "id" },
     { title: "Record", dataIndex: "record_id" },
     { title: "Type", dataIndex: "task_type", render: (t: string) => <Tag>{t}</Tag> },
-    { title: "Status", dataIndex: "status", render: (s: string) => <Tag color="warning">{s}</Tag> },
+    { title: "Status", dataIndex: "status", render: (s: string) => <Tag>{s}</Tag> },
     { title: "Due", dataIndex: "due_at", render: (d: string) => d?.slice(0, 19) },
     {
       title: "Reassign",

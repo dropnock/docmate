@@ -2,30 +2,33 @@ import {
   Button, Card, Col, Empty, Form, Input, Modal, Progress, Row, Segmented, Spin,
   Table, Tabs, Tag, Typography, Upload, message,
 } from "antd";
-import { InboxOutlined, PlusOutlined, EditOutlined, EyeOutlined, PictureOutlined } from "@ant-design/icons";
+import { UploadCloud, Plus, Pencil, Eye, Image as ImageIcon } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
 import { useCabinets } from "@shared/hooks/useCabinets";
 import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
+import StatusDot from "@shared/components/StatusDot";
 import type { CabinetRecord, DocumentType } from "@shared/types";
 
 interface Props {
   projectId: number;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  pending: "default",
-  indexing: "processing",
-  indexed: "success",
-  qa_pending: "warning",
-  qa_passed: "success",
-  qa_failed: "error",
-  qc_pending: "warning",
-  qc_passed: "success",
-  qc_failed: "error",
+const RECORD_STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  indexing: "Indexing",
+  indexed: "Indexed",
+  qa_pending: "QA Pending",
+  qa_passed: "QA Passed",
+  qa_failed: "QA Failed",
+  qc_pending: "QC Pending",
+  qc_passed: "QC Passed",
+  qc_failed: "QC Failed",
 };
+
+const RECORD_STATUS_FILLED = new Set(["indexed", "qa_passed", "qc_passed"]);
 
 export default function CabinetManager({ projectId }: Props) {
   const qc = useQueryClient();
@@ -220,18 +223,18 @@ export default function CabinetManager({ projectId }: Props) {
       title: "Status",
       dataIndex: "status",
       render: (s: string) => (
-        <Tag color={STATUS_COLOR[s] ?? "default"}>{s.replace(/_/g, " ")}</Tag>
+        <StatusDot filled={RECORD_STATUS_FILLED.has(s)} label={RECORD_STATUS_LABEL[s] ?? s.replace(/_/g, " ")} />
       ),
     },
     {
       title: "Image",
       dataIndex: "has_image",
-      render: (v: boolean) => v ? <Tag color="green">Yes</Tag> : <Tag color="orange">No</Tag>,
+      render: (v: boolean) => <StatusDot filled={v} label={v ? "Yes" : "No"} />,
     },
     {
       title: "Data",
       dataIndex: "has_data",
-      render: (v: boolean) => v ? <Tag color="green">Yes</Tag> : <Tag color="orange">No</Tag>,
+      render: (v: boolean) => <StatusDot filled={v} label={v ? "Yes" : "No"} />,
     },
     { title: "Version", dataIndex: "current_version", render: (v) => `v${v}` },
   ];
@@ -295,7 +298,7 @@ export default function CabinetManager({ projectId }: Props) {
                 key: "images",
                 label: (
                   <span>
-                    <PictureOutlined style={{ marginRight: 6 }} />
+                    <ImageIcon size={14} style={{ marginRight: 6, verticalAlign: -2 }} />
                     Images ({imageRecords.length})
                   </span>
                 ),
@@ -329,7 +332,7 @@ export default function CabinetManager({ projectId }: Props) {
                       style={{ padding: 16, marginBottom: 12 }}
                     >
                       <p className="ant-upload-drag-icon" style={{ margin: "4px 0" }}>
-                        <InboxOutlined />
+                        <UploadCloud size={28} color="#1E40AF" />
                       </p>
                       <p className="ant-upload-text">Drag images here or click to upload</p>
                       <p className="ant-upload-hint">
@@ -396,19 +399,17 @@ export default function CabinetManager({ projectId }: Props) {
                             title: "Linked Record",
                             dataIndex: "source_identifier",
                             render: (v: string | null, r: CabinetRecord) =>
-                              r.has_data ? (
-                                <Tag color="green">{v ?? "—"}</Tag>
-                              ) : v ? (
-                                <Tag color="orange">{v} (no data)</Tag>
+                              v ? (
+                                <StatusDot filled={r.has_data} label={r.has_data ? v : `${v} (no data)`} />
                               ) : (
-                                <Tag color="default">—</Tag>
+                                <span style={{ color: "#64748B" }}>—</span>
                               ),
                           },
                           {
                             title: "Status",
                             dataIndex: "status",
                             render: (s: string) => (
-                              <Tag color={STATUS_COLOR[s] ?? "default"}>{s.replace(/_/g, " ")}</Tag>
+                              <StatusDot filled={RECORD_STATUS_FILLED.has(s)} label={RECORD_STATUS_LABEL[s] ?? s.replace(/_/g, " ")} />
                             ),
                           },
                           {
@@ -418,7 +419,7 @@ export default function CabinetManager({ projectId }: Props) {
                             render: (_: unknown, r: CabinetRecord) => (
                               <Button
                                 size="small"
-                                icon={<EyeOutlined />}
+                                icon={<Eye size={14} />}
                                 loading={loadingViewId === r.id}
                                 onClick={() => handleViewImage(r.id)}
                               >
@@ -438,7 +439,7 @@ export default function CabinetManager({ projectId }: Props) {
                 children: (
                   <>
                     <Row justify="end" style={{ marginBottom: 12 }}>
-                      <Button type="primary" icon={<PlusOutlined />} onClick={openCreateDt}>
+                      <Button type="primary" icon={<Plus size={16} />} onClick={openCreateDt}>
                         New Document Type
                       </Button>
                     </Row>
@@ -468,7 +469,7 @@ export default function CabinetManager({ projectId }: Props) {
                             render: (_: unknown, dt: DocumentType) => (
                               <Button
                                 size="small"
-                                icon={<EditOutlined />}
+                                icon={<Pencil size={14} />}
                                 onClick={() => openEditDt(dt)}
                               >
                                 Edit

@@ -4,7 +4,7 @@ import {
   Table, Button, Modal, Form, Input, Select,
   Space, Tag, message, Popconfirm,
 } from "antd";
-import { PlusOutlined, EditOutlined, DeleteOutlined, DisconnectOutlined } from "@ant-design/icons";
+import { Plus, Pencil, Trash2, Unlink } from "lucide-react";
 import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
 import { useProjects } from "@shared/hooks/useProjects";
@@ -141,7 +141,7 @@ export default function ShiftsManager() {
           <Space wrap>
             {s.project_assignments.map((pa: ShiftProjectAssignment) => (
               <Space key={pa.project_shift_id} size={4}>
-                <Tag color="blue">{pa.project_name}</Tag>
+                <Tag>{pa.project_name}</Tag>
                 <Popconfirm
                   title={`Remove from "${pa.project_name}"?`}
                   onConfirm={() => deassign.mutate({ projectId: pa.project_id, shiftId: s.id })}
@@ -151,7 +151,7 @@ export default function ShiftsManager() {
                   <Button
                     size="small"
                     danger
-                    icon={<DisconnectOutlined />}
+                    icon={<Unlink size={14} />}
                     title="Deassign from project"
                   />
                 </Popconfirm>
@@ -177,7 +177,7 @@ export default function ShiftsManager() {
           </Button>
           <Button
             size="small"
-            icon={<EditOutlined />}
+            icon={<Pencil size={14} />}
             onClick={() => openEdit(s)}
           />
           <Popconfirm
@@ -187,7 +187,7 @@ export default function ShiftsManager() {
             okText="Delete"
             okType="danger"
           >
-            <Button size="small" danger icon={<DeleteOutlined />} />
+            <Button size="small" danger icon={<Trash2 size={14} />} />
           </Popconfirm>
         </Space>
       ),
@@ -213,9 +213,9 @@ export default function ShiftsManager() {
 
   return (
     <>
-      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
+      <Space wrap style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <span style={{ fontSize: 20, fontWeight: 600 }}>Shifts</span>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>
+        <Button type="primary" icon={<Plus size={16} />} onClick={() => setCreateOpen(true)}>
           New Shift
         </Button>
       </Space>

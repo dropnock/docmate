@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from "react";
-import { Layout, Menu, Spin, Result } from "antd";
-import { ProjectOutlined, CheckCircleOutlined, HistoryOutlined, InboxOutlined } from "@ant-design/icons";
+import { Drawer, Layout, Menu, Spin, Result } from "antd";
+import { BarChart3, CheckCircle2, History, List } from "lucide-react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@shared/query/queryClient";
 import {
@@ -27,10 +27,10 @@ const { Sider, Content } = Layout;
 const queryClient = createQueryClient();
 
 const NAV_ITEMS = [
-  { key: "/lots", label: "Lots", icon: <InboxOutlined /> },
-  { key: "/qc", label: "QC Workspace", icon: <CheckCircleOutlined /> },
-  { key: "/kpis", label: "Project KPIs", icon: <ProjectOutlined /> },
-  { key: "/history", label: "Record History", icon: <HistoryOutlined /> },
+  { key: "/lots", label: "Lots", icon: <List size={16} /> },
+  { key: "/qc", label: "QC Workspace", icon: <CheckCircle2 size={16} /> },
+  { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
+  { key: "/history", label: "Record History", icon: <History size={16} /> },
 ];
 
 const FULL_BLEED_ROUTES = new Set(["/qc"]);
@@ -42,6 +42,7 @@ function getSubdomain(): string | null {
 
 function AppInner() {
   const [siderCollapsed, setSiderCollapsed] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -54,15 +55,21 @@ function AppInner() {
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <AppHeader title="DocMate — Customer Portal" userName={user?.full_name} onSignOut={logout} />
+      <AppHeader
+        portalLabel="Customer Portal"
+        userName={user?.full_name}
+        onSignOut={logout}
+        mobileNavOpen={mobileNavOpen}
+        onToggleMobileNav={() => setMobileNavOpen((v) => !v)}
+      />
       <Layout>
         <Sider
+          className="docmate-desktop-sider"
           width={220}
           collapsedWidth={64}
           collapsible
           collapsed={siderCollapsed}
           onCollapse={(v) => setSiderCollapsed(v)}
-          breakpoint="lg"
           theme="light"
         >
           <Menu
@@ -70,9 +77,34 @@ function AppInner() {
             selectedKeys={[location.pathname]}
             items={NAV_ITEMS}
             onClick={({ key }) => navigate(`${key}${location.search}`)}
+            style={{ paddingTop: 8 }}
           />
         </Sider>
-        <Content style={{ padding: isWorkspacePage ? 0 : 24 }}>
+
+        <Drawer
+          placement="left"
+          open={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
+          closable={false}
+          width={260}
+          styles={{ body: { padding: 0 } }}
+        >
+          <Menu
+            mode="inline"
+            selectedKeys={[location.pathname]}
+            items={NAV_ITEMS}
+            onClick={({ key }) => {
+              navigate(`${key}${location.search}`);
+              setMobileNavOpen(false);
+            }}
+            style={{ paddingTop: 8 }}
+          />
+        </Drawer>
+
+        <Content
+          className={isWorkspacePage ? undefined : "docmate-content-pad"}
+          style={{ padding: isWorkspacePage ? 0 : undefined }}
+        >
           <Suspense fallback={<PageSkeleton />}>
             <Routes>
               <Route path="/" element={<Navigate to="/qc" replace />} />
