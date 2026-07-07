@@ -1,6 +1,6 @@
 # DocMate
 
-A multi-tenant document digitization management platform. DocMate manages the full lifecycle of physical document scanning projects — from batch ingestion and agent indexing through supervisor QA, AQL-based acceptance sampling, and customer quality control — with a complete audit trail and analytics dashboard.
+A multi-tenant document digitization management platform. DocMate manages the full lifecycle of physical document scanning projects — from cabinet/lot intake and agent indexing through supervisor QA, AQL-based acceptance sampling, and customer quality control — with a complete audit trail and analytics dashboard.
 
 ---
 
@@ -10,6 +10,7 @@ A multi-tenant document digitization management platform. DocMate manages the fu
 - [Architecture](#architecture)
 - [Prerequisites](#prerequisites)
 - [Quick Start (Docker)](#quick-start-docker)
+- [Local HTTPS Domains](#local-https-domains)
 - [Service URLs](#service-urls)
 - [Default Credentials](#default-credentials)
 - [Local Development](#local-development)
@@ -17,6 +18,7 @@ A multi-tenant document digitization management platform. DocMate manages the fu
 - [Seeding Initial Data](#seeding-initial-data)
 - [Key Workflows](#key-workflows)
 - [Tech Stack](#tech-stack)
+- [Notes for Production](#notes-for-production)
 
 ---
 
@@ -26,49 +28,63 @@ DocMate operates two isolated portals:
 
 | Portal | Audience | Purpose |
 |--------|----------|---------|
-| **Digitizing Entity** | Internal staff (supervisors, indexers, QA agents, admins) | Manage projects, batch ingestion, agent task assignment, indexing workspace, QA review, analytics |
-| **Customer** | Client organisation staff (supervisors, QC agents) | Review completed batches, run QC sampling, accept or reject individual records |
+| **Digitizing Entity** | Internal staff (admins, supervisors, indexers, QA agents) | Manage organisations/projects, cabinet & lot intake, shift-based staff assignment, indexing workspace, QA review, analytics |
+| **Customer** | Client organisation staff (supervisors, QC agents) | Review completed lots, run QC sampling, accept or reject individual records |
 
 Core features:
 
 - **Multi-tenancy** — every table is scoped by `tenant_id`; no cross-tenant data leakage
-- **Portal enforcement** — nginx injects an `X-Portal` header; the backend cross-checks it against the JWT `portal` claim on every request
+- **Self-service customer onboarding** — creating a customer Organisation auto-provisions a dedicated Keycloak realm (TOTP-enforced), an OIDC client scoped to that org's `*.docmate.local` subdomain, and an S3 bucket — no manual Keycloak/S3 setup required
+- **Portal enforcement** — nginx injects an `X-Portal` header per virtual host (digitizing vs. customer); the backend cross-checks it against the JWT `portal` claim on every request
+- **TLS-terminated local domains** — nginx routes `www.docmate.local` / `auth.docmate.local` / `<customer-realm>.docmate.local` over HTTPS with a self-signed wildcard cert, matching how Keycloak's `Secure` session cookie behaves in production
 - **Batch workflow state machine** — `draft → submitted → indexing → qa_review → customer_qc → passed | rejected`
-- **Dynamic indexing forms** — per-project document type schemas (JSON Schema) drive fully auto-generated Ant Design forms, including range expansion for Volume/Folio parcel fields
+- **Cabinet & Lot tracking** — physical cabinets are assigned to a customer org and hold records; supervisors group indexed records into Lots for AQL sampling and release to customer QC
+- **Shift-based staff assignment** — staff are assigned to a project on a specific shift with a role (`indexer` or `qa`); task assignment and self-service pickup are gated by that role, so an agent can only be handed work matching their current shift assignment
+- **Dynamic indexing forms** — per-project document type schemas (JSON Schema) drive fully auto-generated forms (`@rjsf/antd`), including range expansion for Volume/Folio parcel fields
 - **Pessimistic record locking** — one agent owns a record at a time; 409 if locked by another user
-- **Record versioning** — immutable snapshots (`RecordVersion`) on first submission and after customer rejection/rework
+- **Record versioning** — immutable `RecordVersion` snapshots on initial indexing, on every QA submission (pass or rework), and after customer rejection
 - **AQL acceptance sampling** — full ISO 2859-1 Inspection Level II table; auto-escalation (normal → tightened → reduced)
-- **Full audit trail** — every state change, lock, assignment, and submission is logged to an append-only `audit_logs` table
-- **Analytics** — staff productivity metrics, project KPI dashboards, burn-up charts
+- **Full audit trail** — every state change, lock, assignment, submission, and version is logged to an append-only `audit_logs` table
+- **Analytics** — staff productivity metrics, project KPI dashboards, burn-up "path to completion" chart
 - **Stale task detection** — APScheduler job clears locks and flags overdue tasks every 15 minutes
 - **S3-compatible file storage** — MinIO (dev) or AWS S3 (prod); presigned upload and view URLs
+- **Unified design system** — single primary/slate palette, `lucide-react` icons, self-hosted Inter/JetBrains Mono fonts, responsive down to mobile (collapsible nav drawer, card-based tables)
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                          nginx                               │
-│   :80  → digitizing portal     :8080 → customer portal      │
-│   Injects X-Portal header per server block                   │
-└────────────┬──────────────────────────┬─────────────────────┘
-             │                          │
-    ┌────────▼──────────┐    ┌──────────▼──────────┐
-    │  frontend-de       │    │  frontend-cust       │
-    │  (React + Vite)    │    │  (React + Vite)      │
-    │  Digitizing portal │    │  Customer portal     │
-    └────────────────────┘    └──────────────────────┘
-             │ /api/*                   │ /api/*
-    ┌────────▼──────────────────────────▼─────────────────────┐
-    │                     backend (FastAPI)                     │
-    │   JWT auth · tenant scope · portal claim check           │
-    └──────────┬──────────────────┬──────────────────┬────────┘
-               │                  │                  │
-        ┌──────▼──────┐   ┌───────▼──────┐   ┌──────▼──────┐
-        │  PostgreSQL  │   │   MinIO/S3   │   │  Keycloak   │
-        │  (primary DB)│   │ (file store) │   │  (OIDC/SSO) │
-        └─────────────┘   └──────────────┘   └─────────────┘
+                              Browser
+                                 │
+             https://*.docmate.local  (self-signed TLS, see below)
+                                 │
+┌────────────────────────────────▼──────────────────────────────────┐
+│                              nginx                                  │
+│  www.docmate.local / digitizing.docmate.local → Digitizing portal   │
+│  auth.docmate.local                            → Keycloak           │
+│  <customer-realm-slug>.docmate.local           → Customer portal    │
+│  Injects X-Portal header per virtual host                           │
+└────────────┬──────────────────────────────┬────────────────────────┘
+             │                              │
+    ┌────────▼──────────┐        ┌──────────▼──────────┐
+    │  frontend-de       │        │  frontend-cust        │
+    │  (React + Vite)    │        │  (React + Vite)       │
+    │  Digitizing portal │        │  Customer portal       │
+    └────────────────────┘        └────────────────────────┘
+             │ /api/*                          │ /api/*
+    ┌────────▼──────────────────────────────────▼───────────────────┐
+    │                       backend (FastAPI)                        │
+    │   JWT auth · tenant scope · portal claim check                 │
+    │   Provisions a Keycloak realm + OIDC client + S3 bucket         │
+    │   whenever a new customer Organisation is created               │
+    └──────────┬──────────────────┬───────────────────┬─────────────┘
+               │                  │                   │
+        ┌──────▼──────┐   ┌───────▼──────┐   ┌────────▼────────┐
+        │  PostgreSQL  │   │   MinIO/S3   │   │    Keycloak      │
+        │  (primary DB)│   │ (file store) │   │  one realm per   │
+        │              │   │              │   │  tenant org      │
+        └─────────────┘   └──────────────┘   └──────────────────┘
 ```
 
 ### Backend layout
@@ -80,14 +96,18 @@ backend/app/
 ├── schemas/        # Pydantic request/response schemas
 ├── routers/        # FastAPI route handlers (never write business logic here)
 ├── services/       # All business logic
-│   ├── audit_service.py      # write_event() — the only way to write audit logs
-│   ├── batch_service.py      # state machine transitions
-│   ├── lock_service.py       # acquire / release record locks
-│   ├── version_service.py    # immutable RecordVersion snapshots
-│   ├── task_service.py       # assign, reassign, bulk-reassign
-│   ├── aql_service.py        # ISO 2859-1 sampling + escalation
-│   ├── analytics_service.py  # productivity + KPI queries
-│   └── s3_service.py         # bucket provisioning + presigned URLs
+│   ├── audit_service.py             # write_event() — the only way to write audit logs
+│   ├── batch_service.py             # state machine transitions
+│   ├── lock_service.py              # acquire / release record locks
+│   ├── version_service.py           # immutable RecordVersion snapshots
+│   ├── task_service.py              # assign, start, complete (persists + versions edits), fail, bulk-reassign
+│   ├── staff_assignment_service.py  # shift-role roster + task-eligibility gating
+│   ├── cabinet_service.py           # cabinet CRUD, record intake/upload, batch creation from a cabinet
+│   ├── lot_service.py                # lot creation, AQL sampling, release to customer QC
+│   ├── aql_service.py               # ISO 2859-1 sampling + escalation
+│   ├── analytics_service.py         # productivity + KPI + burnup queries
+│   ├── keycloak_service.py          # per-tenant realm/client provisioning, Keycloak user management
+│   └── s3_service.py                # bucket provisioning + presigned URLs
 └── background/
     └── stale_checker.py      # APScheduler: stale task detection every 15 min
 ```
@@ -97,16 +117,26 @@ backend/app/
 ```
 frontend/src/
 ├── portals/
-│   ├── digitizing/pages/     # Supervisor + agent views
-│   └── customer/pages/       # Customer QC views
+│   ├── digitizing/pages/     # Organisations, Projects, Cabinets, Cabinet Assignment, Lots,
+│   │                         # Staff Assignment, Shifts, Users, My Tasks, Stale Tasks,
+│   │                         # Staff Productivity, Project KPIs, Record History
+│   └── customer/pages/       # Lots (QC sampling), QC Workspace, Project KPIs, Record History
 └── shared/
     ├── components/
-    │   ├── AgentWorkspace.tsx          # Split-screen indexing workspace
-    │   ├── SchemaForm.tsx              # rjsf-driven dynamic form
-    │   ├── rjsf/CustomWidgets.tsx      # RangeArrayField, ParcelArrayField, CountryWidget, DateTextWidget
-    │   └── ImageViewer/                # OpenSeadragon deep-zoom viewer
-    ├── api/                            # Axios client + TanStack Query hooks
-    └── types/                          # Shared TypeScript interfaces
+    │   ├── AppHeader.tsx                # Top bar: brand, portal label, mobile nav toggle, sign out
+    │   ├── AgentWorkspace.tsx           # Split-screen indexing/QA/QC workspace
+    │   ├── SplitWorkspace.tsx           # react-split layout shell used by AgentWorkspace
+    │   ├── SchemaForm.tsx               # rjsf-driven dynamic form
+    │   ├── rjsf/CustomWidgets.tsx       # RangeArrayField, ParcelArrayField, CountryWidget, DateTextWidget
+    │   ├── ImageViewer/                 # OpenSeadragon deep-zoom viewer
+    │   ├── StatusDot.tsx                # Shared filled/outline status indicator
+    │   ├── PageHeader.tsx / PageSkeleton.tsx  # Shared page chrome + loading states
+    │   ├── ProductivityTable.tsx / PathToCompletion.tsx / RecordTimeline.tsx  # Analytics widgets
+    │   └── WorkspaceErrorBoundary.tsx
+    ├── routing/                         # ProjectScopedRoute (project picker via ?project= query param)
+    ├── theme/                           # Ant Design ConfigProvider tokens (palette, radius, typography)
+    ├── api/                             # Axios client, keycloak-js adapter, TanStack Query hooks
+    └── types/                           # Shared TypeScript interfaces
 ```
 
 ---
@@ -114,7 +144,9 @@ frontend/src/
 ## Prerequisites
 
 - **Docker** ≥ 24 and **Docker Compose** ≥ 2.20
-- Ports `80`, `8080`, `8180`, `8000`, `5173`, `5174`, `5432`, `9000`, `9001` available
+- **OpenSSL** (to generate the local dev TLS certificate)
+- Ability to edit your machine's hosts file (`/etc/hosts` on macOS/Linux, `C:\Windows\System32\drivers\etc\hosts` on Windows)
+- Ports `80`, `443`, `8080`, `8180`, `8000`, `5173`, `5174`, `5432`, `9000`, `9001` available
 
 ---
 
@@ -125,16 +157,22 @@ frontend/src/
 git clone https://github.com/dropnock/docmate.git
 cd docmate
 
-# 2. (Optional) Set a strong secret key
+# 2. Generate the local dev TLS certificate (self-signed, covers *.docmate.local)
+./nginx/certs/generate.sh
+
+# 3. Add local domains to your hosts file — see "Local HTTPS Domains" below
+#    (at minimum: www.docmate.local and auth.docmate.local)
+
+# 4. (Optional) Set a strong secret key
 echo "SECRET_KEY=$(openssl rand -hex 32)" > .env
 
-# 3. Start everything
+# 5. Start everything
 docker compose up --build
 
 # First run takes ~2 minutes while Keycloak imports the realm.
 # Wait until you see: "Application startup complete." in the backend logs.
 
-# 4. Seed the initial tenant, organisations, and users
+# 6. Seed the initial tenant, organisations, and users
 docker compose exec backend python seed.py
 ```
 
@@ -145,13 +183,33 @@ docker compose exec backend python seed.py
 
 > **After any backend code change:**
 > ```bash
-> docker compose build backend && docker compose up -d backend
+> docker compose up --build -d --force-recreate backend
 > ```
+> `docker compose up --build -d` alone rebuilds the image but will **not** recreate an already-running container — the old image keeps serving until you add `--force-recreate` (or `docker compose down` first).
 
 > **After any frontend code change:**
 > ```bash
-> docker compose build frontend-de frontend-cust && docker compose up -d frontend-de frontend-cust
+> docker compose up --build -d --force-recreate frontend-de frontend-cust
 > ```
+
+---
+
+## Local HTTPS Domains
+
+Keycloak's session cookie is `SameSite=None; Secure`, which browsers only honor over HTTPS on a non-`localhost` hostname — so the digitizing and customer portals are served over `*.docmate.local` with a self-signed certificate rather than plain `http://localhost`.
+
+Add the following to your hosts file, pointing at wherever Docker is reachable (`127.0.0.1` for a local Docker daemon):
+
+```
+127.0.0.1  www.docmate.local
+127.0.0.1  digitizing.docmate.local
+127.0.0.1  auth.docmate.local
+127.0.0.1  acme-archive.docmate.local
+```
+
+- `acme-archive` is the realm slug of the sample customer organisation created by `seed.py`. Every customer Organisation you create afterwards (via the Organisations page) gets its own realm slug — add a hosts entry for `<slug>.docmate.local` the same way.
+- The certificate is self-signed (`nginx/certs/generate.sh`), so your browser will show a security warning on first visit to each `*.docmate.local` host — accept/proceed past it (or import `nginx/certs/dev.crt` into your OS/browser trust store).
+- `nginx/certs/dev.crt` and `dev.key` are git-ignored and generated locally; the compose stack won't start without them.
 
 ---
 
@@ -159,14 +217,16 @@ docker compose exec backend python seed.py
 
 | Service | URL | Notes |
 |---------|-----|-------|
-| **Digitizing Portal** | http://localhost | Main staff portal |
-| **Customer Portal** | http://localhost:8080 | Client QC portal |
+| **Digitizing Portal** | https://www.docmate.local | Main staff portal |
+| **Digitizing Portal (no TLS setup)** | http://localhost | Same portal, works without hosts-file/cert setup — Keycloak login still requires the HTTPS domain |
+| **Customer Portal** | https://\<customer-realm-slug\>.docmate.local | e.g. `https://acme-archive.docmate.local` for the seeded sample org |
+| **Keycloak** | https://auth.docmate.local | Login pages, redirect target during OIDC flow |
 | **Backend API** | http://localhost:8000 | FastAPI |
 | **API Docs (Swagger)** | http://localhost:8000/docs | Interactive API explorer |
-| **Keycloak Admin** | http://localhost:8180 | Identity provider admin |
+| **Keycloak Admin Console** | http://localhost:8180 | Identity provider admin |
 | **MinIO Console** | http://localhost:9001 | S3-compatible object store UI |
-| **Direct DE frontend** | http://localhost:5173 | Bypasses nginx (dev use) |
-| **Direct Customer frontend** | http://localhost:5174 | Bypasses nginx (dev use) |
+| **Direct DE frontend** | http://localhost:5173 | Bypasses nginx/TLS entirely (fast iteration; portal header enforcement doesn't apply) |
+| **Direct Customer frontend** | http://localhost:5174 | Bypasses nginx/TLS entirely (fast iteration; portal header enforcement doesn't apply) |
 
 ---
 
@@ -174,16 +234,18 @@ docker compose exec backend python seed.py
 
 ### Application users (Keycloak — `doc` realm)
 
-> Created by `seed.py`. All passwords are `changeme123`.
+> Created by `seed.py`. All passwords are `changeme123`. Users are prompted to set up TOTP on first login.
 
 | Email | Role | Portal |
 |-------|------|--------|
 | `admin@doc.local` | Admin | Digitizing |
 | `supervisor@doc.local` | DE Supervisor | Digitizing |
-| `indexer@doc.local` | DE Indexer | Digitizing |
-| `qa@doc.local` | DE QA Agent | Digitizing |
-| `supervisor@acme.local` | Customer Supervisor | Customer |
-| `qc@acme.local` | Customer QC Agent | Customer |
+| `indexer@doc.local` | DE Staff (indexer shift role) | Digitizing |
+| `qa@doc.local` | DE Staff (QA shift role) | Digitizing |
+| `supervisor@acme.local` | Customer Supervisor | Customer (`acme-archive` realm) |
+| `qc@acme.local` | Customer QC Agent | Customer (`acme-archive` realm) |
+
+Additional customer organisations created via the Organisations page provision their own Keycloak realm and are seeded with users the same way, via the Users page.
 
 ### Infrastructure
 
@@ -221,6 +283,8 @@ python seed.py
 uvicorn app.main:app --reload --port 8000
 ```
 
+> Running the backend outside Docker talks to Keycloak over plain `http://localhost:8180`, so the TLS/hosts-file setup above isn't required for this path — only the Docker Compose stack serves portals over `*.docmate.local`.
+
 ### Frontend (without Docker)
 
 ```bash
@@ -255,7 +319,7 @@ alembic revision --autogenerate -m "describe the change"
 ```bash
 cd backend
 pytest
-pytest tests/test_aql.py   # single file
+pytest tests/test_aql_service.py   # single file
 ```
 
 ---
@@ -267,17 +331,18 @@ Backend is configured via environment variables (see `backend/.env.example`):
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DATABASE_URL` | PostgreSQL async connection string | `postgresql+asyncpg://docmate:docmate@localhost:5432/docmate` |
-| `SECRET_KEY` | JWT signing secret — **change in production** | `change-me-in-production` |
+| `SECRET_KEY` | Signing secret — **change in production** | `dev-secret-key-replace-in-production` |
 | `AWS_ACCESS_KEY_ID` | S3 / MinIO access key | `minioadmin` |
 | `AWS_SECRET_ACCESS_KEY` | S3 / MinIO secret key | `minioadmin` |
-| `AWS_ENDPOINT_URL` | S3 endpoint (internal) | `http://localhost:9000` |
-| `AWS_PUBLIC_ENDPOINT_URL` | S3 endpoint for presigned URLs (browser-accessible) | `http://localhost:9000` |
+| `AWS_ENDPOINT_URL` | S3 endpoint (internal) | unset |
+| `AWS_PUBLIC_ENDPOINT_URL` | S3 endpoint for presigned URLs (browser-accessible) | unset |
 | `AWS_REGION` | S3 region | `us-east-1` |
 | `S3_FORCE_PATH_STYLE` | Required for MinIO | `true` |
-| `KEYCLOAK_INTERNAL_URL` | Keycloak URL for backend token validation | `http://keycloak:8080` |
+| `KEYCLOAK_INTERNAL_URL` | Keycloak URL for backend token validation / admin API | `http://localhost:8180` |
 | `KEYCLOAK_EXTERNAL_URL` | Keycloak URL for browser redirects | `http://localhost:8180` |
 | `KEYCLOAK_ADMIN_USER` | Keycloak admin username | `admin` |
 | `KEYCLOAK_ADMIN_PASSWORD` | Keycloak admin password | `admin` |
+| `CUSTOMER_PORTAL_BASE_URL` | Base URL (no subdomain) used to build each customer realm's OIDC redirect URIs, e.g. `https://docmate.local` | `http://localhost:8080` |
 
 ---
 
@@ -287,7 +352,7 @@ The `seed.py` script creates:
 
 - Tenant: **Digitizing Operations Centre** (slug: `doc`)
 - Digitizing org: **DOC**
-- Customer org: **Acme Archive Corp** (Keycloak realm: `acme-archive`)
+- Customer org: **Acme Archive Corp** (Keycloak realm: `acme-archive`, auto-provisioned with its own OIDC client and TOTP policy)
 - Six users across both portals (see [Default Credentials](#default-credentials))
 
 ```bash
@@ -298,15 +363,16 @@ docker compose exec backend python seed.py
 cd backend && python seed.py
 ```
 
+Beyond the initial seed, new customer organisations can be created directly from the **Organisations** page in the Digitizing portal — this provisions the Keycloak realm, OIDC client, and S3 bucket automatically, without touching `seed.py` or Keycloak by hand.
+
 ---
 
 ## Key Workflows
 
-### 1. Create a project and document type (Admin)
+### 1. Create an organisation and project (Admin)
 
-1. Log in as `admin@doc.local` → **Projects** → **New Project**
-2. Inside the project → **Batches** tab → **Document Types** tab → **New Document Type**
-3. Paste a JSON Schema describing the indexing form fields
+1. Log in as `admin@doc.local` → **Organisations** → **New Organisation** to onboard a customer (auto-provisions realm + S3 bucket)
+2. **Projects** → **New Project**, linking it to a customer organisation and a document type's JSON Schema (defined per-batch, below)
 
 **Example schema** (land title caveat):
 ```json
@@ -340,37 +406,44 @@ cd backend && python seed.py
 }
 ```
 
-### 2. Upload documents and create a batch (Admin/Supervisor)
+### 2. Intake documents via Cabinets (Admin/Supervisor)
 
-1. **Batches** tab → **New Batch** → select document type
-2. Click **Records** → **Upload Images** — drag and drop JPEG/PNG/TIFF/PDF files
-3. Each file automatically creates one record linked to that file in S3
-4. Click **Submit for Indexing** to advance the batch
+1. **Cabinets** → **New Cabinet**, assigned to a project (and optionally a customer organisation)
+2. Open the cabinet → **Upload Images** — drag and drop JPEG/PNG/TIFF/PDF files; each file creates one record in S3
+3. **Cabinet Assignment** → allocate pending records from a cabinet to a batch and out to indexers
 
-### 3. Assign records to indexers (Supervisor)
+### 3. Assign staff to a shift (Supervisor)
 
-1. **Task Assignment** → select batch and shift
-2. Choose an agent per record, or use **Auto-assign (round-robin)** for the whole batch
+1. **Shifts** → define a shift (time window + timezone) if one doesn't already exist
+2. **Staff Assignment** → assign each staff member to a project + shift with a role: **indexer** or **QA**
+3. Task assignment (manual or auto round-robin) only offers work to staff currently holding the matching shift role — a QA-shift agent won't be handed indexing tasks and vice versa
 
 ### 4. Index a record (Indexer)
 
 1. **My Tasks** → click **Start Indexing** on an assigned task
 2. The split-screen workspace opens: document image (left) + auto-generated form (right)
 3. Fill in the form; use **Save Progress** to save without completing
-4. Click **Submit & Complete** to submit and release the record lock
+4. Click **Submit & Complete** to submit, version the record, and release the lock
 
 **Parcel range shorthand** — in the Parcels field enter a Volume and a Folio range (e.g. `400-450`) then click **Add**. DocMate expands it to 51 individual `{volume_number, folio_number}` items automatically.
 
-### 5. QA Review → Customer QC (Supervisor)
+### 5. QA review (QA agent)
 
-1. Once all records are indexed, advance the batch through **QA Review** → **Customer QC**
-2. Customer QC agents log into the Customer Portal to sample and pass/reject records
-3. Rejected records re-enter the indexing workflow as rework (version 2+)
+1. **My Tasks** → QA tasks appear for staff holding the QA shift role
+2. Review the indexed data against the image; correct any fields directly in the form
+3. **Submit & Complete** to pass (edits are saved and versioned) — or fail the record to send it back for indexing rework
 
-### 6. Monitor progress (Supervisor)
+### 6. Group records into a Lot and release to customer QC (Supervisor)
+
+1. **Lots** → **New Lot**, select the QA-passed records to include
+2. DocMate computes an AQL sample size/acceptance number for the lot; apply the sample
+3. Release the lot — customer QC agents can now see it in the Customer Portal's **Lots** page, sample and pass/reject records
+4. Rejected records re-enter the indexing workflow as rework (version 2+)
+
+### 7. Monitor progress (Supervisor)
 
 - **Staff Productivity** — per-agent metrics: records today, avg processing time, error rate
-- **Project KPIs** — completion %, projected end date vs proposed, burn-up chart
+- **Project KPIs** — completion %, projected end date vs proposed, "Path to Completion" burn-up chart
 - **Stale Tasks** — tasks overdue beyond the project's stale threshold; bulk or individual reassignment
 
 ---
@@ -381,16 +454,19 @@ cd backend && python seed.py
 |-------|-----------|
 | Backend API | Python 3.11 · FastAPI · async SQLAlchemy 2 · Alembic |
 | Database | PostgreSQL 16 |
-| Identity | Keycloak 24 (OIDC + PKCE, per-tenant realms) |
+| Identity | Keycloak 24 (OIDC + PKCE via `keycloak-js`, one realm per tenant organisation) |
 | File storage | MinIO (dev) / AWS S3 (prod) via `boto3` |
 | Background jobs | APScheduler (stale task detection) |
 | Frontend | React 18 · TypeScript · Vite (multi-page build) |
-| UI components | Ant Design 5 |
+| UI components | Ant Design 5 (themed via `ConfigProvider` — single primary/slate palette) |
+| Icons | lucide-react |
+| Fonts | Inter (UI) · JetBrains Mono (machine identifiers), self-hosted via `@fontsource` |
 | Forms | react-jsonschema-form (`@rjsf/antd`) |
+| Charts | `@ant-design/charts` (AntV G2) |
 | Data fetching | TanStack Query v5 |
 | Image viewer | OpenSeadragon (deep zoom, PDF via `<iframe>`) |
 | Split pane | react-split |
-| Reverse proxy | nginx |
+| Reverse proxy | nginx (TLS termination, per-subdomain routing, `X-Portal` header injection) |
 | Containers | Docker Compose |
 
 ---
@@ -399,7 +475,7 @@ cd backend && python seed.py
 
 - Set a strong `SECRET_KEY` (minimum 32 random bytes)
 - Replace MinIO with AWS S3 — update `AWS_*` environment variables and remove `S3_FORCE_PATH_STYLE`
-- Set `KEYCLOAK_ADMIN_PASSWORD` to a strong password and update `KC_HOSTNAME_URL` to your domain
-- Configure TLS termination at the nginx layer
+- Set `KEYCLOAK_ADMIN_PASSWORD` to a strong password
+- Replace the self-signed dev certificate (`nginx/certs/generate.sh`) with a real certificate (e.g. from your CA or Let's Encrypt) covering your domain and its wildcard subdomain, and update `KC_HOSTNAME_URL`, `KEYCLOAK_EXTERNAL_URL`, and `CUSTOMER_PORTAL_BASE_URL` to your real domain
 - The `postgres_data` and `minio_data` Docker volumes hold all persistent data — back them up regularly
-- Keycloak realm configuration is in `keycloak/realms/doc-realm.json` and is imported automatically on first start
+- The base `doc` realm's configuration is in `keycloak/realms/doc-realm.json` and is imported automatically on first start; customer realms are provisioned at runtime via the Keycloak Admin API and are **not** captured in that file — back up the Keycloak Postgres database (or export realms) separately
