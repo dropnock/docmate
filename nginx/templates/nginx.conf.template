@@ -95,11 +95,33 @@ http {
         }
     }
 
-    # ── Protect www/digitizing and auth on port 8080 ──────────────────────────
+    # ── MinIO / S3 ──────────────────────────────────────────────────────────────
+    # Presigned URLs are signed (via AWS_PUBLIC_ENDPOINT_URL/S3_PUBLIC_URL) against
+    # this exact hostname, and SigV4 signs the Host header — so it must be
+    # forwarded unchanged, or MinIO will reject the signature as invalid.
+    server {
+        listen 443 ssl;
+        server_name ${S3_HOSTNAME};
+
+        # Document scans (TIFFs etc.) can be large; nginx's 1m default would
+        # reject presigned uploads/downloads well under typical scan sizes.
+        client_max_body_size 0;
+
+        location / {
+            set $minio_upstream http://minio:9000;
+            proxy_pass $minio_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+    }
+
+    # ── Protect www/digitizing, auth, and s3 on port 8080 ─────────────────────
     # Exact names always beat the customer wildcard regex below.
     server {
         listen 8080;
-        server_name ${DE_HOSTNAMES} ${AUTH_HOSTNAME};
+        server_name ${DE_HOSTNAMES} ${AUTH_HOSTNAME} ${S3_HOSTNAME};
         return 444;
     }
 

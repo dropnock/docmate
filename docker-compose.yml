@@ -100,8 +100,10 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minioadmin}
       AWS_ENDPOINT_URL: http://minio:9000
       # Must be browser-resolvable — used only to build presigned URLs
-      # returned to the client, never for backend→MinIO traffic.
-      AWS_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_URL:-http://localhost:9000}
+      # returned to the client, never for backend→MinIO traffic. Defaults to
+      # the same hostname nginx routes to MinIO under (S3_HOSTNAME) unless
+      # S3_PUBLIC_URL is set explicitly (e.g. a different scheme/port).
+      AWS_PUBLIC_ENDPOINT_URL: ${S3_PUBLIC_URL:-https://${S3_HOSTNAME:-s3.docmate.local}}
       AWS_REGION: us-east-1
       S3_FORCE_PATH_STYLE: "true"
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
@@ -146,6 +148,7 @@ services:
       - backend
       - frontend-de
       - frontend-cust
+      - minio
     environment:
       # Rendered into nginx.conf from nginx.conf.template via the official
       # image's built-in envsubst-on-templates entrypoint step. The output
@@ -155,6 +158,7 @@ services:
       DE_HOSTNAMES: ${DE_HOSTNAMES:-www.docmate.local digitizing.docmate.local}
       AUTH_HOSTNAME: ${AUTH_HOSTNAME:-auth.docmate.local}
       CUSTOMER_DOMAIN: ${CUSTOMER_DOMAIN:-docmate.local}
+      S3_HOSTNAME: ${S3_HOSTNAME:-s3.docmate.local}
     ports:
       - "80:80"      # Digitizing Entity portal
       - "443:443"    # TLS (required for Keycloak's Secure session cookie)
