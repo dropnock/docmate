@@ -1,10 +1,22 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    database_url: str = "postgresql+asyncpg://docmate:docmate@localhost:5432/docmate"
+    # Full connection string override. Leave unset and use the discrete
+    # postgres_* fields below instead — they're built into a URL via
+    # SQLAlchemy's URL.create(), which percent-encodes user/password safely
+    # no matter what characters they contain (a hand-built f-string doesn't).
+    database_url: str | None = None
+
+    postgres_user: str = "docmate"
+    postgres_password: str = "docmate"
+    postgres_db: str = "docmate"
+    postgres_host: str = "localhost"
+    postgres_port: int = 5432
+
     secret_key: str = "dev-secret-key-replace-in-production"
 
     aws_access_key_id: str = "minioadmin"
@@ -22,6 +34,25 @@ class Settings(BaseSettings):
     # Base URL of the customer portal WITHOUT subdomain, e.g. http://docmate.com:8080
     # Used to build per-realm Keycloak redirect URIs: http://<realm>.docmate.com:8080/*
     customer_portal_base_url: str = "http://localhost:8080"
+
+    # Comma-separated public base URLs for the digitizing portal, e.g.
+    # "https://www.docmate.example.com,https://digitizing.docmate.example.com".
+    # Used to keep the docmate-de Keycloak client's redirect URIs in sync —
+    # see keycloak_service.sync_de_client().
+    de_portal_base_urls: str = "http://localhost:5173,http://localhost:80"
+
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return URL.create(
+            drivername="postgresql+asyncpg",
+            username=self.postgres_user,
+            password=self.postgres_password,
+            host=self.postgres_host,
+            port=self.postgres_port,
+            database=self.postgres_db,
+        ).render_as_string(hide_password=False)
 
 
 settings = Settings()

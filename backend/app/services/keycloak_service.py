@@ -49,6 +49,75 @@ def _build_customer_client(realm_slug: str) -> dict:
     }
 
 
+DE_REALM = "doc"
+DE_CLIENT_ID = "docmate-de"
+
+
+def _build_de_client() -> dict:
+    """Build the docmate-de client config with redirect URIs for every
+    configured base URL (settings.de_portal_base_urls, comma-separated)."""
+    dev_uris = [
+        "http://localhost:5173",
+        "http://localhost:5173/",
+        "http://localhost:5173/*",
+        "http://localhost:80",
+        "http://localhost:80/",
+        "http://localhost:80/*",
+        "http://localhost",
+        "http://localhost/",
+        "http://localhost/*",
+        "http://localhost:8080",
+        "http://localhost:8080/",
+        "http://localhost:8080/*",
+    ]
+
+    base_urls = [u.strip().rstrip("/") for u in settings.de_portal_base_urls.split(",") if u.strip()]
+    configured_uris: list[str] = []
+    for base_url in base_urls:
+        configured_uris += [base_url, f"{base_url}/", f"{base_url}/*"]
+
+    return {
+        "clientId": DE_CLIENT_ID,
+        "name": "DocMate Digitizing Portal",
+        "enabled": True,
+        "publicClient": True,
+        "bearerOnly": False,
+        "consentRequired": False,
+        "standardFlowEnabled": True,
+        "implicitFlowEnabled": False,
+        "directAccessGrantsEnabled": False,
+        "serviceAccountsEnabled": False,
+        "protocol": "openid-connect",
+        "redirectUris": configured_uris + dev_uris,
+        "webOrigins": ["+"],
+        "attributes": {
+            "pkce.code.challenge.method": "S256",
+            "post.logout.redirect.uris": "##".join(
+                [f"{u}/*" for u in base_urls] + dev_uris
+            ),
+        },
+    }
+
+
+def sync_de_client() -> None:
+    """Idempotently reconcile the docmate-de client's redirect URIs with the
+    currently configured DE_PORTAL_BASE_URLS.
+
+    Safe to call on every backend startup: Keycloak's `--import-realm` only
+    imports a realm the first time it's seen, so once the realm exists,
+    changing hostnames requires this to actually take effect.
+    """
+    admin = _make_admin("master")
+    admin.connection.realm_name = DE_REALM
+    clients = admin.get_clients()
+    de_client = next((c for c in clients if c["clientId"] == DE_CLIENT_ID), None)
+    if not de_client:
+        logger.warning("%s client not found in realm %s; skipping redirect URI sync", DE_CLIENT_ID, DE_REALM)
+        return
+    admin.update_client(de_client["id"], _build_de_client())
+    logger.info("Synced redirect URIs for %s client", DE_CLIENT_ID)
+
+
 def slugify(name: str) -> str:
     slug = name.lower()
     slug = re.sub(r"[^a-z0-9]+", "-", slug)

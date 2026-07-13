@@ -123,18 +123,12 @@
         "http://localhost/*",
         "http://localhost:8080",
         "http://localhost:8080/",
-        "http://localhost:8080/*",
-        "https://www.docmate.local",
-        "https://www.docmate.local/",
-        "https://www.docmate.local/*",
-        "https://digitizing.docmate.local",
-        "https://digitizing.docmate.local/",
-        "https://digitizing.docmate.local/*"
+        "http://localhost:8080/*"
       ],
       "webOrigins": ["+"],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:80/*##http://localhost/*##http://localhost:8080/*##https://www.docmate.local/*##https://digitizing.docmate.local/*"
+        "post.logout.redirect.uris": "http://localhost:5173/*##http://localhost:80/*##http://localhost/*##http://localhost:8080/*"
       }
     }
   ]

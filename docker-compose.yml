@@ -4,16 +4,16 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: docmate
-      POSTGRES_PASSWORD: docmate
-      POSTGRES_DB: docmate
+      POSTGRES_USER: ${POSTGRES_USER:-docmate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docmate}
+      POSTGRES_DB: ${POSTGRES_DB:-docmate}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U docmate"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-docmate}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -45,11 +45,11 @@ services:
         condition: service_healthy
     environment:
       KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
-      KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: keycloak
-      KC_HOSTNAME_URL: https://auth.docmate.local
-      KC_HOSTNAME_ADMIN_URL: https://auth.docmate.local
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KC_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KC_DB_USERNAME:-keycloak}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:-keycloak}
+      KC_HOSTNAME_URL: https://${AUTH_HOSTNAME:-auth.docmate.local}
+      KC_HOSTNAME_ADMIN_URL: https://${AUTH_HOSTNAME:-auth.docmate.local}
       KC_HTTP_ENABLED: "true"
       # TLS terminates at nginx; the nginx->keycloak hop is plain http, so
       # Keycloak must trust nginx's X-Forwarded-* headers to know the
@@ -57,8 +57,8 @@ services:
       # Secure cookie behavior).
       KC_PROXY: edge
       KC_HEALTH_ENABLED: "true"
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
     ports:
@@ -83,7 +83,13 @@ services:
       keycloak:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://docmate:docmate@postgres:5432/docmate
+      # Built into a safely-escaped connection string by
+      # Settings.sqlalchemy_database_url — see backend/app/core/config.py.
+      POSTGRES_USER: ${POSTGRES_USER:-docmate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docmate}
+      POSTGRES_DB: ${POSTGRES_DB:-docmate}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
@@ -92,10 +98,13 @@ services:
       AWS_REGION: us-east-1
       S3_FORCE_PATH_STYLE: "true"
       KEYCLOAK_INTERNAL_URL: http://keycloak:8080
-      KEYCLOAK_EXTERNAL_URL: https://auth.docmate.local
-      KEYCLOAK_ADMIN_USER: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_EXTERNAL_URL: https://${AUTH_HOSTNAME:-auth.docmate.local}
+      KEYCLOAK_ADMIN_USER: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       CUSTOMER_PORTAL_BASE_URL: ${CUSTOMER_PORTAL_BASE_URL:-https://docmate.local}
+      # Comma-separated public base URLs for the digitizing portal — kept in
+      # sync with the docmate-de Keycloak client's redirect URIs on startup.
+      DE_PORTAL_BASE_URLS: ${DE_PORTAL_BASE_URLS:-https://www.docmate.local,https://digitizing.docmate.local}
     ports:
       - "8000:8000"
 
@@ -122,12 +131,21 @@ services:
       - backend
       - frontend-de
       - frontend-cust
+    environment:
+      # Rendered into nginx.conf from nginx.conf.template via the official
+      # image's built-in envsubst-on-templates entrypoint step. The output
+      # dir is overridden to /etc/nginx so it replaces nginx.conf itself
+      # (the default only drops rendered files into conf.d/ fragments).
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      DE_HOSTNAMES: ${DE_HOSTNAMES:-www.docmate.local digitizing.docmate.local}
+      AUTH_HOSTNAME: ${AUTH_HOSTNAME:-auth.docmate.local}
+      CUSTOMER_DOMAIN: ${CUSTOMER_DOMAIN:-docmate.local}
     ports:
       - "80:80"      # Digitizing Entity portal
       - "443:443"    # TLS (required for Keycloak's Secure session cookie)
       - "8080:8080"  # Customer portal
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/templates/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
       - ./nginx/certs:/etc/nginx/certs:ro
 
 volumes:
