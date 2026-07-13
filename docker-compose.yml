@@ -7,6 +7,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-docmate}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docmate}
       POSTGRES_DB: ${POSTGRES_DB:-docmate}
+      # Consumed by postgres-init/01-create-keycloak-db.sh to provision the
+      # Keycloak role/database with the same credentials Keycloak itself uses.
+      KC_DB_NAME: ${KC_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KC_DB_USERNAME:-keycloak}
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:-keycloak}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
