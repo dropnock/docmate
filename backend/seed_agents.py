@@ -15,6 +15,7 @@ import random
 
 from sqlalchemy import select
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.organization import Organization, OrgType
 from app.models.tenant import Tenant
@@ -23,7 +24,7 @@ from app.models.user import Portal, User, UserRole
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PASSWORD = "changeme123"
+PASSWORD = settings.seed_default_password
 
 # ── Name pools ────────────────────────────────────────────────────────────────
 

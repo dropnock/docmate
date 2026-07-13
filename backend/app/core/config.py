@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     # see keycloak_service.sync_de_client().
     de_portal_base_urls: str = "http://localhost:5173,http://localhost:80"
 
+    # Temporary password assigned to demo/seed users (seed.py, seed_agents.py).
+    # Users must change it on first login (requiredActions=UPDATE_PASSWORD).
+    seed_default_password: str = "changeme123"
+
     @property
     def sqlalchemy_database_url(self) -> str:
         if self.database_url:

@@ -110,6 +110,7 @@ services:
       # Comma-separated public base URLs for the digitizing portal — kept in
       # sync with the docmate-de Keycloak client's redirect URIs on startup.
       DE_PORTAL_BASE_URLS: ${DE_PORTAL_BASE_URLS:-https://www.docmate.local,https://digitizing.docmate.local}
+      SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-changeme123}
     ports:
       - "8000:8000"
 

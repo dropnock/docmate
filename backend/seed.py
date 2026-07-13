@@ -8,6 +8,7 @@ Run AFTER Keycloak is up:
 import asyncio
 import logging
 
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.organization import Organization, OrgType
 from app.models.tenant import Tenant
@@ -76,7 +77,7 @@ async def seed():
 
         for spec in user_specs:
             realm = "doc" if spec["portal"] == Portal.digitizing else cust_realm
-            sub = _try_keycloak(realm, spec["email"], spec["full_name"], "changeme123")
+            sub = _try_keycloak(realm, spec["email"], spec["full_name"], settings.seed_default_password)
             db.add(User(
                 tenant_id=tenant.id,
                 email=spec["email"],
@@ -94,15 +95,16 @@ async def seed():
     print("  Tenant: Digitizing Operations Centre (slug=doc)")
     print("  Orgs:   DOC [digitizing_entity]  |  Acme Archive Corp [customer, realm=acme-archive]")
     print()
+    pw = settings.seed_default_password
     print("  DOC users (realm=doc):")
-    print("    admin@doc.local / changeme123")
-    print("    supervisor@doc.local / changeme123")
-    print("    indexer@doc.local / changeme123")
-    print("    qa@doc.local / changeme123")
+    print(f"    admin@doc.local / {pw}")
+    print(f"    supervisor@doc.local / {pw}")
+    print(f"    indexer@doc.local / {pw}")
+    print(f"    qa@doc.local / {pw}")
     print()
     print("  Customer users (realm=acme-archive):")
-    print("    supervisor@acme.local / changeme123")
-    print("    qc@acme.local / changeme123")
+    print(f"    supervisor@acme.local / {pw}")
+    print(f"    qc@acme.local / {pw}")
     print()
     print("  All users will be prompted to set up TOTP on first login.")
 
