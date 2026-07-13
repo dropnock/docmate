@@ -476,6 +476,8 @@ Beyond the initial seed, new customer organisations can be created directly from
 - Set a strong `SECRET_KEY` (minimum 32 random bytes)
 - Replace MinIO with AWS S3 — update `AWS_*` environment variables and remove `S3_FORCE_PATH_STYLE`
 - Set `KEYCLOAK_ADMIN_PASSWORD` to a strong password
-- Replace the self-signed dev certificate (`nginx/certs/generate.sh`) with a real certificate (e.g. from your CA or Let's Encrypt) covering your domain and its wildcard subdomain, and update `KC_HOSTNAME_URL`, `KEYCLOAK_EXTERNAL_URL`, and `CUSTOMER_PORTAL_BASE_URL` to your real domain
+- Replace the self-signed dev certificate (`nginx/certs/generate.sh <your-domain>`) with a real certificate (e.g. from your CA or Let's Encrypt) covering your domain and its wildcard subdomain
+- Configure your domain via `.env` — set `CUSTOMER_DOMAIN`, `DE_HOSTNAMES`, `AUTH_HOSTNAME`, `CUSTOMER_PORTAL_BASE_URL`, and `DE_PORTAL_BASE_URLS` to your real hostnames (see `.env.example`)
+- `AUTH_HOSTNAME` is also baked into the frontend JS bundles at build time (Vite's `VITE_KEYCLOAK_URL`), so changing it requires rebuilding those images — `docker compose up -d --build frontend-de frontend-cust` — a plain container recreate won't pick it up
 - The `postgres_data` and `minio_data` Docker volumes hold all persistent data — back them up regularly
 - The base `doc` realm's configuration is in `keycloak/realms/doc-realm.json` and is imported automatically on first start; customer realms are provisioned at runtime via the Keycloak Admin API and are **not** captured in that file — back up the Keycloak Postgres database (or export realms) separately

@@ -117,6 +117,11 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.digitizing
+      args:
+        # Baked into the JS bundle at build time by Vite — changing
+        # AUTH_HOSTNAME in .env requires rebuilding this image, a plain
+        # container recreate is not enough.
+        VITE_KEYCLOAK_URL: https://${AUTH_HOSTNAME:-auth.docmate.local}
     restart: unless-stopped
     ports:
       - "5173:80"
@@ -125,6 +130,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.customer
+      args:
+        VITE_KEYCLOAK_URL: https://${AUTH_HOSTNAME:-auth.docmate.local}
     restart: unless-stopped
     ports:
       - "5174:80"
