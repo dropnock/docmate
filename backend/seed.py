@@ -69,8 +69,8 @@ async def seed():
         user_specs = [
             dict(email="admin@doc.local",      full_name="System Admin",        role=UserRole.admin,               portal=Portal.digitizing, org_id=doc_org.id),
             dict(email="supervisor@doc.local",  full_name="DE Supervisor",       role=UserRole.de_supervisor,       portal=Portal.digitizing, org_id=doc_org.id),
-            dict(email="indexer@doc.local",     full_name="John Indexer",        role=UserRole.de_indexer,          portal=Portal.digitizing, org_id=doc_org.id),
-            dict(email="qa@doc.local",          full_name="QA Agent",            role=UserRole.de_qa_agent,         portal=Portal.digitizing, org_id=doc_org.id),
+            dict(email="indexer@doc.local",     full_name="John Indexer",        role=UserRole.de_staff,            portal=Portal.digitizing, org_id=doc_org.id),
+            dict(email="qa@doc.local",          full_name="QA Agent",            role=UserRole.de_staff,            portal=Portal.digitizing, org_id=doc_org.id),
             dict(email="supervisor@acme.local", full_name="Customer Supervisor", role=UserRole.customer_supervisor,  portal=Portal.customer,   org_id=cust_org.id),
             dict(email="qc@acme.local",         full_name="Jane QC Agent",       role=UserRole.customer_qc_agent,   portal=Portal.customer,   org_id=cust_org.id),
         ]

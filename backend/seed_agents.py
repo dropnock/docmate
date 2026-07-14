@@ -128,9 +128,9 @@ async def seed():
         qa_specs = _generate_users(16, used_emails)
 
         specs = [
-            (s, UserRole.de_indexer) for s in indexer_specs
+            (s, UserRole.de_staff) for s in indexer_specs
         ] + [
-            (s, UserRole.de_qa_agent) for s in qa_specs
+            (s, UserRole.de_staff) for s in qa_specs
         ]
 
         # ── Create users ──────────────────────────────────────────────────────
@@ -157,8 +157,8 @@ async def seed():
         await db.commit()
 
     print(f"\nSeeded {created} users into tenant '{tenant.name}':")
-    print(f"  16 × de_indexer   — email: firstname.lastname@doc.local")
-    print(f"  16 × de_qa_agent  — email: firstname.lastname@doc.local")
+    print(f"  16 × de_staff (indexer-track) — email: firstname.lastname@doc.local")
+    print(f"  16 × de_staff (qa-track)      — email: firstname.lastname@doc.local")
     print(f"  Password: {PASSWORD}  (temporary — must change on first login)")
 
 
