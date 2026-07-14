@@ -13,8 +13,16 @@ export default function OpenSeadragonViewer({ imageUrl }: Props) {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    viewerRef.current = OpenSeadragon({
+    const options = {
       element: containerRef.current,
+      // OSD 5.x defaults to a WebGL renderer, which can lose its context on
+      // constrained/virtualized GPUs (common on back-office/VDI machines) or
+      // once the browser's limited pool of simultaneous WebGL contexts is
+      // exhausted, leaving the image blank. Canvas 2D has no such failure
+      // mode and is plenty fast for a document image viewer.
+      // (@types/openseadragon@3 predates this option on OSD 5 — it's a real
+      // constructor option at runtime, the types just haven't caught up.)
+      drawer: "canvas",
       tileSources: {
         type: "image",
         url: imageUrl,
@@ -31,7 +39,8 @@ export default function OpenSeadragonViewer({ imageUrl }: Props) {
       visibilityRatio: 0.5,
       animationTime: 0.3,
       defaultZoomLevel: 0,
-    });
+    };
+    viewerRef.current = OpenSeadragon(options);
 
     return () => {
       viewerRef.current?.destroy();
