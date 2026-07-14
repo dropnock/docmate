@@ -164,7 +164,14 @@ def discover_files(directory: Path, recursive: bool, extensions: set[str]) -> li
     return sorted(files)
 
 
-def upload_one(file: Path, cabinet_id: int, api_url: str, session: AuthSession, dry_run: bool) -> FileResult:
+def upload_one(
+    file: Path,
+    cabinet_id: int,
+    api_url: str,
+    session: AuthSession,
+    http_client: httpx.Client | None,
+    dry_run: bool,
+) -> FileResult:
     filename = file.name  # basename only — see note in discover_files call site
 
     if dry_run:
@@ -183,8 +190,11 @@ def upload_one(file: Path, cabinet_id: int, api_url: str, session: AuthSession, 
         content_type = content_type or "application/octet-stream"
 
         def _put():
+            # Reuse the shared http_client (not the httpx.put convenience
+            # function) so --insecure/--ca-bundle apply to the S3 PUT too —
+            # httpx.put() ignores the client's TLS config entirely.
             with file.open("rb") as fh:
-                resp = httpx.put(upload_data["upload_url"], content=fh, headers={"Content-Type": content_type})
+                resp = http_client.put(upload_data["upload_url"], content=fh, headers={"Content-Type": content_type})
                 resp.raise_for_status()
                 return resp
 
@@ -298,7 +308,8 @@ def main(argv: list[str] | None = None) -> int:
         results_by_file: dict[Path, FileResult] = {}
         with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
             futures = {
-                pool.submit(upload_one, f, args.cabinet_id, args.api_url, session, args.dry_run): f for f in files
+                pool.submit(upload_one, f, args.cabinet_id, args.api_url, session, http_client, args.dry_run): f
+                for f in files
             }
             for future in as_completed(futures):
                 f = futures[future]
