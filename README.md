@@ -367,6 +367,41 @@ Beyond the initial seed, new customer organisations can be created directly from
 
 ---
 
+## Bulk Upload CLI
+
+`scripts/bulk_upload.py` uploads every file in a local directory into a cabinet in one run — for large scan batches that shouldn't be dragged in one at a time through the UI.
+
+It authenticates as a dedicated Keycloak service account (`docmate-cli`), not a human user — no interactive login, no password, independently revocable.
+
+**One-time setup** (after `seed.py` has run and Keycloak is up):
+
+```bash
+# Docker
+docker compose exec backend python provision_cli_user.py
+
+# Local
+cd backend && python provision_cli_user.py
+```
+
+This prints a client secret **once** — capture it (e.g. into a password manager, or a file for `--client-secret-file`). Re-running is safe and reprints the same secret; it never rotates.
+
+**Usage:**
+
+```bash
+cd backend
+python scripts/bulk_upload.py \
+  --api-url https://www.docmate.local \
+  --keycloak-url https://auth.docmate.local \
+  --cabinet-id 42 \
+  --directory /path/to/scans \
+  --recursive \
+  --client-secret-file /path/to/secret.txt
+```
+
+Run with `--dry-run` first to preview what would be uploaded without writing anything. See `--help` for the full flag list (concurrency, retries, CSV/JSON report output, custom CA bundle for the self-signed dev cert, etc.). Re-running against the same directory is safe — files are matched to records by filename, so already-uploaded files are updated in place rather than duplicated.
+
+---
+
 ## Key Workflows
 
 ### 1. Create an organisation and project (Admin)
