@@ -5,6 +5,14 @@ const KEYCLOAK_URL: string = ((import.meta as any).env?.VITE_KEYCLOAK_URL as str
 
 let _kc: Keycloak | null = null;
 
+// Once a refresh failure triggers kc.login() (a redirect), every other
+// in-flight request would otherwise independently retrigger a redirect/
+// reload of its own — the resulting storm of Location/History API calls
+// trips the browser's rate limiter (SecurityError: "The operation is
+// insecure."), and the page never finishes loading. This flag lets one
+// recovery redirect win and everything else back off.
+let authRecoveryInFlight = false;
+
 export function initKeycloak(realm: string, clientId: string): Promise<boolean> {
   _kc = new Keycloak({ url: KEYCLOAK_URL, realm, clientId });
   return _kc.init({
@@ -19,12 +27,19 @@ export function getKeycloak(): Keycloak {
   return _kc;
 }
 
+export function isAuthRecoveryInFlight(): boolean {
+  return authRecoveryInFlight;
+}
+
 export async function getToken(): Promise<string> {
   const kc = getKeycloak();
   try {
     await kc.updateToken(30);
   } catch {
-    kc.login();
+    if (!authRecoveryInFlight) {
+      authRecoveryInFlight = true;
+      kc.login();
+    }
     throw new Error("Token refresh failed — redirecting to login");
   }
   return kc.token!;
