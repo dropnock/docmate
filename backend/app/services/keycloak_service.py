@@ -71,7 +71,13 @@ def _build_de_client() -> dict:
         "http://localhost:8080/*",
     ]
 
-    base_urls = [u.strip().rstrip("/") for u in settings.de_portal_base_urls.split(",") if u.strip()]
+    # Dedupe: a repeated or equivalent-after-normalization entry in
+    # DE_PORTAL_BASE_URLS would otherwise put the same value twice in
+    # redirectUris, and Keycloak's collection-recreate on update_client()
+    # does a bare INSERT per entry — a duplicate trips the DB's unique
+    # constraint, the whole client update rolls back, and none of the
+    # intended redirect URIs (including any newly added hostname) take effect.
+    base_urls = list(dict.fromkeys(u.strip().rstrip("/") for u in settings.de_portal_base_urls.split(",") if u.strip()))
     configured_uris: list[str] = []
     for base_url in base_urls:
         configured_uris += [base_url, f"{base_url}/", f"{base_url}/*"]
@@ -88,12 +94,12 @@ def _build_de_client() -> dict:
         "directAccessGrantsEnabled": False,
         "serviceAccountsEnabled": False,
         "protocol": "openid-connect",
-        "redirectUris": configured_uris + dev_uris,
+        "redirectUris": list(dict.fromkeys(configured_uris + dev_uris)),
         "webOrigins": ["+"],
         "attributes": {
             "pkce.code.challenge.method": "S256",
             "post.logout.redirect.uris": "##".join(
-                [f"{u}/*" for u in base_urls] + dev_uris
+                list(dict.fromkeys([f"{u}/*" for u in base_urls] + dev_uris))
             ),
         },
     }
