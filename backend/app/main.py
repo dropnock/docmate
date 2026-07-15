@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     from app.services.keycloak_service import sync_de_client
 
     try:
-        sync_de_client()
+        await sync_de_client()
     except Exception:
         logger.exception("Failed to sync docmate-de Keycloak client redirect URIs at startup")
 

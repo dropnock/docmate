@@ -3,8 +3,10 @@ import re
 from urllib.parse import urlparse
 
 from keycloak import KeycloakAdmin, KeycloakOpenIDConnection
+from sqlalchemy import text
 
 from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -105,23 +107,55 @@ def _build_de_client() -> dict:
     }
 
 
-def sync_de_client() -> None:
+# Arbitrary fixed key for a Postgres session-level advisory lock — see
+# sync_de_client() for why this is needed. Any constant bigint works; it
+# just has to not collide with a lock key used elsewhere in the app.
+_DE_CLIENT_SYNC_LOCK_KEY = 8_791_234_002_517
+
+
+async def sync_de_client() -> None:
     """Idempotently reconcile the docmate-de client's redirect URIs with the
     currently configured DE_PORTAL_BASE_URLS.
 
     Safe to call on every backend startup: Keycloak's `--import-realm` only
     imports a realm the first time it's seen, so once the realm exists,
     changing hostnames requires this to actually take effect.
+
+    Called from every gunicorn worker's own lifespan startup, so multiple
+    processes call this concurrently on every deploy. Keycloak's
+    update_client() does a Hibernate collection-recreate (delete all
+    redirect_uris rows, then a bare INSERT per entry, no upsert) — two
+    workers racing on that trips the DB's unique constraint and crashes the
+    whole update for both. A Postgres advisory lock on our own DB (not
+    Keycloak's) serializes the workers, and the current-vs-desired check
+    below means only the one worker that actually observes a real change
+    ever calls update_client() at all — the rest no-op once they see the
+    prior worker's update already landed.
     """
-    admin = _make_admin("master")
-    admin.connection.realm_name = DE_REALM
-    clients = admin.get_clients()
-    de_client = next((c for c in clients if c["clientId"] == DE_CLIENT_ID), None)
-    if not de_client:
-        logger.warning("%s client not found in realm %s; skipping redirect URI sync", DE_CLIENT_ID, DE_REALM)
-        return
-    admin.update_client(de_client["id"], _build_de_client())
-    logger.info("Synced redirect URIs for %s client", DE_CLIENT_ID)
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _DE_CLIENT_SYNC_LOCK_KEY})
+        try:
+            admin = _make_admin("master")
+            admin.connection.realm_name = DE_REALM
+            clients = admin.get_clients()
+            de_client = next((c for c in clients if c["clientId"] == DE_CLIENT_ID), None)
+            if not de_client:
+                logger.warning("%s client not found in realm %s; skipping redirect URI sync", DE_CLIENT_ID, DE_REALM)
+                return
+
+            desired = _build_de_client()
+            current_uris = set(de_client.get("redirectUris") or [])
+            desired_uris = set(desired["redirectUris"])
+            current_logout = (de_client.get("attributes") or {}).get("post.logout.redirect.uris", "")
+            desired_logout = desired["attributes"]["post.logout.redirect.uris"]
+            if current_uris == desired_uris and current_logout == desired_logout:
+                logger.info("%s client redirect URIs already in sync; skipping update", DE_CLIENT_ID)
+                return
+
+            admin.update_client(de_client["id"], desired)
+            logger.info("Synced redirect URIs for %s client", DE_CLIENT_ID)
+        finally:
+            await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _DE_CLIENT_SYNC_LOCK_KEY})
 
 
 CLI_REALM = "doc"
