@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@shared/api/client";
+import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
 import type { DocRecord, Task } from "@shared/types";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
@@ -57,8 +58,7 @@ export default function QCWorkspace() {
       qc.invalidateQueries({ queryKey: ["my-tasks"] });
       qc.invalidateQueries({ queryKey: ["record", activeTask?.record_id] });
     },
-    onError: (err: { response?: { data?: { detail?: string } } }) =>
-      message.error(err.response?.data?.detail ?? "Could not start task"),
+    onError: (err: unknown) => message.error(formatApiError(err, "Could not start task")),
   });
 
   const passMutation = useMutation({

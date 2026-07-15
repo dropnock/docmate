@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
+import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
 import type { DocumentType, Task } from "@shared/types";
 import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
@@ -57,8 +58,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       qc.invalidateQueries({ queryKey: ["record", task.record_id] });
     },
     onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail ?? "Failed to start task");
+      message.error(formatApiError(e, "Failed to start task"));
     },
   });
 
@@ -71,8 +71,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       message.success("Progress saved");
     },
     onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail ?? "Save failed — please try again");
+      message.error(formatApiError(e, "Save failed — please try again"));
     },
   });
 
@@ -86,8 +85,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       onComplete?.();
     },
     onError: (e: unknown) => {
-      const err = e as { response?: { data?: { detail?: string } } };
-      message.error(err.response?.data?.detail ?? "Submission failed — please try again");
+      message.error(formatApiError(e, "Submission failed — please try again"));
     },
   });
 
@@ -119,8 +117,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
         {startMutation.isError ? (
           <Space direction="vertical">
             <Typography.Text type="danger">
-              {(startMutation.error as { response?: { data?: { detail?: string } } })
-                ?.response?.data?.detail ?? "Failed to start task"}
+              {formatApiError(startMutation.error, "Failed to start task")}
             </Typography.Text>
             <Button
               type="primary"
@@ -231,8 +228,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                     type="danger"
                     style={{ display: "block", fontSize: 12, marginBottom: 6 }}
                   >
-                    {(completeMutation.error as { response?: { data?: { detail?: string } } })
-                      ?.response?.data?.detail ?? "Submission failed — please try again"}
+                    {formatApiError(completeMutation.error, "Submission failed — please try again")}
                   </Typography.Text>
                 )}
                 <Space.Compact block>
