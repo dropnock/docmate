@@ -5,11 +5,12 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import get_current_user, require_roles
 from app.models.record import Record
 from app.models.record_version import RecordVersion
 from app.schemas.batch import AuditEventOut, RecordOut, RecordVersionOut
 from app.services import audit_service
+from app.services.lock_service import release_lock
 
 
 class SaveDraftRequest(BaseModel):
@@ -43,6 +44,25 @@ async def save_draft(
     if record.locked_by != current_user.id:
         raise HTTPException(status_code=403, detail="You do not hold the lock on this record")
     record.indexed_data = body.indexed_data
+    return record
+
+
+@router.post("/{record_id}/unlock", response_model=RecordOut)
+async def unlock_record(
+    record_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
+):
+    """Force-releases a record's lock regardless of task state. The normal
+    release paths (task_service's complete/fail/reassign, and the 15-minute
+    stale_checker job) all key off a specific task's assignee — a lock left
+    behind by anything outside those paths (a crash, a race, manual data
+    fixes) has no task to reassign it away from, so this is a direct escape
+    hatch supervisors can reach for regardless of task state."""
+    record = await db.get(Record, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    await release_lock(db, record=record, user_id=current_user.id, tenant_id=current_user._tenant_id)
     return record
 
 

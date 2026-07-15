@@ -50,6 +50,19 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
       message.error(e.response?.data?.detail ?? "Failed to reassign task"),
   });
 
+  // Reassigning only releases a lock when it's still held by the task's own
+  // assignee (task_service.reassign_task) — a lock left behind by anything
+  // else (crash, race, manual fix) has no task to reassign it away from, so
+  // this hits the record directly regardless of task/lock state.
+  const unlockMutation = useMutation({
+    mutationFn: (recordId: number) => api.post(`/records/${recordId}/unlock`),
+    onSuccess: () => {
+      message.success("Record unlocked");
+    },
+    onError: (e: AxiosError<{ detail: string }>) =>
+      message.error(e.response?.data?.detail ?? "Failed to unlock record"),
+  });
+
   const columns = [
     {
       title: "",
@@ -88,6 +101,20 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
           />
         );
       },
+    },
+    {
+      title: "Lock",
+      key: "unlock",
+      render: (_: unknown, t: Task) => (
+        <Button
+          size="small"
+          danger
+          loading={unlockMutation.isPending && unlockMutation.variables === t.record_id}
+          onClick={() => unlockMutation.mutate(t.record_id)}
+        >
+          Force Unlock
+        </Button>
+      ),
     },
   ];
 

@@ -17,7 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
-import type { DocRecord, Task } from "@shared/types";
+import type { DocRecord, Task, UserRecord } from "@shared/types";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
 import StatusDot from "@shared/components/StatusDot";
@@ -52,6 +52,16 @@ export default function QCWorkspace() {
       api.get(`/records/${activeTask!.record_id}`).then((r) => r.data),
     enabled: !!activeTask,
     refetchInterval: 10_000,
+  });
+
+  // Cached at the app root (App.tsx queries the same ["me"] key on load) —
+  // needed to tell "locked by me" from "locked by someone else": comparing
+  // against activeTask.assigned_to instead of the real logged-in user
+  // produces a false "locked by another user" banner whenever the two
+  // diverge, even though the lock is genuinely held by the person viewing it.
+  const { data: me } = useQuery<UserRecord>({
+    queryKey: ["me"],
+    queryFn: () => api.get("/users/me").then((r) => r.data),
   });
 
   const startMutation = useMutation({
@@ -150,8 +160,10 @@ export default function QCWorkspace() {
   }
 
   // Split-screen QC view
-  const isLockedByOther =
-    record?.locked_by && record.locked_by !== activeTask.assigned_to;
+  // Guarded on `me` being loaded — comparing against undefined would flag
+  // every locked record as "locked by other" during the brief window before
+  // the ["me"] query resolves.
+  const isLockedByOther = !!me && record?.locked_by != null && record.locked_by !== me.id;
 
   return (
     <div style={{ height: "calc(100vh - 64px)", display: "flex", flexDirection: "column" }}>

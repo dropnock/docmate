@@ -5,7 +5,7 @@ import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
-import type { DocumentType, Task } from "@shared/types";
+import type { DocumentType, Task, UserRecord } from "@shared/types";
 import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
 import SchemaForm, { type SchemaFormHandle } from "./SchemaForm";
 import SplitWorkspace from "./SplitWorkspace";
@@ -37,6 +37,17 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     queryKey: ["record", task.record_id],
     queryFn: () => api.get(`/records/${task.record_id}`).then((r) => r.data),
     refetchInterval: 10_000,
+  });
+
+  // Cached at the app root (App.tsx queries the same ["me"] key on load) —
+  // needed to tell "locked by me" from "locked by someone else": comparing
+  // against task.assigned_to instead of the real logged-in user produces a
+  // false "locked by another user" banner whenever the two diverge (stale
+  // cached task data, a rework re-assignment, etc.), even though the lock
+  // is genuinely held by the person looking at it.
+  const { data: me } = useQuery<UserRecord>({
+    queryKey: ["me"],
+    queryFn: () => api.get("/users/me").then((r) => r.data),
   });
 
   // Fetch batch to get document_type_id
@@ -92,7 +103,10 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     },
   });
 
-  const isLockedByOther = record?.locked_by && record.locked_by !== task.assigned_to;
+  // Guarded on `me` being loaded — comparing against undefined would flag
+  // every locked record as "locked by other" during the brief window before
+  // the ["me"] query resolves.
+  const isLockedByOther = !!me && record?.locked_by != null && record.locked_by !== me.id;
   const isMyTask = localStatus === "in_progress";
 
   const workspaceLabel =
