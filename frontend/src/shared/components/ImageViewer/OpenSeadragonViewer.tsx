@@ -75,6 +75,11 @@ export default function OpenSeadragonViewer({ imageUrl, page = 0, pageCount = 1,
     // Pan is always enabled in OSD via mouse drag; this is a no-op placeholder
     // for a toolbar button that could toggle between zoom-on-click vs pan-on-click
   };
+  const rotate = () => {
+    const vp = viewerRef.current?.viewport;
+    if (!vp) return;
+    vp.setRotation((vp.getRotation() + 90) % 360);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -83,6 +88,7 @@ export default function OpenSeadragonViewer({ imageUrl, page = 0, pageCount = 1,
         onZoomOut={zoomOut}
         onFitPage={fitPage}
         onFitWidth={fitWidth}
+        onRotate={rotate}
         page={page}
         pageCount={pageCount}
         onPrevPage={() => onPageChange?.(page - 1)}

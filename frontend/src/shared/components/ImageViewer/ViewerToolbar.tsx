@@ -1,11 +1,12 @@
 import { Button, Space, Tooltip, Typography } from "antd";
-import { ZoomIn, ZoomOut, Maximize, MoveHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import { ZoomIn, ZoomOut, Maximize, MoveHorizontal, RotateCw, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Props {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onFitPage: () => void;
   onFitWidth: () => void;
+  onRotate: () => void;
   page?: number;
   pageCount?: number;
   onPrevPage?: () => void;
@@ -17,6 +18,7 @@ export default function ViewerToolbar({
   onZoomOut,
   onFitPage,
   onFitWidth,
+  onRotate,
   page = 0,
   pageCount = 1,
   onPrevPage,
@@ -45,6 +47,9 @@ export default function ViewerToolbar({
         </Tooltip>
         <Tooltip title="Fit Width">
           <Button size="small" icon={<MoveHorizontal size={14} />} onClick={onFitWidth} />
+        </Tooltip>
+        <Tooltip title="Rotate">
+          <Button size="small" icon={<RotateCw size={14} />} onClick={onRotate} />
         </Tooltip>
       </Space>
       {pageCount > 1 && (
