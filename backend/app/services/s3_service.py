@@ -117,6 +117,12 @@ async def sniff_content_type(bucket: str, key: str) -> str:
     return "application/octet-stream"
 
 
+async def get_object_bytes(bucket: str, key: str) -> bytes:
+    async with _session.client("s3", **_client_kwargs()) as client:
+        resp = await client.get_object(Bucket=bucket, Key=key)
+        return await resp["Body"].read()
+
+
 async def stream_object(bucket: str, key: str):
     """Yields an object's bytes for proxying through the backend on the API's
     own origin, instead of redirecting the browser to a presigned URL on a

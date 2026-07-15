@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +16,7 @@ from app.models.user import User
 from app.schemas.batch import (
     BatchOut, DocumentTypeCreate, DocumentTypeOut, RecordOut,
 )
-from app.services import s3_service
+from app.services import image_service, s3_service
 
 router = APIRouter(prefix="/api", tags=["batches"])
 
@@ -226,9 +228,17 @@ async def get_record_image(
     kept for callers that still want a direct-to-S3 URL). This is what
     AgentWorkspace/QCWorkspace use for in-line viewing, since a background
     image/tile fetch to an untrusted second origin fails with no
-    user-actionable prompt — see s3_service.stream_object."""
+    user-actionable prompt — see s3_service.stream_object.
+
+    TIFF is converted to PNG before serving — no browser decodes TIFF
+    natively in an <img>/canvas context, which is what OpenSeadragon's
+    "simple image" tile source relies on."""
     record, bucket = await _resolve_record_bucket(record_id, db, current_user)
     content_type = await _resolve_content_type(bucket, record.file_reference)
+    if content_type == "image/tiff":
+        data = await s3_service.get_object_bytes(bucket, record.file_reference)
+        png_bytes = await asyncio.to_thread(image_service.tiff_to_png, data)
+        return Response(content=png_bytes, media_type="image/png")
     return StreamingResponse(
         s3_service.stream_object(bucket, record.file_reference),
         media_type=content_type,

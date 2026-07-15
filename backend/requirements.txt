@@ -9,6 +9,7 @@ pydantic[email]
 python-jose[cryptography]==3.4.0
 python-keycloak==3.7.0
 aioboto3>=13.0
+Pillow>=11.0
 gunicorn==23.0.0
 apscheduler==3.10.4
 python-multipart==0.0.31
