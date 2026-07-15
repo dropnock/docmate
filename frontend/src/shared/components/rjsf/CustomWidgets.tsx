@@ -13,6 +13,7 @@ export function RangeArrayField({
   onChange,
   name,
   required,
+  disabled,
   idSchema,
   rawErrors,
   ...rest
@@ -92,6 +93,7 @@ export function RangeArrayField({
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onBlur={handleBlur}
+        disabled={disabled}
         placeholder={isStr ? "alpha, beta, gamma" : "700-750, 800, 805-810"}
         rows={2}
         style={{ fontFamily: "monospace", fontSize: 13 }}
@@ -129,6 +131,7 @@ export function ParcelArrayField({
   onChange,
   name,
   required,
+  disabled,
   idSchema,
   rawErrors,
   ...rest
@@ -167,7 +170,7 @@ export function ParcelArrayField({
   };
 
   const handleAdd = () => {
-    if (!volumeInput.trim() || !folioInput.trim()) return;
+    if (disabled || !volumeInput.trim() || !folioInput.trim()) return;
     const folios = parseFolios(folioInput);
     const newItems = folios.map((folio) => ({
       [volumeKey]: volumeInput.trim(),
@@ -202,6 +205,7 @@ export function ParcelArrayField({
           value={volumeInput}
           onChange={(e) => setVolumeInput(e.target.value)}
           onBlur={handleAdd}
+          disabled={disabled}
           style={{ width: 110, fontFamily: "monospace" }}
         />
         <Input
@@ -210,11 +214,12 @@ export function ParcelArrayField({
           onChange={(e) => setFolioInput(e.target.value)}
           onPressEnter={handleAdd}
           onBlur={handleAdd}
+          disabled={disabled}
           style={{ flex: 1, fontFamily: "monospace" }}
         />
         <Button
           onClick={handleAdd}
-          disabled={!volumeInput.trim() || !folioInput.trim()}
+          disabled={disabled || !volumeInput.trim() || !folioInput.trim()}
         >
           Add
         </Button>
@@ -234,6 +239,7 @@ export function ParcelArrayField({
               size="small"
               type="link"
               danger
+              disabled={disabled}
               onClick={() => onChange([] as never, fieldPath)}
             >
               Clear all
@@ -258,6 +264,7 @@ export function ParcelArrayField({
                   size="small"
                   type="text"
                   danger
+                  disabled={disabled}
                   onClick={() => handleRemove(i)}
                   style={{ padding: "0 6px", height: "auto", lineHeight: 1.4 }}
                 >
@@ -300,7 +307,7 @@ function normalizeToIso(input: string): string {
   return trimmed;
 }
 
-export function DateTextWidget({ value, onChange, id, required, rawErrors }: WidgetProps) {
+export function DateTextWidget({ value, onChange, id, required, disabled, rawErrors }: WidgetProps) {
   const [local, setLocal] = useState<string>(value ?? "");
 
   useEffect(() => {
@@ -313,6 +320,7 @@ export function DateTextWidget({ value, onChange, id, required, rawErrors }: Wid
     <Input
       id={id}
       required={required}
+      disabled={disabled}
       status={hasError ? "error" : undefined}
       value={local}
       onChange={(e) => setLocal(e.target.value)}
@@ -372,7 +380,7 @@ const COUNTRIES = [
   "Venezuela", "Vietnam", "Yemen", "Zambia", "Zimbabwe",
 ];
 
-export function CountryWidget({ value, onChange, id, required, rawErrors }: WidgetProps) {
+export function CountryWidget({ value, onChange, id, required, disabled, rawErrors }: WidgetProps) {
   const [inputValue, setInputValue] = useState<string>(value ?? "");
 
   useEffect(() => {
@@ -397,6 +405,7 @@ export function CountryWidget({ value, onChange, id, required, rawErrors }: Widg
       placeholder="Select or type a country"
       style={{ width: "100%" }}
       status={hasError ? "error" : undefined}
+      disabled={disabled}
       allowClear
     />
   );
