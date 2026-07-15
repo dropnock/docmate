@@ -18,6 +18,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
   const [targetAgent, setTargetAgent] = useState<number | undefined>();
+  const [unlockRecordId, setUnlockRecordId] = useState("");
 
   const { data: staleTasks, isLoading } = useQuery<Task[]>({
     queryKey: ["stale-tasks", projectId],
@@ -58,6 +59,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     mutationFn: (recordId: number) => api.post(`/records/${recordId}/unlock`),
     onSuccess: () => {
       message.success("Record unlocked");
+      setUnlockRecordId("");
     },
     onError: (e: AxiosError<{ detail: string }>) =>
       message.error(e.response?.data?.detail ?? "Failed to unlock record"),
@@ -129,6 +131,28 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
   return (
     <div>
       <Typography.Title level={4}>Stale Tasks</Typography.Title>
+
+      {/* The table below only lists tasks whose due_at has already passed
+          (/tasks/stale) — a lock stuck on a record whose task isn't overdue
+          yet has no row here to attach a "Force Unlock" button to. This
+          reaches any record directly, regardless of task staleness. */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+        <Input
+          placeholder="Record ID"
+          value={unlockRecordId}
+          onChange={(e) => setUnlockRecordId(e.target.value)}
+          style={{ width: 140 }}
+        />
+        <Button
+          danger
+          disabled={!unlockRecordId.trim()}
+          loading={unlockMutation.isPending && unlockMutation.variables === Number(unlockRecordId)}
+          onClick={() => unlockMutation.mutate(Number(unlockRecordId))}
+        >
+          Force Unlock Record
+        </Button>
+      </div>
+
       <Input.Search
         placeholder="Search by task ID, record ID, type or status…"
         allowClear
