@@ -136,6 +136,11 @@ export default function CabinetAssignment({ projectId }: Props) {
     { title: "Name", dataIndex: "name" },
     { title: "Type", dataIndex: "batch_type", render: (v) => <Tag>{v ?? "indexing"}</Tag> },
     {
+      title: "Indexer",
+      dataIndex: "indexer_name",
+      render: (v: string | null) => v ?? <Typography.Text type="secondary">Unassigned</Typography.Text>,
+    },
+    {
       title: "Status",
       dataIndex: "status",
       render: (s: string) => (

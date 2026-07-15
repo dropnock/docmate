@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -9,6 +9,8 @@ from app.models.batch import Batch
 from app.models.document_type import DocumentType
 from app.models.project import Project
 from app.models.record import Record
+from app.models.task import Task, TaskType
+from app.models.user import User
 from app.schemas.batch import (
     BatchOut, DocumentTypeCreate, DocumentTypeOut, RecordOut,
 )
@@ -44,6 +46,42 @@ async def list_document_types(
     return list(result.scalars().all())
 
 
+async def _attach_indexer_names(db: AsyncSession, batches: list[Batch]) -> list[Batch]:
+    """Batches have no first-class assignee — the indexer is whoever holds
+    the most indexing tasks in the batch (in practice a single agent, since
+    create_indexing_batch assigns every task to one agent_id at creation
+    time, but tasks can drift to other agents via reassignment)."""
+    batch_ids = [b.id for b in batches]
+    if not batch_ids:
+        return batches
+
+    counts = await db.execute(
+        select(Task.batch_id, Task.assigned_to, func.count())
+        .where(
+            Task.batch_id.in_(batch_ids),
+            Task.task_type == TaskType.indexing,
+            Task.assigned_to.is_not(None),
+        )
+        .group_by(Task.batch_id, Task.assigned_to)
+    )
+    indexer_by_batch: dict[int, int] = {}
+    best_count: dict[int, int] = {}
+    for batch_id, assigned_to, count in counts.all():
+        if count > best_count.get(batch_id, 0):
+            best_count[batch_id] = count
+            indexer_by_batch[batch_id] = assigned_to
+
+    user_ids = set(indexer_by_batch.values())
+    names: dict[int, str] = {}
+    if user_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
+        names = {u.id: u.full_name for u in users_result.scalars().all()}
+
+    for b in batches:
+        b.indexer_name = names.get(indexer_by_batch.get(b.id))
+    return batches
+
+
 @router.get("/projects/{project_id}/batches", response_model=list[BatchOut])
 async def list_batches(
     project_id: int,
@@ -55,7 +93,8 @@ async def list_batches(
     result = await db.execute(
         select(Batch).where(Batch.project_id == project_id)
     )
-    return list(result.scalars().all())
+    batches = list(result.scalars().all())
+    return await _attach_indexer_names(db, batches)
 
 
 @router.get("/batches/{batch_id}", response_model=BatchOut)

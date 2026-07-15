@@ -81,6 +81,7 @@ export interface Batch {
   status: "draft" | "submitted" | "indexing" | "qa_review" | "customer_qc" | "passed" | "rejected" | "complete";
   aql_level_snapshot: number | null;
   aql_sample_size: number | null;
+  indexer_name: string | null;
 }
 
 export interface DocRecord {

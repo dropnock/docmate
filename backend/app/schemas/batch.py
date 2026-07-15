@@ -25,6 +25,7 @@ class BatchOut(BaseModel):
     status: str
     aql_level_snapshot: float | None
     aql_sample_size: int | None
+    indexer_name: str | None = None
 
 
 class RecordOut(BaseModel):
