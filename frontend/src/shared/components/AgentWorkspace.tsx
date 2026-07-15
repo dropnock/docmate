@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Space, Spin, Typography, message } from "antd";
+import { Alert, Badge, Button, Form, Input, Modal, Space, Spin, Typography, message } from "antd";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
@@ -20,6 +20,8 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const [localStatus, setLocalStatus] = useState(task.status);
   const formId = `task-form-${task.id}`;
   const formRef = useRef<SchemaFormHandle>(null);
+  const [disqualifyModalOpen, setDisqualifyModalOpen] = useState(false);
+  const [disqualifyForm] = Form.useForm<{ reason: string }>();
 
   // Fetch the record image once task is in_progress — see useRecordImage
   // for why this proxies through the backend rather than using a presigned
@@ -102,6 +104,30 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       message.error(formatApiError(e, "Submission failed — please try again"));
     },
   });
+
+  // Disqualify — a third option alongside Save Progress / Submit & Complete
+  // for a record that can't be indexed at all (blank page, unreadable scan,
+  // wrong document). Skips the schema form entirely — there's no data to
+  // submit — unlike Submit & Complete, which requires it to validate.
+  const disqualifyMutation = useMutation({
+    mutationFn: (reason: string) => api.post(`/tasks/${task.id}/disqualify`, { reason }),
+    onSuccess: () => {
+      message.success("Record disqualified");
+      setDisqualifyModalOpen(false);
+      disqualifyForm.resetFields();
+      qc.invalidateQueries({ queryKey: ["record", task.record_id] });
+      qc.invalidateQueries({ queryKey: ["my-tasks"] });
+      onComplete?.();
+    },
+    onError: (e: unknown) => {
+      message.error(formatApiError(e, "Failed to disqualify record"));
+    },
+  });
+
+  const handleDisqualify = async () => {
+    const values = await disqualifyForm.validateFields();
+    disqualifyMutation.mutate(values.reason);
+  };
 
   // Guarded on `me` being loaded — comparing against undefined would flag
   // every locked record as "locked by other" during the brief window before
@@ -269,33 +295,65 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                     {formatApiError(completeMutation.error, "Submission failed — please try again")}
                   </Typography.Text>
                 )}
-                <Space.Compact block>
-                  <Button
-                    style={{ width: "35%" }}
-                    loading={saveMutation.isPending}
-                    onClick={() => {
-                      const values = formRef.current?.getValues();
-                      if (values) saveMutation.mutate(values);
-                    }}
-                  >
-                    Save Progress
-                  </Button>
-                  <Button
-                    type="primary"
-                    style={{ width: "65%" }}
-                    loading={completeMutation.isPending}
-                    onClick={() =>
-                      document.getElementById(`${formId}-submit`)?.click()
-                    }
-                  >
-                    Submit &amp; Complete
-                  </Button>
-                </Space.Compact>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {task.task_type === "indexing" && (
+                    <Button danger onClick={() => setDisqualifyModalOpen(true)}>
+                      Disqualify
+                    </Button>
+                  )}
+                  <Space.Compact block style={{ flex: 1 }}>
+                    <Button
+                      style={{ width: "35%" }}
+                      loading={saveMutation.isPending}
+                      onClick={() => {
+                        const values = formRef.current?.getValues();
+                        if (values) saveMutation.mutate(values);
+                      }}
+                    >
+                      Save Progress
+                    </Button>
+                    <Button
+                      type="primary"
+                      style={{ width: "65%" }}
+                      loading={completeMutation.isPending}
+                      onClick={() =>
+                        document.getElementById(`${formId}-submit`)?.click()
+                      }
+                    >
+                      Submit &amp; Complete
+                    </Button>
+                  </Space.Compact>
+                </div>
               </div>
             </div>
           }
         />
       </div>
+
+      <Modal
+        title="Disqualify Record"
+        open={disqualifyModalOpen}
+        onCancel={() => setDisqualifyModalOpen(false)}
+        onOk={handleDisqualify}
+        confirmLoading={disqualifyMutation.isPending}
+        okText="Disqualify"
+        okButtonProps={{ danger: true }}
+      >
+        <Typography.Paragraph type="secondary">
+          Use this when the record can&apos;t be indexed at all — blank page, unreadable
+          scan, wrong document. It will be marked disqualified and removed from your
+          queue; no data will be submitted.
+        </Typography.Paragraph>
+        <Form form={disqualifyForm} layout="vertical">
+          <Form.Item
+            name="reason"
+            label="Reason"
+            rules={[{ required: true, message: "Please provide a reason" }]}
+          >
+            <Input.TextArea rows={3} placeholder="Describe why this record can't be indexed..." />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

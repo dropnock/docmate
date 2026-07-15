@@ -112,6 +112,109 @@ class TestTaskAssignment:
         assert exc_info.value.status_code == 403
 
 
+class TestDisqualifyTask:
+    async def test_disqualify_releases_lock_and_sets_record_status(self, db: AsyncSession, seed):
+        from app.models import Record, RecordStatus
+
+        task = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=task.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+
+        disqualified = await task_service.disqualify_task(
+            db, task_id=task.id, user_id=seed["indexer"].id,
+            reason="Blank page", tenant_id=seed["tenant"].id,
+        )
+        assert disqualified.status == TaskStatus.completed
+
+        record = await db.get(Record, seed["record"].id)
+        assert record.status == RecordStatus.disqualified
+        assert record.locked_by is None
+
+    async def test_disqualify_wrong_user_forbidden(self, db: AsyncSession, seed):
+        from fastapi import HTTPException
+        task = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        with pytest.raises(HTTPException) as exc_info:
+            await task_service.disqualify_task(
+                db, task_id=task.id, user_id=seed["indexer2"].id,
+                reason="Blank page", tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 403
+
+    async def test_disqualify_non_indexing_task_rejected(self, db: AsyncSession, seed):
+        from fastapi import HTTPException
+        qa_task = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.qa, agent_id=seed["qa_staff"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        with pytest.raises(HTTPException) as exc_info:
+            await task_service.disqualify_task(
+                db, task_id=qa_task.id, user_id=seed["qa_staff"].id,
+                reason="N/A", tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 400
+
+    async def test_batch_advances_to_qa_with_mix_of_indexed_and_disqualified(self, db: AsyncSession, seed):
+        """A disqualified record must not block the batch from advancing,
+        and must not get a QA task created for it (nothing was indexed)."""
+        from app.models import Batch, BatchStatus, Record, RecordStatus, Task as TaskModel
+
+        task1 = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        task2 = await task_service.assign_task(
+            db, record_id=seed["record2"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+
+        await task_service.start_task(
+            db, task_id=task1.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+        await task_service.complete_task(
+            db, task_id=task1.id, user_id=seed["indexer"].id,
+            tenant_id=seed["tenant"].id, indexed_data={"title": "Indexed"},
+        )
+
+        await task_service.start_task(
+            db, task_id=task2.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+        await task_service.disqualify_task(
+            db, task_id=task2.id, user_id=seed["indexer"].id,
+            reason="Unreadable", tenant_id=seed["tenant"].id,
+        )
+
+        batch = await db.get(Batch, seed["batch"].id)
+        assert batch.status == BatchStatus.qa_review
+
+        record2 = await db.get(Record, seed["record2"].id)
+        assert record2.status == RecordStatus.disqualified
+
+        qa_tasks = (await db.execute(
+            select(TaskModel).where(
+                TaskModel.batch_id == seed["batch"].id,
+                TaskModel.task_type == TaskType.qa,
+            )
+        )).scalars().all()
+        assert len(qa_tasks) == 1
+        assert qa_tasks[0].record_id == seed["record"].id
+
+
 class TestBulkReassign:
     async def test_bulk_reassign_two_tasks(self, db: AsyncSession, seed):
         t1 = await task_service.assign_task(

@@ -15,6 +15,7 @@ const ACTION_COLOR: Record<string, string> = {
   qa_failed: "error",
   qc_passed: "success",
   qc_rejected: "error",
+  disqualified: "error",
   batch_escalated: "warning",
   stale_flagged: "warning",
   status_changed: "default",

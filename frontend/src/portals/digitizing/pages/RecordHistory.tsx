@@ -19,6 +19,7 @@ const RECORD_STATUS_COLOR: Record<string, string> = {
   qc_pending: "QC pending",
   qc_passed: "QC passed",
   qc_failed: "QC failed",
+  disqualified: "Disqualified",
 };
 
 function recordLabel(record: DocRecord) {

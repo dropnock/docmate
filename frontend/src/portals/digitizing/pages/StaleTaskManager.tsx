@@ -1,10 +1,10 @@
-import { Button, Checkbox, Input, Select, Table, Tag, Typography, message } from "antd";
+import { Button, Checkbox, Empty, Input, Select, Table, Tag, Typography, message } from "antd";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AxiosError } from "axios";
 import api from "@shared/api/client";
 import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
-import type { Task } from "@shared/types";
+import type { DocRecord, Task } from "@shared/types";
 
 const REQUIRED_SHIFT_ROLE: Record<string, "indexer" | "qa" | undefined> = {
   indexing: "indexer",
@@ -18,7 +18,19 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
   const [targetAgent, setTargetAgent] = useState<number | undefined>();
-  const [unlockRecordId, setUnlockRecordId] = useState("");
+  const [batchLookupInput, setBatchLookupInput] = useState("");
+  const [lookupBatchId, setLookupBatchId] = useState<number | undefined>();
+
+  // Record IDs aren't shown anywhere in the UI, so supervisors have no way
+  // to target a "Force Unlock" by record ID directly — batch IDs are
+  // visible (Cabinet Assignment's Batches table), so look up locked
+  // records by batch instead.
+  const { data: batchRecords, isLoading: batchRecordsLoading, isError: batchLookupFailed } = useQuery<DocRecord[]>({
+    queryKey: ["batch-records-for-unlock", lookupBatchId],
+    queryFn: () => api.get(`/batches/${lookupBatchId}/records`).then((r) => r.data),
+    enabled: lookupBatchId != null,
+  });
+  const lockedRecords = (batchRecords ?? []).filter((r) => r.locked_by != null);
 
   const { data: staleTasks, isLoading } = useQuery<Task[]>({
     queryKey: ["stale-tasks", projectId],
@@ -59,7 +71,7 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
     mutationFn: (recordId: number) => api.post(`/records/${recordId}/unlock`),
     onSuccess: () => {
       message.success("Record unlocked");
-      setUnlockRecordId("");
+      qc.invalidateQueries({ queryKey: ["batch-records-for-unlock", lookupBatchId] });
     },
     onError: (e: AxiosError<{ detail: string }>) =>
       message.error(e.response?.data?.detail ?? "Failed to unlock record"),
@@ -134,24 +146,69 @@ export default function StaleTaskManager({ projectId, shiftId }: Props) {
 
       {/* The table below only lists tasks whose due_at has already passed
           (/tasks/stale) — a lock stuck on a record whose task isn't overdue
-          yet has no row here to attach a "Force Unlock" button to. This
-          reaches any record directly, regardless of task staleness. */}
-      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 16 }}>
+          yet has no row here. Look up locked records by batch instead,
+          since batch IDs (unlike record IDs) are visible elsewhere in the
+          UI (Cabinet Assignment's Batches table). */}
+      <Typography.Title level={5}>Find Locked Records by Batch</Typography.Title>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
         <Input
-          placeholder="Record ID"
-          value={unlockRecordId}
-          onChange={(e) => setUnlockRecordId(e.target.value)}
+          placeholder="Batch ID"
+          value={batchLookupInput}
+          onChange={(e) => setBatchLookupInput(e.target.value)}
+          onPressEnter={() => setLookupBatchId(Number(batchLookupInput))}
           style={{ width: 140 }}
         />
         <Button
-          danger
-          disabled={!unlockRecordId.trim()}
-          loading={unlockMutation.isPending && unlockMutation.variables === Number(unlockRecordId)}
-          onClick={() => unlockMutation.mutate(Number(unlockRecordId))}
+          disabled={!batchLookupInput.trim()}
+          loading={batchRecordsLoading}
+          onClick={() => setLookupBatchId(Number(batchLookupInput))}
         >
-          Force Unlock Record
+          Find Locked Records
         </Button>
       </div>
+      {lookupBatchId != null && !batchRecordsLoading && (
+        batchLookupFailed ? (
+          <Typography.Text type="danger">Batch {lookupBatchId} not found.</Typography.Text>
+        ) : lockedRecords.length === 0 ? (
+          <Empty description={`No locked records in batch ${lookupBatchId}`} style={{ marginBottom: 16 }} />
+        ) : (
+          <Table
+            rowKey="id"
+            size="small"
+            dataSource={lockedRecords}
+            pagination={false}
+            style={{ marginBottom: 24 }}
+            columns={[
+              { title: "Record ID", dataIndex: "id" },
+              {
+                title: "Filename",
+                dataIndex: "original_filename",
+                render: (v: string | null) => v ?? "—",
+              },
+              { title: "Locked By (user ID)", dataIndex: "locked_by" },
+              {
+                title: "Locked At",
+                dataIndex: "locked_at",
+                render: (d: string | null) => d?.slice(0, 19) ?? "—",
+              },
+              {
+                title: "",
+                key: "unlock",
+                render: (_: unknown, r: DocRecord) => (
+                  <Button
+                    size="small"
+                    danger
+                    loading={unlockMutation.isPending && unlockMutation.variables === r.id}
+                    onClick={() => unlockMutation.mutate(r.id)}
+                  >
+                    Force Unlock
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        )
+      )}
 
       <Input.Search
         placeholder="Search by task ID, record ID, type or status…"

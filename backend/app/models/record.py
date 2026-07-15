@@ -17,6 +17,7 @@ class RecordStatus(str, enum.Enum):
     qc_pending = "qc_pending"
     qc_passed = "qc_passed"
     qc_failed = "qc_failed"
+    disqualified = "disqualified"
 
 
 class Record(Base, TimestampMixin):

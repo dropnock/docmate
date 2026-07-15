@@ -34,6 +34,7 @@ class AuditAction(str, enum.Enum):
     stale_flagged = "stale_flagged"
     deactivated = "deactivated"
     shift_role_changed = "shift_role_changed"
+    disqualified = "disqualified"
 
 
 class AuditLog(Base):

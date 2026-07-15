@@ -199,7 +199,14 @@ async def auto_advance_to_qa(
     stale_hours = project.stale_threshold_hours if project else 24
     due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
 
-    records_result = await db.execute(select(Record).where(Record.batch_id == batch_id))
+    # Disqualified records (see task_service.disqualify_task) never get a
+    # QA task — there's nothing indexed to review.
+    records_result = await db.execute(
+        select(Record).where(
+            Record.batch_id == batch_id,
+            Record.status != RecordStatus.disqualified,
+        )
+    )
     for record in records_result.scalars().all():
         record.status = RecordStatus.qa_pending
         db.add(Task(

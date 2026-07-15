@@ -135,3 +135,23 @@ async def fail_task(
         reason=body.reason,
         tenant_id=current_user._tenant_id,
     )
+
+
+class DisqualifyTaskRequest(BaseModel):
+    reason: str
+
+
+@router.post("/{task_id}/disqualify", response_model=TaskOut)
+async def disqualify_task(
+    task_id: int,
+    body: DisqualifyTaskRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return await task_service.disqualify_task(
+        db,
+        task_id=task_id,
+        user_id=current_user.id,
+        reason=body.reason,
+        tenant_id=current_user._tenant_id,
+    )

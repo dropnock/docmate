@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -37,6 +39,7 @@ class RecordOut(BaseModel):
     indexed_data: dict | None
     current_version: int
     locked_by: int | None
+    locked_at: datetime | None = None
     status: str
 
 

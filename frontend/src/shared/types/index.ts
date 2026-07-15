@@ -94,6 +94,7 @@ export interface DocRecord {
   indexed_data: { [key: string]: unknown } | null;
   current_version: number;
   locked_by: number | null;
+  locked_at: string | null;
   status: string;
 }
 
