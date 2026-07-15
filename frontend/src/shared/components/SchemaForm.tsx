@@ -67,6 +67,19 @@ function preprocessSchema(schema: RJSFSchema): RJSFSchema {
       }
     }
 
+    // A field marked "x-hidden" has no widget rendered for it (see
+    // buildAutoUiSchema), so it can never be filled in — if it's also
+    // listed as required, submit would be permanently blocked. Strip it
+    // from this node's required list rather than trust admin-authored
+    // schemas to avoid the combination.
+    if (Array.isArray(out.required) && isObjectRecord(out.properties)) {
+      const properties = out.properties as Record<string, unknown>;
+      out.required = (out.required as unknown[]).filter((name) => {
+        const prop = properties[name as string];
+        return !(isObjectRecord(prop) && prop["x-hidden"]);
+      });
+    }
+
     if (out.type === "array" && out.default === undefined) {
       out.default = [];
     }

@@ -424,6 +424,7 @@ function buildUiForProperties(props: Record<string, unknown>): Record<string, un
   for (const [key, rawField] of Object.entries(props)) {
     if (!rawField || typeof rawField !== "object" || Array.isArray(rawField)) continue;
     const field = rawField as RJSFSchema;
+    let fieldUi: Record<string, unknown> = {};
 
     if (
       field.type === "array" &&
@@ -433,25 +434,40 @@ function buildUiForProperties(props: Record<string, unknown>): Record<string, un
     ) {
       const items = field.items as RJSFSchema;
       if (["string", "integer", "number"].includes(items.type as string)) {
-        ui[key] = { "ui:field": "RangeArray" };
+        fieldUi = { "ui:field": "RangeArray" };
       } else if (items.type === "object" && items.properties) {
         if (hasVolumeFolioPair(items)) {
-          ui[key] = { "ui:field": "ParcelArray" };
+          fieldUi = { "ui:field": "ParcelArray" };
         } else {
           const itemsUi = buildUiForProperties(items.properties as Record<string, unknown>);
-          if (Object.keys(itemsUi).length > 0) ui[key] = { items: itemsUi };
+          if (Object.keys(itemsUi).length > 0) fieldUi = { items: itemsUi };
         }
       }
     } else if (field.type === "string" && field.format === "date") {
-      ui[key] = { "ui:widget": "DateText" };
+      fieldUi = { "ui:widget": "DateText" };
     } else if (isCountry(key, field)) {
-      ui[key] = { "ui:widget": "Country" };
+      fieldUi = { "ui:widget": "Country" };
     } else if (isTextarea(key, field)) {
-      ui[key] = { "ui:widget": "textarea", "ui:options": { rows: 3 } };
+      fieldUi = { "ui:widget": "textarea", "ui:options": { rows: 3 } };
     } else if (field.type === "object" && field.properties) {
       const nested = buildUiForProperties(field.properties as Record<string, unknown>);
-      if (Object.keys(nested).length > 0) ui[key] = nested;
+      if (Object.keys(nested).length > 0) fieldUi = nested;
     }
+
+    // Admin-authored "x-hidden"/"x-disabled" on the property itself (see
+    // CabinetManager's schema editor helper text) — plain JSON Schema
+    // keywords AJV ignores for validation, read here to drive the widget.
+    // Hidden wins over whatever widget was picked above since there's
+    // nothing to render; the matching required field is stripped in
+    // SchemaForm's preprocessSchema so a hidden field can never block submit.
+    const flags = field as unknown as Record<string, unknown>;
+    if (flags["x-hidden"]) {
+      fieldUi = { ...fieldUi, "ui:widget": "hidden" };
+    } else if (flags["x-disabled"]) {
+      fieldUi = { ...fieldUi, "ui:disabled": true };
+    }
+
+    if (Object.keys(fieldUi).length > 0) ui[key] = fieldUi;
   }
   return ui;
 }

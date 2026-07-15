@@ -507,14 +507,22 @@ export default function CabinetManager({ projectId }: Props) {
           </Form.Item>
           <Form.Item
             label="JSON Schema"
-            extra="Standard JSON Schema object. Use properties to define the fields agents will fill in."
+            extra={
+              <>
+                Standard JSON Schema object. Use properties to define the fields agents will fill in.
+                Add a top-level <code>"required": [...]</code> array to mark fields mandatory — enforced
+                on Submit &amp; Complete only, not Save Progress. Set <code>"x-hidden": true</code> on a
+                property to remove it from the form entirely, or <code>"x-disabled": true</code> to show
+                it read-only.
+              </>
+            }
             required
           >
             <Input.TextArea
               rows={16}
               value={dtSchemaText}
               onChange={(e) => setDtSchemaText(e.target.value)}
-              placeholder={'{\n  "type": "object",\n  "properties": {\n    "surname": { "type": "string", "title": "Surname" }\n  }\n}'}
+              placeholder={'{\n  "type": "object",\n  "properties": {\n    "surname": { "type": "string", "title": "Surname" },\n    "internal_code": { "type": "string", "x-hidden": true }\n  },\n  "required": ["surname"]\n}'}
               style={{ fontFamily: "monospace", fontSize: 13 }}
             />
           </Form.Item>
