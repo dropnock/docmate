@@ -15,6 +15,7 @@ import {
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "@shared/api/client";
+import { useRecordImage } from "@shared/hooks/useRecordImage";
 import type { DocRecord, Task } from "@shared/types";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
@@ -33,15 +34,12 @@ export default function QCWorkspace() {
     refetchInterval: 30_000,
   });
 
-  // Fetch image URL for active task
-  const { data: viewData, isLoading: viewLoading } = useQuery({
-    queryKey: ["record-view-url", activeTask?.record_id],
-    queryFn: () =>
-      api
-        .get<{ view_url: string; content_type: string }>(`/records/${activeTask!.record_id}/view-url`)
-        .then((r) => r.data),
-    enabled: !!activeTask && activeTask.status === "in_progress",
-  });
+  // Fetch image for active task — see useRecordImage for why this proxies
+  // through the backend rather than using a presigned S3 URL.
+  const { data: viewData, isLoading: viewLoading } = useRecordImage(
+    activeTask?.record_id,
+    !!activeTask && activeTask.status === "in_progress"
+  );
 
   // Fetch record data
   const { data: record } = useQuery<DocRecord>({
@@ -230,15 +228,15 @@ export default function QCWorkspace() {
           left={
             viewLoading ? (
               <Spin style={{ padding: 24 }} />
-            ) : viewData?.view_url ? (
-              viewData.content_type === "application/pdf" ? (
+            ) : viewData?.objectUrl ? (
+              viewData.contentType === "application/pdf" ? (
                 <iframe
-                  src={viewData.view_url}
+                  src={viewData.objectUrl}
                   style={{ width: "100%", height: "100%", border: "none" }}
                   title={`Record ${activeTask.record_id}`}
                 />
               ) : (
-                <OpenSeadragonViewer imageUrl={viewData.view_url} />
+                <OpenSeadragonViewer imageUrl={viewData.objectUrl} />
               )
             ) : (
               <div style={{ padding: 24, color: "#64748B" }}>
