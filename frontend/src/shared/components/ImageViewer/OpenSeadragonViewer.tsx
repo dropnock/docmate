@@ -4,9 +4,12 @@ import ViewerToolbar from "./ViewerToolbar";
 
 interface Props {
   imageUrl: string;
+  page?: number;
+  pageCount?: number;
+  onPageChange?: (page: number) => void;
 }
 
-export default function OpenSeadragonViewer({ imageUrl }: Props) {
+export default function OpenSeadragonViewer({ imageUrl, page = 0, pageCount = 1, onPageChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<OpenSeadragon.Viewer | null>(null);
   // OSD reports load failures (bad tile source, undecodable content-type,
@@ -75,7 +78,16 @@ export default function OpenSeadragonViewer({ imageUrl }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <ViewerToolbar onZoomIn={zoomIn} onZoomOut={zoomOut} onFitPage={fitPage} onFitWidth={fitWidth} />
+      <ViewerToolbar
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onFitPage={fitPage}
+        onFitWidth={fitWidth}
+        page={page}
+        pageCount={pageCount}
+        onPrevPage={() => onPageChange?.(page - 1)}
+        onNextPage={() => onPageChange?.(page + 1)}
+      />
       <div style={{ flex: 1, position: "relative" }}>
         <div ref={containerRef} style={{ position: "absolute", inset: 0, background: "#1a1a1a" }} />
         {loadFailed && (

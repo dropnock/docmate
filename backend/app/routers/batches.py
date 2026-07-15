@@ -219,6 +219,7 @@ async def get_view_url(
 @router.get("/records/{record_id}/image")
 async def get_record_image(
     record_id: int,
+    page: int = 0,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -232,13 +233,19 @@ async def get_record_image(
 
     TIFF is converted to PNG before serving — no browser decodes TIFF
     natively in an <img>/canvas context, which is what OpenSeadragon's
-    "simple image" tile source relies on."""
+    "simple image" tile source relies on. `page` selects a frame out of a
+    multi-page scan; the response carries the total in X-Page-Count so the
+    frontend can drive pagination without a separate round trip."""
     record, bucket = await _resolve_record_bucket(record_id, db, current_user)
     content_type = await _resolve_content_type(bucket, record.file_reference)
     if content_type == "image/tiff":
         data = await s3_service.get_object_bytes(bucket, record.file_reference)
-        png_bytes = await asyncio.to_thread(image_service.tiff_to_png, data)
-        return Response(content=png_bytes, media_type="image/png")
+        png_bytes, page_count = await asyncio.to_thread(image_service.tiff_to_png, data, page)
+        return Response(
+            content=png_bytes,
+            media_type="image/png",
+            headers={"X-Page-Count": str(page_count)},
+        )
     return StreamingResponse(
         s3_service.stream_object(bucket, record.file_reference),
         media_type=content_type,

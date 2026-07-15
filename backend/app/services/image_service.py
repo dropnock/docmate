@@ -3,13 +3,15 @@ from io import BytesIO
 from PIL import Image
 
 
-def tiff_to_png(data: bytes) -> bytes:
+def tiff_to_png(data: bytes, page: int = 0) -> tuple[bytes, int]:
     """No browser natively decodes TIFF in an <img>/canvas context (OpenSeadragon's
     "simple image" tile source is just `new Image(); image.src = url` under the
     hood), so scanned-document TIFFs must be converted before they can be viewed.
-    Renders only the first page/frame — the viewer has no multi-page navigation."""
+    Returns the requested page (clamped to the last page if out of range)
+    alongside the total page count, so callers can drive pagination."""
     with Image.open(BytesIO(data)) as img:
-        img.seek(0)
+        page_count = getattr(img, "n_frames", 1)
+        img.seek(min(max(page, 0), page_count - 1))
         buf = BytesIO()
         img.convert("RGB").save(buf, format="PNG")
-        return buf.getvalue()
+        return buf.getvalue(), page_count

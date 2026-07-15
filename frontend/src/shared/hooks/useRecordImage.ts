@@ -1,10 +1,11 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@shared/api/client";
 
 interface RecordImage {
   objectUrl: string;
   contentType: string;
+  pageCount: number;
 }
 
 /** Fetches a record's image/PDF bytes through the backend (same origin as
@@ -19,15 +20,28 @@ interface RecordImage {
  * would break it the same way a refreshed presigned URL did.
  *
  * The returned object URL is revoked automatically once superseded or on
- * unmount — callers must not revoke it themselves. */
+ * unmount — callers must not revoke it themselves.
+ *
+ * `page` tracks which frame of a multi-page TIFF is requested — see
+ * batches.py's get_record_image, which reports the total via X-Page-Count.
+ * Switching records resets back to the first page. */
 export function useRecordImage(recordId: number | undefined, enabled: boolean) {
+  const [page, setPage] = useState(0);
+  useEffect(() => {
+    setPage(0);
+  }, [recordId]);
+
   const query = useQuery({
-    queryKey: ["record-image", recordId],
+    queryKey: ["record-image", recordId, page],
     queryFn: async (): Promise<RecordImage> => {
-      const res = await api.get(`/records/${recordId}/image`, { responseType: "blob" });
+      const res = await api.get(`/records/${recordId}/image`, {
+        responseType: "blob",
+        params: { page },
+      });
       return {
         objectUrl: URL.createObjectURL(res.data as Blob),
         contentType: (res.headers["content-type"] as string | undefined) ?? "application/octet-stream",
+        pageCount: Number(res.headers["x-page-count"] ?? 1),
       };
     },
     enabled: enabled && recordId != null,
@@ -43,5 +57,5 @@ export function useRecordImage(recordId: number | undefined, enabled: boolean) {
     };
   }, [objectUrl]);
 
-  return query;
+  return { ...query, page, setPage, pageCount: query.data?.pageCount ?? 1 };
 }

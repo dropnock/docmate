@@ -24,10 +24,13 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   // Fetch the record image once task is in_progress — see useRecordImage
   // for why this proxies through the backend rather than using a presigned
   // S3 URL, and why it needs staleTime: Infinity.
-  const { data: viewData, isLoading: viewLoading } = useRecordImage(
-    task.record_id,
-    localStatus === "in_progress"
-  );
+  const {
+    data: viewData,
+    isLoading: viewLoading,
+    page: imagePage,
+    setPage: setImagePage,
+    pageCount: imagePageCount,
+  } = useRecordImage(task.record_id, localStatus === "in_progress");
 
   // Fetch record for lock info and existing indexed data
   const { data: record } = useQuery({
@@ -186,7 +189,12 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                       title={`Record ${task.record_id}`}
                     />
                   ) : (
-                    <OpenSeadragonViewer imageUrl={viewData.objectUrl} />
+                    <OpenSeadragonViewer
+                      imageUrl={viewData.objectUrl}
+                      page={imagePage}
+                      pageCount={imagePageCount}
+                      onPageChange={setImagePage}
+                    />
                   )
                 ) : (
                   <div style={{ padding: 24, color: "#64748B" }}>No file attached to this record.</div>

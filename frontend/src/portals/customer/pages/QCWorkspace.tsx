@@ -37,10 +37,13 @@ export default function QCWorkspace() {
 
   // Fetch image for active task — see useRecordImage for why this proxies
   // through the backend rather than using a presigned S3 URL.
-  const { data: viewData, isLoading: viewLoading } = useRecordImage(
-    activeTask?.record_id,
-    !!activeTask && activeTask.status === "in_progress"
-  );
+  const {
+    data: viewData,
+    isLoading: viewLoading,
+    page: imagePage,
+    setPage: setImagePage,
+    pageCount: imagePageCount,
+  } = useRecordImage(activeTask?.record_id, !!activeTask && activeTask.status === "in_progress");
 
   // Fetch record data
   const { data: record } = useQuery<DocRecord>({
@@ -236,7 +239,12 @@ export default function QCWorkspace() {
                   title={`Record ${activeTask.record_id}`}
                 />
               ) : (
-                <OpenSeadragonViewer imageUrl={viewData.objectUrl} />
+                <OpenSeadragonViewer
+                  imageUrl={viewData.objectUrl}
+                  page={imagePage}
+                  pageCount={imagePageCount}
+                  onPageChange={setImagePage}
+                />
               )
             ) : (
               <div style={{ padding: 24, color: "#64748B" }}>
