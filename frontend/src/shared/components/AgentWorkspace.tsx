@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
+import { useRecordImage } from "@shared/hooks/useRecordImage";
 import type { DocumentType, Task } from "@shared/types";
 import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
 import SchemaForm, { type SchemaFormHandle } from "./SchemaForm";
@@ -19,24 +20,13 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const formId = `task-form-${task.id}`;
   const formRef = useRef<SchemaFormHandle>(null);
 
-  // Fetch view URL + content_type once task is in_progress.
-  // staleTime: Infinity + refetchOnWindowFocus: false prevent a new presigned URL from
-  // being generated while the image is loading, which would destroy the OSD viewer
-  // mid-flight and produce NS_BINDING_ABORTED. This override must survive the
-  // QueryClient's global staleTime default (see shared/query/queryClient.ts) —
-  // per-query options always win over defaults, but don't remove this thinking
-  // it's now redundant.
-  const { data: viewData, isLoading: viewLoading } = useQuery({
-    queryKey: ["record-view-url", task.record_id],
-    queryFn: () =>
-      api
-        .get<{ view_url: string; content_type: string }>(`/records/${task.record_id}/view-url`)
-        .then((r) => r.data),
-    enabled: localStatus === "in_progress",
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
+  // Fetch the record image once task is in_progress — see useRecordImage
+  // for why this proxies through the backend rather than using a presigned
+  // S3 URL, and why it needs staleTime: Infinity.
+  const { data: viewData, isLoading: viewLoading } = useRecordImage(
+    task.record_id,
+    localStatus === "in_progress"
+  );
 
   // Fetch record for lock info and existing indexed data
   const { data: record } = useQuery({
@@ -177,15 +167,15 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
           left={
             viewLoading ? (
               <Spin style={{ margin: 40 }} />
-            ) : viewData?.view_url ? (
-              viewData.content_type === "application/pdf" ? (
+            ) : viewData?.objectUrl ? (
+              viewData.contentType === "application/pdf" ? (
                 <iframe
-                  src={viewData.view_url}
+                  src={viewData.objectUrl}
                   style={{ width: "100%", height: "100%", border: "none" }}
                   title={`Record ${task.record_id}`}
                 />
               ) : (
-                <OpenSeadragonViewer imageUrl={viewData.view_url} />
+                <OpenSeadragonViewer imageUrl={viewData.objectUrl} />
               )
             ) : (
               <div style={{ padding: 24, color: "#64748B" }}>No file attached to this record.</div>

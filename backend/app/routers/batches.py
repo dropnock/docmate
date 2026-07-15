@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -115,12 +116,9 @@ async def update_document_type(
     return dt
 
 
-@router.get("/records/{record_id}/view-url")
-async def get_view_url(
-    record_id: int,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
+async def _resolve_record_bucket(
+    record_id: int, db: AsyncSession, current_user
+) -> tuple[Record, str]:
     record = await db.get(Record, record_id)
     if not record or not record.file_reference:
         raise HTTPException(status_code=404, detail="Record or file not found")
@@ -143,9 +141,44 @@ async def get_view_url(
     if not project.s3_bucket_name:
         raise HTTPException(status_code=503, detail="S3 bucket not ready")
 
-    bucket = project.s3_bucket_name
-    content_type = await s3_service.get_object_content_type(bucket, record.file_reference)
+    return record, project.s3_bucket_name
+
+
+async def _resolve_content_type(bucket: str, key: str) -> str:
+    content_type = await s3_service.get_object_content_type(bucket, key)
     if content_type == "application/octet-stream":
-        content_type = await s3_service.sniff_content_type(bucket, record.file_reference)
+        content_type = await s3_service.sniff_content_type(bucket, key)
+    return content_type
+
+
+@router.get("/records/{record_id}/view-url")
+async def get_view_url(
+    record_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    record, bucket = await _resolve_record_bucket(record_id, db, current_user)
+    content_type = await _resolve_content_type(bucket, record.file_reference)
     url = await s3_service.get_presigned_view_url(bucket, record.file_reference, content_type=content_type)
     return {"view_url": url, "content_type": content_type}
+
+
+@router.get("/records/{record_id}/image")
+async def get_record_image(
+    record_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Streams the record's image/PDF bytes through the backend on the same
+    origin as the rest of the API, instead of the client fetching a
+    presigned URL from a separate S3/MinIO origin (see get_view_url above,
+    kept for callers that still want a direct-to-S3 URL). This is what
+    AgentWorkspace/QCWorkspace use for in-line viewing, since a background
+    image/tile fetch to an untrusted second origin fails with no
+    user-actionable prompt — see s3_service.stream_object."""
+    record, bucket = await _resolve_record_bucket(record_id, db, current_user)
+    content_type = await _resolve_content_type(bucket, record.file_reference)
+    return StreamingResponse(
+        s3_service.stream_object(bucket, record.file_reference),
+        media_type=content_type,
+    )

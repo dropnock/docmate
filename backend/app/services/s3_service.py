@@ -117,6 +117,21 @@ async def sniff_content_type(bucket: str, key: str) -> str:
     return "application/octet-stream"
 
 
+async def stream_object(bucket: str, key: str):
+    """Yields an object's bytes for proxying through the backend on the API's
+    own origin, instead of redirecting the browser to a presigned URL on a
+    separate S3/MinIO origin. Avoids requiring the browser to establish TLS
+    trust for a second hostname just to view a record image — see
+    nginx/certs/generate.sh for why that's a real, silently-failing problem
+    (background image/tile fetches to an untrusted origin have no
+    user-actionable "proceed anyway" prompt the way top-level navigation
+    does)."""
+    async with _session.client("s3", **_client_kwargs()) as client:
+        resp = await client.get_object(Bucket=bucket, Key=key)
+        async for chunk in resp["Body"].iter_chunks():
+            yield chunk
+
+
 async def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
     async with _session.client("s3", **_presigned_client_kwargs()) as client:
         return await client.generate_presigned_url(
