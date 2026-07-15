@@ -117,6 +117,12 @@ export function RangeArrayField({
 // Accepts range notation in the Folio input: "400-450" expands to 51 individual
 // {volume_number, folio_number} items. Volume is kept after Add so the user can
 // quickly add further folio ranges for the same volume.
+//
+// Both inputs also commit on blur (handleAdd no-ops if either is still
+// empty) — otherwise typing a pair and clicking straight to Submit without
+// pressing "Add" silently discards it: the array stays empty, and a bare
+// `required` (as opposed to `minItems`) on the field is satisfied by an
+// empty-but-present array, so nothing catches the loss at validation time.
 export function ParcelArrayField({
   schema,
   formData,
@@ -195,6 +201,7 @@ export function ParcelArrayField({
           placeholder="Volume"
           value={volumeInput}
           onChange={(e) => setVolumeInput(e.target.value)}
+          onBlur={handleAdd}
           style={{ width: 110, fontFamily: "monospace" }}
         />
         <Input
@@ -202,6 +209,7 @@ export function ParcelArrayField({
           value={folioInput}
           onChange={(e) => setFolioInput(e.target.value)}
           onPressEnter={handleAdd}
+          onBlur={handleAdd}
           style={{ flex: 1, fontFamily: "monospace" }}
         />
         <Button
