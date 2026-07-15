@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import OpenSeadragon from "openseadragon";
 import ViewerToolbar from "./ViewerToolbar";
 
@@ -9,9 +9,14 @@ interface Props {
 export default function OpenSeadragonViewer({ imageUrl }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<OpenSeadragon.Viewer | null>(null);
+  // OSD reports load failures (bad tile source, undecodable content-type,
+  // etc.) via events only — with no listener, a failed load renders as an
+  // indistinguishable black screen instead of surfacing anything.
+  const [loadFailed, setLoadFailed] = useState(false);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    setLoadFailed(false);
 
     const options = {
       element: containerRef.current,
@@ -41,6 +46,12 @@ export default function OpenSeadragonViewer({ imageUrl }: Props) {
       defaultZoomLevel: 0,
     };
     viewerRef.current = OpenSeadragon(options);
+    const handleLoadFailed = (event: unknown) => {
+      console.error("OpenSeadragonViewer: failed to load image", imageUrl, event);
+      setLoadFailed(true);
+    };
+    viewerRef.current.addHandler("open-failed", handleLoadFailed);
+    viewerRef.current.addHandler("tile-load-failed", handleLoadFailed);
 
     return () => {
       viewerRef.current?.destroy();
@@ -65,7 +76,26 @@ export default function OpenSeadragonViewer({ imageUrl }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <ViewerToolbar onZoomIn={zoomIn} onZoomOut={zoomOut} onFitPage={fitPage} onFitWidth={fitWidth} />
-      <div ref={containerRef} style={{ flex: 1, background: "#1a1a1a" }} />
+      <div style={{ flex: 1, position: "relative" }}>
+        <div ref={containerRef} style={{ position: "absolute", inset: 0, background: "#1a1a1a" }} />
+        {loadFailed && (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#F87171",
+              background: "rgba(0,0,0,0.6)",
+              textAlign: "center",
+              padding: 16,
+            }}
+          >
+            Failed to load image — the file may be missing or in an unsupported format.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
