@@ -32,6 +32,7 @@ class RecordOut(BaseModel):
     id: int
     batch_id: int | None = None
     file_reference: str | None
+    original_filename: str | None = None
     indexed_data: dict | None
     current_version: int
     locked_by: int | None

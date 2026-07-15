@@ -162,21 +162,37 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       <div style={{ flex: 1, overflow: "hidden" }}>
         <SplitWorkspace
           left={
-            viewLoading ? (
-              <Spin style={{ margin: 40 }} />
-            ) : viewData?.objectUrl ? (
-              viewData.contentType === "application/pdf" ? (
-                <iframe
-                  src={viewData.objectUrl}
-                  style={{ width: "100%", height: "100%", border: "none" }}
-                  title={`Record ${task.record_id}`}
-                />
-              ) : (
-                <OpenSeadragonViewer imageUrl={viewData.objectUrl} />
-              )
-            ) : (
-              <div style={{ padding: 24, color: "#64748B" }}>No file attached to this record.</div>
-            )
+            <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+              <div
+                style={{
+                  padding: "6px 14px",
+                  borderBottom: "1px solid #E2E8F0",
+                  flexShrink: 0,
+                  background: "#FFFFFF",
+                }}
+              >
+                <Typography.Text strong style={{ fontSize: 13 }}>
+                  {record?.original_filename ?? `Record #${task.record_id}`}
+                </Typography.Text>
+              </div>
+              <div style={{ flex: 1, overflow: "hidden" }}>
+                {viewLoading ? (
+                  <Spin style={{ margin: 40 }} />
+                ) : viewData?.objectUrl ? (
+                  viewData.contentType === "application/pdf" ? (
+                    <iframe
+                      src={viewData.objectUrl}
+                      style={{ width: "100%", height: "100%", border: "none" }}
+                      title={`Record ${task.record_id}`}
+                    />
+                  ) : (
+                    <OpenSeadragonViewer imageUrl={viewData.objectUrl} />
+                  )
+                ) : (
+                  <div style={{ padding: 24, color: "#64748B" }}>No file attached to this record.</div>
+                )}
+              </div>
+            </div>
           }
           right={
             // Flex column: fixed header + scrollable form + sticky submit footer
