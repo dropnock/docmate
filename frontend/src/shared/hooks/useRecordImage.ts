@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@shared/api/client";
 
@@ -19,13 +19,17 @@ interface RecordImage {
  * the object URL out from under an in-progress OpenSeadragon/iframe load
  * would break it the same way a refreshed presigned URL did.
  *
+ * gcTime: 0 is paired deliberately with the unmount-revoke below: it drops
+ * this query's cache entry the instant it has no observers, so a later
+ * remount (navigating back to the same task, WorkspaceErrorBoundary's
+ * Retry, revisiting a TIFF page) always refetches fresh bytes into a new
+ * blob instead of being handed back a cached objectUrl that was already
+ * revoked. Without gcTime: 0, staleTime: Infinity would keep the stale,
+ * revoked URL servable for the default 5-minute gcTime window, which is
+ * what caused images to silently fail to load after a successful fetch.
+ *
  * The returned object URL is revoked automatically once superseded by a
- * newer one — callers must not revoke it themselves. It is deliberately
- * NOT revoked on unmount: with staleTime: Infinity, React Query keeps
- * this query's cached data (and its objectUrl) alive for gcTime after
- * unmount, and a remount within that window (e.g. navigating back to the
- * same task, or WorkspaceErrorBoundary's Retry) would otherwise be handed
- * back an already-revoked URL, making the image silently fail to load.
+ * newer one, and on unmount — callers must not revoke it themselves.
  *
  * `page` tracks which frame of a multi-page TIFF is requested — see
  * batches.py's get_record_image, which reports the total via X-Page-Count.
@@ -51,18 +55,16 @@ export function useRecordImage(recordId: number | undefined, enabled: boolean) {
     },
     enabled: enabled && recordId != null,
     staleTime: Infinity,
+    gcTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
 
   const objectUrl = query.data?.objectUrl;
-  const prevObjectUrlRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    const prev = prevObjectUrlRef.current;
-    if (prev && prev !== objectUrl) {
-      URL.revokeObjectURL(prev);
-    }
-    prevObjectUrlRef.current = objectUrl;
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
   }, [objectUrl]);
 
   return { ...query, page, setPage, pageCount: query.data?.pageCount ?? 1 };
