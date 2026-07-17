@@ -1,4 +1,4 @@
-import { Alert, Badge, Button, Form, Input, Modal, Space, Spin, Typography, message } from "antd";
+import { Alert, Badge, Button, Modal, Space, Spin, Typography, message } from "antd";
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
@@ -20,8 +20,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   const [localStatus, setLocalStatus] = useState(task.status);
   const formId = `task-form-${task.id}`;
   const formRef = useRef<SchemaFormHandle>(null);
-  const [disqualifyModalOpen, setDisqualifyModalOpen] = useState(false);
-  const [disqualifyForm] = Form.useForm<{ reason: string }>();
+  const [skipModalOpen, setSkipModalOpen] = useState(false);
 
   // Fetch the record image once task is in_progress — see useRecordImage
   // for why this proxies through the backend rather than using a presigned
@@ -105,29 +104,26 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     },
   });
 
-  // Disqualify — a third option alongside Save Progress / Submit & Complete
-  // for a record that can't be indexed at all (blank page, unreadable scan,
-  // wrong document). Skips the schema form entirely — there's no data to
-  // submit — unlike Submit & Complete, which requires it to validate.
-  const disqualifyMutation = useMutation({
-    mutationFn: (reason: string) => api.post(`/tasks/${task.id}/disqualify`, { reason }),
-    onSuccess: () => {
-      message.success("Record disqualified");
-      setDisqualifyModalOpen(false);
-      disqualifyForm.resetFields();
+  // Skip — a third option alongside Save Progress / Submit & Complete for a
+  // record that can't be indexed at all (blank page, unreadable scan, wrong
+  // document). Skips the schema form entirely — there's no data to submit —
+  // unlike Submit & Complete, which requires it to validate. The user picks
+  // which of the two terminal statuses applies; that choice becomes the
+  // record's new status directly, no separate confirmation step.
+  const skipMutation = useMutation({
+    mutationFn: (status: "withdrawn" | "ineligible") =>
+      api.post(`/tasks/${task.id}/skip`, { status }),
+    onSuccess: (_data, status) => {
+      message.success(`Record marked ${status}`);
+      setSkipModalOpen(false);
       qc.invalidateQueries({ queryKey: ["record", task.record_id] });
       qc.invalidateQueries({ queryKey: ["my-tasks"] });
       onComplete?.();
     },
     onError: (e: unknown) => {
-      message.error(formatApiError(e, "Failed to disqualify record"));
+      message.error(formatApiError(e, "Failed to skip record"));
     },
   });
-
-  const handleDisqualify = async () => {
-    const values = await disqualifyForm.validateFields();
-    disqualifyMutation.mutate(values.reason);
-  };
 
   // Guarded on `me` being loaded — comparing against undefined would flag
   // every locked record as "locked by other" during the brief window before
@@ -297,8 +293,8 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
                   {task.task_type === "indexing" && (
-                    <Button danger onClick={() => setDisqualifyModalOpen(true)}>
-                      Disqualify
+                    <Button danger onClick={() => setSkipModalOpen(true)}>
+                      Skip
                     </Button>
                   )}
                   <Space.Compact block style={{ flex: 1 }}>
@@ -331,28 +327,40 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       </div>
 
       <Modal
-        title="Disqualify Record"
-        open={disqualifyModalOpen}
-        onCancel={() => setDisqualifyModalOpen(false)}
-        onOk={handleDisqualify}
-        confirmLoading={disqualifyMutation.isPending}
-        okText="Disqualify"
-        okButtonProps={{ danger: true }}
+        title="Skip Record"
+        open={skipModalOpen}
+        onCancel={() => setSkipModalOpen(false)}
+        footer={
+          <Button onClick={() => setSkipModalOpen(false)} disabled={skipMutation.isPending}>
+            Cancel
+          </Button>
+        }
       >
         <Typography.Paragraph type="secondary">
           Use this when the record can&apos;t be indexed at all — blank page, unreadable
-          scan, wrong document. It will be marked disqualified and removed from your
-          queue; no data will be submitted.
+          scan, wrong document. Choose why; no data will be submitted and the record is
+          removed from your queue.
         </Typography.Paragraph>
-        <Form form={disqualifyForm} layout="vertical">
-          <Form.Item
-            name="reason"
-            label="Reason"
-            rules={[{ required: true, message: "Please provide a reason" }]}
+        <Space style={{ width: "100%" }} size="middle">
+          <Button
+            block
+            danger
+            loading={skipMutation.isPending && skipMutation.variables === "withdrawn"}
+            disabled={skipMutation.isPending}
+            onClick={() => skipMutation.mutate("withdrawn")}
           >
-            <Input.TextArea rows={3} placeholder="Describe why this record can't be indexed..." />
-          </Form.Item>
-        </Form>
+            Withdrawn
+          </Button>
+          <Button
+            block
+            danger
+            loading={skipMutation.isPending && skipMutation.variables === "ineligible"}
+            disabled={skipMutation.isPending}
+            onClick={() => skipMutation.mutate("ineligible")}
+          >
+            Ineligible
+          </Button>
+        </Space>
       </Modal>
     </div>
   );

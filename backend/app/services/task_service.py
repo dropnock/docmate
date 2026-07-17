@@ -176,15 +176,15 @@ async def complete_task(
 
 
 async def _maybe_advance_to_qa(db: AsyncSession, *, batch_id: int, tenant_id: int) -> None:
-    from sqlalchemy import func
-    from app.models.record import RecordStatus
-    # Disqualified records are a terminal state that never gets QA'd (see
-    # disqualify_task) — they must count as "done" here too, or a single
-    # disqualified record would block the batch from ever advancing.
+    from app.models.record import SKIPPED_RECORD_STATUSES
+    # Skipped records (withdrawn/ineligible/legacy disqualified) are a
+    # terminal state that never gets QA'd (see skip_task) — they must count
+    # as "done" here too, or a single skipped record would block the batch
+    # from ever advancing.
     non_indexed = (await db.execute(
         select(Record).where(
             Record.batch_id == batch_id,
-            Record.status.notin_([RecordStatus.indexed, RecordStatus.disqualified]),
+            Record.status.notin_([RecordStatus.indexed, *SKIPPED_RECORD_STATUSES]),
         )
     )).scalars().all()
     if not non_indexed:
@@ -193,13 +193,14 @@ async def _maybe_advance_to_qa(db: AsyncSession, *, batch_id: int, tenant_id: in
 
 
 async def _maybe_complete_batch(db: AsyncSession, *, batch_id: int, tenant_id: int) -> None:
-    # auto_advance_to_qa (batch_service.py) skips disqualified records when
+    from app.models.record import SKIPPED_RECORD_STATUSES
+    # auto_advance_to_qa (batch_service.py) skips these records when
     # creating QA tasks, so they never reach qa_passed — treat them as
     # terminal here too, same reasoning as _maybe_advance_to_qa above.
     non_passed = (await db.execute(
         select(Record).where(
             Record.batch_id == batch_id,
-            Record.status.notin_([RecordStatus.qa_passed, RecordStatus.disqualified]),
+            Record.status.notin_([RecordStatus.qa_passed, *SKIPPED_RECORD_STATUSES]),
         )
     )).scalars().all()
     if not non_passed:
@@ -400,32 +401,41 @@ async def fail_task(
     return task
 
 
-async def disqualify_task(
+SKIPPABLE_STATUSES = (RecordStatus.withdrawn, RecordStatus.ineligible)
+
+
+async def skip_task(
     db: AsyncSession,
     *,
     task_id: int,
     user_id: int,
-    reason: str,
+    status: RecordStatus,
     tenant_id: int,
 ) -> Task:
     """An indexer's third option alongside Save Progress / Submit & Complete
     for a record that can't be indexed at all (blank page, wrong document,
     unreadable scan, etc). Skips the schema form entirely — there's no data
-    to submit — and marks the record disqualified rather than indexed, a
-    terminal state that _maybe_advance_to_qa/_maybe_complete_batch and
-    auto_advance_to_qa (batch_service.py) all treat as "done" without
-    routing it through QA/QC."""
+    to submit — and marks the record withdrawn or ineligible (the indexer's
+    choice) rather than indexed, a terminal state that
+    _maybe_advance_to_qa/_maybe_complete_batch and auto_advance_to_qa
+    (batch_service.py) all treat as "done" without routing it through QA/QC."""
+    if status not in SKIPPABLE_STATUSES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"status must be one of {[s.value for s in SKIPPABLE_STATUSES]}",
+        )
+
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.assigned_to != user_id:
         raise HTTPException(status_code=403, detail="Not your task")
     if task.task_type != TaskType.indexing:
-        raise HTTPException(status_code=400, detail="Only indexing tasks can be disqualified")
+        raise HTTPException(status_code=400, detail="Only indexing tasks can be skipped")
 
     record = await db.get(Record, task.record_id)
     await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
-    record.status = RecordStatus.disqualified
+    record.status = status
 
     now = datetime.now(timezone.utc)
     task.status = TaskStatus.completed
@@ -435,12 +445,12 @@ async def disqualify_task(
 
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,
-        action=AuditAction.disqualified, performed_by=user_id, metadata={"reason": reason},
+        action=AuditAction.disqualified, performed_by=user_id, metadata={"status": status.value},
     )
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.task, entity_id=task.id,
         action=AuditAction.status_changed, performed_by=user_id,
-        old_value={"status": "in_progress"}, new_value={"status": "completed", "reason": "disqualified"},
+        old_value={"status": "in_progress"}, new_value={"status": "completed", "reason": status.value},
     )
 
     await db.flush()
