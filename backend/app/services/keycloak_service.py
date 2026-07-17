@@ -253,6 +253,12 @@ def create_customer_realm(realm_slug: str, display_name: str) -> None:
             "enabled": True,
             "registrationAllowed": False,
             "loginWithEmailAllowed": True,
+            # Explicit, not just relying on the Keycloak factory default (also
+            # 1800s) — see doc-realm.json's matching setting and
+            # frontend/src/shared/api/keycloak.ts's startSessionKeepAlive for
+            # why this needs to be a known, version-controlled value rather
+            # than an implicit platform default.
+            "ssoSessionIdleTimeout": 1800,
             "otpPolicyType": "totp",
             "otpPolicyAlgorithm": "HmacSHA1",
             "otpPolicyDigits": 6,

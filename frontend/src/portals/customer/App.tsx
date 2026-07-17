@@ -11,7 +11,7 @@ import {
   useNavigate,
   useLocation,
 } from "react-router-dom";
-import { initKeycloak, logout } from "@shared/api/keycloak";
+import { initKeycloak, logout, startSessionKeepAlive } from "@shared/api/keycloak";
 import ProjectScopedRoute from "@shared/routing/ProjectScopedRoute";
 import PageSkeleton from "@shared/components/PageSkeleton";
 import AppHeader from "@shared/components/AppHeader";
@@ -166,7 +166,10 @@ export default function App() {
       .then(({ realm_slug }: { realm_slug: string }) =>
         initKeycloak(realm_slug, "docmate-cust")
       )
-      .then(() => setState("ready"))
+      .then(() => {
+        startSessionKeepAlive();
+        setState("ready");
+      })
       .catch((err) => {
         const msg =
           err.message === "not_found"

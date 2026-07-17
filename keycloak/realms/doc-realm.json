@@ -8,6 +8,7 @@
   "resetPasswordAllowed": true,
   "editUsernameAllowed": false,
   "accessTokenLifespan": 3600,
+  "ssoSessionIdleTimeout": 1800,
   "otpPolicyType": "totp",
   "otpPolicyAlgorithm": "HmacSHA1",
   "otpPolicyInitialCounter": 0,
