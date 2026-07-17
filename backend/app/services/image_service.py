@@ -15,3 +15,20 @@ def tiff_to_png(data: bytes, page: int = 0) -> tuple[bytes, int]:
         buf = BytesIO()
         img.convert("RGB").save(buf, format="PNG")
         return buf.getvalue(), page_count
+
+
+def tiff_to_pdf(data: bytes) -> bytes:
+    """Converts every frame of a (possibly multi-page) TIFF into a single
+    multi-page PDF, so the whole scan can be served once through the existing
+    PDF <iframe> viewing path instead of re-decoding a page at a time on every
+    view. Browsers paginate/zoom a PDF natively, so no per-page bookkeeping is
+    needed downstream."""
+    with Image.open(BytesIO(data)) as img:
+        page_count = getattr(img, "n_frames", 1)
+        pages = []
+        for i in range(page_count):
+            img.seek(i)
+            pages.append(img.convert("RGB"))
+        buf = BytesIO()
+        pages[0].save(buf, format="PDF", save_all=True, append_images=pages[1:])
+        return buf.getvalue()

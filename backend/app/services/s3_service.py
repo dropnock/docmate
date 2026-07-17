@@ -11,6 +11,7 @@ from app.core.config import settings
 if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.project import Project
+    from app.models.record import Record
 
 _session = aioboto3.Session()
 
@@ -117,10 +118,65 @@ async def sniff_content_type(bucket: str, key: str) -> str:
     return "application/octet-stream"
 
 
+_RECOGNIZED_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/tiff"}
+
+
+async def resolve_content_type(bucket: str, key: str) -> str:
+    """The stored Content-Type comes from whatever the uploading client sent
+    on the presigned PUT (see CabinetManager.tsx's `fetch(upload_url, {
+    method: "PUT", body: file })` — no Content-Type header is set explicitly,
+    so it falls back to `file.type`, which browsers commonly leave empty for
+    TIFF). S3 and MinIO then apply their own default when no header is sent,
+    and that default differs by backend (MinIO: "application/octet-stream",
+    AWS S3: "binary/octet-stream") — so matching only the MinIO-observed
+    string here worked in dev but silently served the wrong Content-Type
+    against real S3, leaving the browser unable to decode the image."""
+    content_type = await get_object_content_type(bucket, key)
+    if content_type not in _RECOGNIZED_CONTENT_TYPES:
+        content_type = await sniff_content_type(bucket, key)
+    return content_type
+
+
 async def get_object_bytes(bucket: str, key: str) -> bytes:
     async with _session.client("s3", **_client_kwargs()) as client:
         resp = await client.get_object(Bucket=bucket, Key=key)
         return await resp["Body"].read()
+
+
+async def put_object_bytes(bucket: str, key: str, data: bytes, content_type: str) -> None:
+    async with _session.client("s3", **_client_kwargs()) as client:
+        await client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
+
+
+def derived_pdf_key(file_reference: str) -> str:
+    """Deterministic S3 key for a TIFF's converted PDF — same path, original
+    extension replaced with .pdf. Computed identically by the upload-time
+    conversion hook, the view-endpoint self-heal fallback, and the backfill
+    script, so whichever reaches a given record first "wins" with no lookup
+    or shared state needed."""
+    base, dot, _ext = file_reference.rpartition(".")
+    return f"{base if dot else file_reference}.pdf"
+
+
+async def resolve_record_project(record: "Record", db: AsyncSession) -> "Project | None":
+    """Resolves a record's Project via its cabinet (preferred) or batch
+    (fallback) — the data lookup callers outside an HTTP request (the upload
+    hook, the backfill script) need, without the authz/404 handling a router
+    layers on top (see batches.py's _resolve_record_bucket for that)."""
+    from app.models.batch import Batch
+    from app.models.cabinet import Cabinet
+    from app.models.project import Project
+
+    project = None
+    if record.cabinet_id:
+        cabinet = await db.get(Cabinet, record.cabinet_id)
+        if cabinet:
+            project = await db.get(Project, cabinet.project_id)
+    if project is None and record.batch_id:
+        batch = await db.get(Batch, record.batch_id)
+        if batch:
+            project = await db.get(Project, batch.project_id)
+    return project
 
 
 async def stream_object(bucket: str, key: str):

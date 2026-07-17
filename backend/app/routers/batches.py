@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -164,18 +164,7 @@ async def _resolve_record_bucket(
     if not record or not record.file_reference:
         raise HTTPException(status_code=404, detail="Record or file not found")
 
-    # Resolve project via cabinet (new path) or batch (fallback)
-    project = None
-    if record.cabinet_id:
-        from app.models.cabinet import Cabinet
-        cabinet = await db.get(Cabinet, record.cabinet_id)
-        if cabinet:
-            project = await db.get(Project, cabinet.project_id)
-    if project is None and record.batch_id:
-        batch = await db.get(Batch, record.batch_id)
-        if batch:
-            project = await db.get(Project, batch.project_id)
-
+    project = await s3_service.resolve_record_project(record, db)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     check_project_access(project, current_user)
@@ -185,25 +174,6 @@ async def _resolve_record_bucket(
     return record, project.s3_bucket_name
 
 
-_RECOGNIZED_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "image/tiff"}
-
-
-async def _resolve_content_type(bucket: str, key: str) -> str:
-    """The stored Content-Type comes from whatever the uploading client sent
-    on the presigned PUT (see CabinetManager.tsx's `fetch(upload_url, {
-    method: "PUT", body: file })` — no Content-Type header is set explicitly,
-    so it falls back to `file.type`, which browsers commonly leave empty for
-    TIFF). S3 and MinIO then apply their own default when no header is sent,
-    and that default differs by backend (MinIO: "application/octet-stream",
-    AWS S3: "binary/octet-stream") — so matching only the MinIO-observed
-    string here worked in dev but silently served the wrong Content-Type
-    against real S3, leaving the browser unable to decode the image."""
-    content_type = await s3_service.get_object_content_type(bucket, key)
-    if content_type not in _RECOGNIZED_CONTENT_TYPES:
-        content_type = await s3_service.sniff_content_type(bucket, key)
-    return content_type
-
-
 @router.get("/records/{record_id}/view-url")
 async def get_view_url(
     record_id: int,
@@ -211,7 +181,7 @@ async def get_view_url(
     current_user=Depends(get_current_user),
 ):
     record, bucket = await _resolve_record_bucket(record_id, db, current_user)
-    content_type = await _resolve_content_type(bucket, record.file_reference)
+    content_type = await s3_service.resolve_content_type(bucket, record.file_reference)
     url = await s3_service.get_presigned_view_url(bucket, record.file_reference, content_type=content_type)
     return {"view_url": url, "content_type": content_type}
 
@@ -231,21 +201,26 @@ async def get_record_image(
     image/tile fetch to an untrusted second origin fails with no
     user-actionable prompt — see s3_service.stream_object.
 
-    TIFF is converted to PNG before serving — no browser decodes TIFF
-    natively in an <img>/canvas context, which is what OpenSeadragon's
-    "simple image" tile source relies on. `page` selects a frame out of a
-    multi-page scan; the response carries the total in X-Page-Count so the
-    frontend can drive pagination without a separate round trip."""
+    TIFF originals are converted to a single multi-page PDF at upload time
+    (see cabinet_service._convert_tiff_if_needed) so the browser's own PDF
+    viewer handles pagination/zoom natively — `record.file_reference` is
+    repointed at the derived PDF once that happens, and this endpoint just
+    streams whatever it currently points to. The self-heal branch below only
+    fires for a record that reaches this endpoint still pointing at a TIFF
+    (pre-existing data the backfill script hasn't reached yet, or a failed
+    upload-time conversion) — it converts once and persists the result so
+    every subsequent view is a plain passthrough. `page` is a no-op for PDFs
+    (kept for backward-compatible callers; the PDF viewer paginates itself)."""
     record, bucket = await _resolve_record_bucket(record_id, db, current_user)
-    content_type = await _resolve_content_type(bucket, record.file_reference)
+    content_type = await s3_service.resolve_content_type(bucket, record.file_reference)
     if content_type == "image/tiff":
         data = await s3_service.get_object_bytes(bucket, record.file_reference)
-        png_bytes, page_count = await asyncio.to_thread(image_service.tiff_to_png, data, page)
-        return Response(
-            content=png_bytes,
-            media_type="image/png",
-            headers={"X-Page-Count": str(page_count)},
-        )
+        pdf_bytes = await asyncio.to_thread(image_service.tiff_to_pdf, data)
+        key = s3_service.derived_pdf_key(record.file_reference)
+        await s3_service.put_object_bytes(bucket, key, pdf_bytes, "application/pdf")
+        record.file_reference = key
+        await db.commit()
+        content_type = "application/pdf"
     return StreamingResponse(
         s3_service.stream_object(bucket, record.file_reference),
         media_type=content_type,

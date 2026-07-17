@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import math
 import random
 from datetime import datetime, timezone
@@ -12,8 +14,10 @@ from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.cabinet import Cabinet
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service, staff_assignment_service
+from app.services import audit_service, image_service, s3_service, staff_assignment_service
 from app.services.task_service import _get_stale_hours
+
+logger = logging.getLogger(__name__)
 
 
 async def create_cabinet(
@@ -126,6 +130,31 @@ async def ingest_json_records(
     return created
 
 
+async def _convert_tiff_if_needed(db: AsyncSession, record: Record) -> None:
+    """Converts a freshly-uploaded TIFF scan to a single multi-page PDF and
+    repoints file_reference at it, so viewing never has to decode the TIFF
+    again — see batches.py's get_record_image, which performs the same
+    conversion as a one-time self-heal for any record that reaches it
+    without this having already run (pre-existing data, or a failure here).
+    Failures are swallowed: a conversion problem must never block the
+    upload confirmation itself."""
+    try:
+        project = await s3_service.resolve_record_project(record, db)
+        if not project or not project.s3_bucket_name:
+            return
+        bucket = project.s3_bucket_name
+        content_type = await s3_service.resolve_content_type(bucket, record.file_reference)
+        if content_type != "image/tiff":
+            return
+        data = await s3_service.get_object_bytes(bucket, record.file_reference)
+        pdf_bytes = await asyncio.to_thread(image_service.tiff_to_pdf, data)
+        key = s3_service.derived_pdf_key(record.file_reference)
+        await s3_service.put_object_bytes(bucket, key, pdf_bytes, "application/pdf")
+        record.file_reference = key
+    except Exception:
+        logger.exception("TIFF-to-PDF conversion failed for record %s", record.id)
+
+
 async def link_image_to_record(
     db: AsyncSession,
     *,
@@ -144,6 +173,7 @@ async def link_image_to_record(
     # Derive source_identifier from filename if not already set
     if not record.source_identifier:
         record.source_identifier = Path(original_filename).stem
+    await _convert_tiff_if_needed(db, record)
     return record
 
 
@@ -170,6 +200,7 @@ async def ingest_image_create_or_link(
     if existing:
         existing.file_reference = s3_key
         existing.original_filename = original_filename
+        await _convert_tiff_if_needed(db, existing)
         return existing
 
     # No matching JSON record — create stub
@@ -182,6 +213,7 @@ async def ingest_image_create_or_link(
     )
     db.add(record)
     await db.flush()
+    await _convert_tiff_if_needed(db, record)
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
