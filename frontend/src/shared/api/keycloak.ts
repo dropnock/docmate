@@ -65,7 +65,7 @@ export async function getToken(): Promise<string> {
 // Gating on real activity (not just "tab is open") is deliberate: a browser
 // tab left open with no one at the keyboard should still be allowed to idle
 // out for real, same as today — this only fixes the false-positive case.
-const KEEP_ALIVE_INTERVAL_MS = 2 * 60 * 1000; // 2 min — comfortably under the SSO idle timeout
+const KEEP_ALIVE_INTERVAL_MS = 5 * 60 * 1000; // 5 min — comfortably under the SSO idle timeout
 const ACTIVITY_WINDOW_MS = 10 * 60 * 1000; // 10 min — generous enough to cover reading/reviewing pauses
 const ACTIVITY_EVENTS = ["mousedown", "keydown", "touchstart", "wheel", "scroll"] as const;
 
