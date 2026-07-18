@@ -19,8 +19,17 @@ interface RecordImage {
  * the object URL out from under an in-progress OpenSeadragon/iframe load
  * would break it the same way a refreshed presigned URL did.
  *
- * The returned object URL is revoked automatically once superseded or on
- * unmount — callers must not revoke it themselves.
+ * gcTime: 0 is paired deliberately with the unmount-revoke below: it drops
+ * this query's cache entry the instant it has no observers, so a later
+ * remount (navigating back to the same task, WorkspaceErrorBoundary's
+ * Retry, revisiting a TIFF page) always refetches fresh bytes into a new
+ * blob instead of being handed back a cached objectUrl that was already
+ * revoked. Without gcTime: 0, staleTime: Infinity would keep the stale,
+ * revoked URL servable for the default 5-minute gcTime window, which is
+ * what caused images to silently fail to load after a successful fetch.
+ *
+ * The returned object URL is revoked automatically once superseded by a
+ * newer one, and on unmount — callers must not revoke it themselves.
  *
  * `page` tracks which frame of a multi-page TIFF is requested — see
  * batches.py's get_record_image, which reports the total via X-Page-Count.
@@ -46,6 +55,7 @@ export function useRecordImage(recordId: number | undefined, enabled: boolean) {
     },
     enabled: enabled && recordId != null,
     staleTime: Infinity,
+    gcTime: 0,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
