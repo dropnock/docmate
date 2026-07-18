@@ -1,4 +1,5 @@
 import axios from "axios";
+import { message } from "antd";
 import { getToken, isAuthRecoveryInFlight } from "./keycloak";
 
 export const PORTAL = (import.meta.env.VITE_PORTAL ?? "digitizing") as "digitizing" | "customer";
@@ -27,7 +28,12 @@ api.interceptors.response.use(
   (r) => r,
   (err) => {
     if (err.response?.status === 401 && !isAuthRecoveryInFlight()) {
-      window.location.reload();
+      // Session genuinely expired (startSessionKeepAlive covers the false-
+      // positive "still actively working" case) — a bare reload with no
+      // explanation reads as the app randomly breaking mid-task, so say why
+      // before it happens.
+      message.warning("Your session expired. Reloading...", 1.5);
+      setTimeout(() => window.location.reload(), 1500);
     }
     return Promise.reject(err);
   }

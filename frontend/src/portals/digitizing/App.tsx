@@ -25,7 +25,7 @@ import {
   useNavigate,
   useLocation,
 } from "react-router-dom";
-import { initKeycloak, logout } from "@shared/api/keycloak";
+import { initKeycloak, logout, startSessionKeepAlive } from "@shared/api/keycloak";
 import ProjectScopedRoute from "@shared/routing/ProjectScopedRoute";
 import RequireRole from "@shared/routing/RequireRole";
 import PageSkeleton from "@shared/components/PageSkeleton";
@@ -308,7 +308,10 @@ export default function App() {
 
   useEffect(() => {
     initKeycloak("doc", "docmate-de")
-      .then(() => setReady(true))
+      .then(() => {
+        startSessionKeepAlive();
+        setReady(true);
+      })
       .catch((err) => console.error("Keycloak init failed:", err));
   }, []);
 
