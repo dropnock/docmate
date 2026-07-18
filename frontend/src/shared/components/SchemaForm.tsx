@@ -1,7 +1,7 @@
 import Form from "@rjsf/antd";
 import validator from "@rjsf/validator-ajv8";
 import { getDefaultFormState, type RJSFSchema } from "@rjsf/utils";
-import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
+import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
 import { RangeArrayField, ParcelArrayField, DateTextWidget, CountryWidget, buildAutoUiSchema } from "./rjsf/CustomWidgets";
 import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
 
@@ -104,6 +104,29 @@ function initialFormData(schema: RJSFSchema, values?: Record<string, unknown>): 
   return isObjectRecord(defaults) ? defaults : {};
 }
 
+const FOCUSABLE_SELECTOR =
+  'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [role="combobox"]:not([aria-disabled="true"])';
+
+// Enter moves focus to the next field instead of the browser's default
+// implicit-submit behavior (this form has a real <button type="submit">, so
+// without this every plain input would submit the whole record on Enter).
+// Fields render in schema-property order with no ui:order override anywhere
+// in this codebase, so DOM order already matches visual/schema order — a
+// plain traversal is correct without any separate ordering logic.
+function handleEnterNavigation(e: KeyboardEvent<HTMLDivElement>, root: HTMLDivElement | null) {
+  if (e.key !== "Enter" || !root) return;
+  const target = e.target as HTMLElement;
+  if (target.tagName === "TEXTAREA") return; // let newline happen
+  if (target.closest("[data-enter-skip]")) return; // widget handles its own Enter (e.g. ParcelArrayField)
+  e.preventDefault();
+  const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
+    (el) => el.tabIndex !== -1 && el.offsetParent !== null // skip the hidden submit button etc.
+  );
+  const idx = focusable.indexOf(target);
+  if (idx === -1 || idx === focusable.length - 1) return; // unknown target or last field: no-op
+  focusable[idx + 1]?.focus();
+}
+
 const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
   { schema, initialValues, onSubmit, formId }: Props,
   ref,
@@ -116,6 +139,7 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
     initialFormData(processedSchema, initialValues)
   );
   const seenInitial = useRef(initialValues !== undefined);
+  const formRootRef = useRef<HTMLDivElement>(null);
 
   useImperativeHandle(ref, () => ({ getValues: () => formData }), [formData]);
 
@@ -129,27 +153,29 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
 
   return (
     <WorkspaceErrorBoundary>
-      <Form
-        schema={processedSchema}
-        validator={validator}
-        formData={formData}
-        onChange={({ formData: fd }) => setFormData(isObjectRecord(fd) ? fd : {})}
-        uiSchema={uiSchema}
-        onSubmit={({ formData: fd }) => onSubmit(isObjectRecord(fd) ? fd : formData)}
-        showErrorList={false}
-        liveValidate={false}
-        widgets={{ DateText: DateTextWidget, Country: CountryWidget }}
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        fields={{ RangeArray: RangeArrayField, ParcelArray: ParcelArrayField } as any}
-      >
-        <button
-          id={`${formId}-submit`}
-          type="submit"
-          style={{ display: "none" }}
-          aria-hidden
-          tabIndex={-1}
-        />
-      </Form>
+      <div ref={formRootRef} onKeyDown={(e) => handleEnterNavigation(e, formRootRef.current)}>
+        <Form
+          schema={processedSchema}
+          validator={validator}
+          formData={formData}
+          onChange={({ formData: fd }) => setFormData(isObjectRecord(fd) ? fd : {})}
+          uiSchema={uiSchema}
+          onSubmit={({ formData: fd }) => onSubmit(isObjectRecord(fd) ? fd : formData)}
+          showErrorList={false}
+          liveValidate={false}
+          widgets={{ DateText: DateTextWidget, Country: CountryWidget }}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          fields={{ RangeArray: RangeArrayField, ParcelArray: ParcelArrayField } as any}
+        >
+          <button
+            id={`${formId}-submit`}
+            type="submit"
+            style={{ display: "none" }}
+            aria-hidden
+            tabIndex={-1}
+          />
+        </Form>
+      </div>
     </WorkspaceErrorBoundary>
   );
 });

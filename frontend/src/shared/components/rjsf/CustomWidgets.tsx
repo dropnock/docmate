@@ -79,7 +79,7 @@ export function RangeArrayField({
   const hasError = rawErrors && rawErrors.length > 0;
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: 16 }} data-enter-skip>
       <label
         htmlFor={idSchema?.$id}
         style={{ display: "block", marginBottom: 4, fontWeight: 500, color: hasError ? "#ff4d4f" : undefined }}
@@ -189,7 +189,7 @@ export function ParcelArrayField({
   const hasError = rawErrors && rawErrors.length > 0;
 
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div style={{ marginBottom: 16 }} data-enter-skip>
       <label
         htmlFor={idSchema?.$id}
         style={{ display: "block", marginBottom: 6, fontWeight: 500, color: hasError ? "#ff4d4f" : undefined }}
