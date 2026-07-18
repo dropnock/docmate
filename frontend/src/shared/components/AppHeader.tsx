@@ -3,6 +3,14 @@ import { LogOut, Menu as MenuIcon, X } from "lucide-react";
 
 const { Header } = Layout;
 
+// Baked in at Docker build time (see RELEASING.md) — "dev"/"unknown" outside
+// a Docker build (e.g. plain `vite dev`). Cast via `any` like VITE_KEYCLOAK_URL
+// in keycloak.ts — vite-env.d.ts's ImportMetaEnv only declares VITE_PORTAL.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const APP_VERSION = ((import.meta as any).env?.VITE_APP_VERSION as string | undefined) ?? "dev";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const APP_GIT_COMMIT = ((import.meta as any).env?.VITE_GIT_COMMIT as string | undefined) ?? "unknown";
+
 interface Props {
   portalLabel: string;
   userName?: string;
@@ -62,6 +70,12 @@ export default function AppHeader({
             {portalLabel}
           </span>
         </Typography.Title>
+        <Typography.Text
+          title={`commit ${APP_GIT_COMMIT}`}
+          style={{ color: "#94A3B8", fontSize: 11 }}
+        >
+          v{APP_VERSION}
+        </Typography.Text>
       </Space>
       <Space size={16}>
         {userName && (

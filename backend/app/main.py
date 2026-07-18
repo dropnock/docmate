@@ -6,6 +6,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 from app.routers import (
@@ -38,7 +40,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="DocMate API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="DocMate API", version=settings.app_version, lifespan=lifespan)
 
 
 @app.exception_handler(RequestValidationError)
@@ -70,4 +72,9 @@ app.include_router(users.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.app_version, "git_commit": settings.git_commit}
+
+
+@app.get("/version")
+async def version():
+    return {"version": settings.app_version, "git_commit": settings.git_commit}

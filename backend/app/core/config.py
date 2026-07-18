@@ -5,6 +5,10 @@ from sqlalchemy.engine import URL
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # Baked in at Docker build time (see RELEASING.md) — "dev"/"unknown" locally.
+    app_version: str = "dev"
+    git_commit: str = "unknown"
+
     # Full connection string override. Leave unset and use the discrete
     # postgres_* fields below instead — they're built into a URL via
     # SQLAlchemy's URL.create(), which percent-encodes user/password safely

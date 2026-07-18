@@ -79,6 +79,10 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        # See RELEASING.md — unset (dev/unknown defaults) for everyday local use.
+        APP_VERSION: ${APP_VERSION:-dev}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     restart: unless-stopped
     depends_on:
       postgres:
@@ -127,6 +131,9 @@ services:
         # AUTH_HOSTNAME in .env requires rebuilding this image, a plain
         # container recreate is not enough.
         VITE_KEYCLOAK_URL: https://${AUTH_HOSTNAME:-auth.docmate.local}
+        # See RELEASING.md — unset (dev/unknown defaults) for everyday local use.
+        VITE_APP_VERSION: ${APP_VERSION:-dev}
+        VITE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
     restart: unless-stopped
     ports:
       - "5173:80"
@@ -137,6 +144,8 @@ services:
       dockerfile: Dockerfile.customer
       args:
         VITE_KEYCLOAK_URL: https://${AUTH_HOSTNAME:-auth.docmate.local}
+        VITE_APP_VERSION: ${APP_VERSION:-dev}
+        VITE_GIT_COMMIT: ${GIT_COMMIT:-unknown}
     restart: unless-stopped
     ports:
       - "5174:80"
