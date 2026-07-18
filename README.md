@@ -18,6 +18,7 @@ A multi-tenant document digitization management platform. DocMate manages the fu
 - [Seeding Initial Data](#seeding-initial-data)
 - [Key Workflows](#key-workflows)
 - [Tech Stack](#tech-stack)
+- [Versioning & Releases](#versioning--releases)
 - [Notes for Production](#notes-for-production)
 
 ---
@@ -457,8 +458,9 @@ Run with `--dry-run` first to preview what would be uploaded without writing any
 
 1. **My Tasks** → click **Start Indexing** on an assigned task
 2. The split-screen workspace opens: document image (left) + auto-generated form (right)
-3. Fill in the form; use **Save Progress** to save without completing
-4. Click **Submit & Complete** to submit, version the record, and release the lock
+3. Fill in the form; press **Enter** to move to the next field, or use **Save Progress** to save without completing
+4. Click **Submit & Complete** to submit, version the record, and release the lock — or **Skip** if the record can't be indexed at all (blank page, unreadable scan, wrong document), choosing **Withdrawn** or **Ineligible** as its new status
+5. Either action automatically loads the next task in the same batch, until nothing is left assigned to you in it
 
 **Parcel range shorthand** — in the Parcels field enter a Volume and a Folio range (e.g. `400-450`) then click **Add**. DocMate expands it to 51 individual `{volume_number, folio_number}` items automatically.
 
@@ -503,6 +505,25 @@ Run with `--dry-run` first to preview what would be uploaded without writing any
 | Split pane | react-split |
 | Reverse proxy | nginx (TLS termination, per-subdomain routing, `X-Portal` header injection) |
 | Containers | Docker Compose |
+
+---
+
+## Versioning & Releases
+
+DocMate uses manual [SemVer](https://semver.org/). The `VERSION` file at the repo
+root is the single source of truth; `CHANGELOG.md` tracks what's actually in each
+release; `RELEASING.md` documents the steps to cut one (bump `VERSION`, update the
+changelog, tag, build with the version stamped in).
+
+A running instance reports its own version and git commit:
+
+```bash
+curl http://localhost:8000/version
+# {"version": "0.2.0", "git_commit": "8e1011c"}
+```
+
+The same two values also appear in `/health`'s response and in the header of both
+portals.
 
 ---
 
