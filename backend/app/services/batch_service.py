@@ -199,12 +199,14 @@ async def auto_advance_to_qa(
     stale_hours = project.stale_threshold_hours if project else 24
     due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
 
-    # Disqualified records (see task_service.disqualify_task) never get a
-    # QA task — there's nothing indexed to review.
+    # Skipped records (withdrawn/ineligible/legacy disqualified — see
+    # task_service.skip_task) never get a QA task — there's nothing indexed
+    # to review.
+    from app.models.record import SKIPPED_RECORD_STATUSES
     records_result = await db.execute(
         select(Record).where(
             Record.batch_id == batch_id,
-            Record.status != RecordStatus.disqualified,
+            Record.status.notin_(SKIPPED_RECORD_STATUSES),
         )
     )
     for record in records_result.scalars().all():

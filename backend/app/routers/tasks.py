@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -137,21 +139,23 @@ async def fail_task(
     )
 
 
-class DisqualifyTaskRequest(BaseModel):
-    reason: str
+class SkipTaskRequest(BaseModel):
+    status: Literal["withdrawn", "ineligible"]
 
 
-@router.post("/{task_id}/disqualify", response_model=TaskOut)
-async def disqualify_task(
+@router.post("/{task_id}/skip", response_model=TaskOut)
+async def skip_task(
     task_id: int,
-    body: DisqualifyTaskRequest,
+    body: SkipTaskRequest,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return await task_service.disqualify_task(
+    from app.models.record import RecordStatus
+
+    return await task_service.skip_task(
         db,
         task_id=task_id,
         user_id=current_user.id,
-        reason=body.reason,
+        status=RecordStatus(body.status),
         tenant_id=current_user._tenant_id,
     )
