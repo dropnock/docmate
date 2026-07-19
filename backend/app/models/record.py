@@ -20,17 +20,19 @@ class RecordStatus(str, enum.Enum):
     disqualified = "disqualified"  # legacy — superseded by withdrawn/ineligible below, kept for existing rows
     withdrawn = "withdrawn"
     ineligible = "ineligible"
+    excluded = "excluded"
 
 
 # A record in any of these statuses was skipped rather than indexed (see
 # task_service.skip_task) — terminal, never routed through QA/QC. Batch
-# progress checks (task_service._maybe_advance_to_qa/_maybe_complete_batch,
+# progress checks (batch_service.complete_indexing_batch/_maybe_complete_batch,
 # batch_service.auto_advance_to_qa) treat these the same as "indexed"/
 # "qa_passed" respectively so one skipped record never blocks a batch.
 SKIPPED_RECORD_STATUSES = frozenset({
     RecordStatus.disqualified,
     RecordStatus.withdrawn,
     RecordStatus.ineligible,
+    RecordStatus.excluded,
 })
 
 

@@ -29,6 +29,7 @@ const RECORD_STATUS_LABEL: Record<string, string> = {
   disqualified: "Disqualified",
   withdrawn: "Withdrawn",
   ineligible: "Ineligible",
+  excluded: "Excluded",
 };
 
 const RECORD_STATUS_FILLED = new Set(["indexed", "qa_passed", "qc_passed"]);

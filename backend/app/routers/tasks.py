@@ -93,17 +93,34 @@ async def my_tasks(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """Tasks assigned to the current user that are pending or in progress."""
-    from sqlalchemy import select
-    from app.models.task import Task, TaskStatus
+    """Tasks assigned to the current user that still need attention: any
+    pending/in-progress task (QA/QC unchanged — still disappears from here
+    the moment it's completed), plus — for indexing specifically — every
+    task whose batch is still in the indexing phase, completed or not. That
+    second clause is what keeps an already-indexed/skipped record visible
+    and reopenable in My Tasks until the indexer explicitly completes the
+    batch (batch_service.complete_indexing_batch); once the batch advances
+    past indexing, its tasks drop out of this list the normal way."""
+    from sqlalchemy import and_, or_, select
+    from app.models.batch import Batch, BatchStatus
+    from app.models.task import Task, TaskStatus, TaskType
 
     result = await db.execute(
-        select(Task).where(
+        select(Task, Batch.status)
+        .join(Batch, Task.batch_id == Batch.id)
+        .where(
             Task.assigned_to == current_user.id,
-            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            or_(
+                Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+                and_(Task.task_type == TaskType.indexing, Batch.status == BatchStatus.indexing),
+            ),
         )
     )
-    return list(result.scalars().all())
+    tasks = []
+    for task, batch_status in result.all():
+        task.batch_status = batch_status.value
+        tasks.append(task)
+    return tasks
 
 
 @router.get("/stale", response_model=list[TaskOut])
@@ -140,7 +157,7 @@ async def fail_task(
 
 
 class SkipTaskRequest(BaseModel):
-    status: Literal["withdrawn", "ineligible"]
+    status: Literal["withdrawn", "ineligible", "excluded"]
 
 
 @router.post("/{task_id}/skip", response_model=TaskOut)

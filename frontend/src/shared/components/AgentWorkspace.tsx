@@ -104,14 +104,15 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     },
   });
 
-  // Skip — a third option alongside Save Progress / Submit & Complete for a
-  // record that can't be indexed at all (blank page, unreadable scan, wrong
-  // document). Skips the schema form entirely — there's no data to submit —
-  // unlike Submit & Complete, which requires it to validate. The user picks
-  // which of the two terminal statuses applies; that choice becomes the
-  // record's new status directly, no separate confirmation step.
+  // Skip — a third option alongside Save Progress / Done for a record that
+  // can't be indexed at all (blank page, unreadable scan, wrong document).
+  // Skips the schema form entirely — there's no data to submit — unlike
+  // Done, which requires it to validate. The user picks which of the three
+  // terminal statuses applies; that choice becomes the record's new status
+  // directly, no separate confirmation step. Reopenable afterward like any
+  // other record in the batch, same as an indexed one.
   const skipMutation = useMutation({
-    mutationFn: (status: "withdrawn" | "ineligible") =>
+    mutationFn: (status: "withdrawn" | "ineligible" | "excluded") =>
       api.post(`/tasks/${task.id}/skip`, { status }),
     onSuccess: (_data, status) => {
       message.success(`Record marked ${status}`);
@@ -136,20 +137,27 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     : task.task_type === "qc" ? "Quality Control"
     : "Data Entry";
 
-  // Opening a pending task immediately starts it — no separate "Start" click
-  // inside the workspace. Guard with a ref so this fires exactly once even
-  // if the component re-renders before the mutation settles.
+  // Opening a task immediately (re-)starts it — no separate "Start" click
+  // inside the workspace. This also covers reopening an already-completed
+  // indexing task from My Tasks (record indexed/withdrawn/ineligible/
+  // excluded, batch not yet completed): start_task re-acquires the lock and
+  // flips the record back to "indexing" regardless of its prior status, so
+  // any non-"in_progress" task — not just "pending" — needs this. QA/QC
+  // tasks never reach here already-completed (they leave My Tasks for good
+  // on completion, unchanged), so this never mis-fires for them. Guard with
+  // a ref so this fires exactly once even if the component re-renders
+  // before the mutation settles.
   const autoStarted = useRef(false);
   useEffect(() => {
-    if (localStatus === "pending" && !autoStarted.current) {
+    if (localStatus !== "in_progress" && !autoStarted.current) {
       autoStarted.current = true;
       startMutation.mutate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [localStatus]);
 
-  // ─── Pending: starting automatically ────────────────────────────────────
-  if (localStatus === "pending") {
+  // ─── Not yet in progress: starting automatically ────────────────────────
+  if (localStatus !== "in_progress") {
     return (
       <div style={{ padding: 24 }}>
         <Typography.Title level={4}>Record #{task.record_id}</Typography.Title>
@@ -193,7 +201,15 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       {record?.current_version > 1 && (
         <Alert
           type="warning"
-          message={`Rework — version ${record.current_version}. Previous data is pre-filled.`}
+          message={
+            // Indexing sees this on its own reopened/corrected records too
+            // (My Tasks lets an indexer go back in before the batch is
+            // completed) — "Rework" implies a QA rejection, which isn't
+            // necessarily what happened here.
+            task.task_type === "indexing"
+              ? `Editing submitted data — version ${record.current_version}. Previous data is pre-filled.`
+              : `Rework — version ${record.current_version}. Previous data is pre-filled.`
+          }
           banner
         />
       )}
@@ -316,7 +332,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                         document.getElementById(`${formId}-submit`)?.click()
                       }
                     >
-                      Submit &amp; Complete
+                      {task.task_type === "indexing" ? "Done" : "Submit & Complete"}
                     </Button>
                   </Space.Compact>
                 </div>
@@ -338,8 +354,9 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       >
         <Typography.Paragraph type="secondary">
           Use this when the record can&apos;t be indexed at all — blank page, unreadable
-          scan, wrong document. Choose why; no data will be submitted and the record is
-          removed from your queue.
+          scan, wrong document. Choose why; no data will be submitted. It stays in your
+          batch list marked with the status you pick until you complete the batch, so you
+          can still change your mind.
         </Typography.Paragraph>
         <Space style={{ width: "100%" }} size="middle">
           <Button
@@ -350,6 +367,15 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
             onClick={() => skipMutation.mutate("withdrawn")}
           >
             Withdrawn
+          </Button>
+          <Button
+            block
+            danger
+            loading={skipMutation.isPending && skipMutation.variables === "excluded"}
+            disabled={skipMutation.isPending}
+            onClick={() => skipMutation.mutate("excluded")}
+          >
+            Excluded
           </Button>
           <Button
             block

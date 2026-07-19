@@ -174,13 +174,57 @@ async def reject_record_by_customer(
     )
 
 
+async def complete_indexing_batch(
+    db: AsyncSession,
+    *,
+    batch_id: int,
+    user_id: int,
+    tenant_id: int,
+) -> Batch:
+    """Explicit indexer action (the "Complete Batch" button in My Tasks) that
+    replaces the old implicit auto-advance-on-last-record behavior. Indexing
+    no longer auto-completes the moment every record is indexed/skipped —
+    records stay visible and reopenable in My Tasks for correction until the
+    indexer confirms the batch here. Blocks with a 400 (rather than silently
+    ignoring or completing partially) if anything is still pending/indexing,
+    so the indexer gets a clear reason instead of a button that just does
+    nothing."""
+    from app.models.record import SKIPPED_RECORD_STATUSES
+
+    batch = await db.get(Batch, batch_id)
+    if not batch or batch.status != BatchStatus.indexing:
+        raise HTTPException(status_code=400, detail="Batch is not in the indexing phase")
+
+    incomplete_result = await db.execute(
+        select(Record).where(
+            Record.batch_id == batch_id,
+            Record.status.notin_([RecordStatus.indexed, *SKIPPED_RECORD_STATUSES]),
+        )
+    )
+    incomplete_count = len(list(incomplete_result.scalars().all()))
+    if incomplete_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{incomplete_count} record(s) still need to be indexed, withdrawn, "
+                   f"ineligible, or excluded before the batch can be completed",
+        )
+
+    return await auto_advance_to_qa(
+        db, batch_id=batch_id, tenant_id=tenant_id, performed_by=user_id,
+    )
+
+
 async def auto_advance_to_qa(
     db: AsyncSession,
     *,
     batch_id: int,
     tenant_id: int,
+    performed_by: int | None = None,
 ) -> Batch:
-    """Called automatically when all records in a batch are indexed. Creates QA tasks."""
+    """Moves an indexing batch to qa_review and creates QA tasks. Called from
+    complete_indexing_batch below once the indexer has confirmed every
+    record is indexed/withdrawn/ineligible/excluded — performed_by is theirs.
+    performed_by is None only for callers with no attributable user."""
     from app.models.project import Project
 
     batch = await db.get(Batch, batch_id)
@@ -190,7 +234,7 @@ async def auto_advance_to_qa(
     batch.status = BatchStatus.qa_review
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.batch, entity_id=batch_id,
-        action=AuditAction.status_changed, performed_by=None,
+        action=AuditAction.status_changed, performed_by=performed_by,
         old_value={"status": "indexing"}, new_value={"status": "qa_review"},
     )
 

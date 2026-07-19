@@ -9,6 +9,7 @@ from app.models.base import Base
 
 class VersionReason(str, enum.Enum):
     initial_indexing = "initial_indexing"
+    correction = "correction"  # indexer re-editing their own submission before the batch is completed
     rework_after_qa = "rework_after_qa"
     rework_after_customer_rejection = "rework_after_customer_rejection"
 

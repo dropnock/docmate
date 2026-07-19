@@ -16,7 +16,7 @@ from app.models.user import User
 from app.schemas.batch import (
     BatchOut, DocumentTypeCreate, DocumentTypeOut, RecordOut,
 )
-from app.services import image_service, s3_service
+from app.services import batch_service, image_service, s3_service
 
 router = APIRouter(prefix="/api", tags=["batches"])
 
@@ -126,6 +126,25 @@ async def list_records(
     check_project_access(project, current_user)
     result = await db.execute(select(Record).where(Record.batch_id == batch_id))
     return list(result.scalars().all())
+
+
+@router.post("/batches/{batch_id}/complete-indexing", response_model=BatchOut)
+async def complete_indexing_batch(
+    batch_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """The indexer's explicit "Complete Batch" action from My Tasks — see
+    batch_service.complete_indexing_batch for the completeness check and why
+    this is no longer automatic."""
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    project = await db.get(Project, batch.project_id)
+    check_project_access(project, current_user)
+    return await batch_service.complete_indexing_batch(
+        db, batch_id=batch_id, user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
 
 
 @router.get("/document-types/{doc_type_id}", response_model=DocumentTypeOut)

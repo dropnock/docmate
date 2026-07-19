@@ -115,15 +115,23 @@ async def complete_task(
         raise HTTPException(status_code=403, detail="Not your task")
 
     record = await db.get(Record, task.record_id)
+    status_before_completion = record.status
 
     # Persist indexed data and version it for indexing and QA submissions
     if indexed_data is not None and task.task_type in (TaskType.indexing, TaskType.qa):
         record.indexed_data = indexed_data
-        reason = (
-            VersionReason.initial_indexing
-            if record.current_version == 1
-            else VersionReason.rework_after_qa
-        )
+        # qa_failed → this is the reworked resubmission a QA rejection sent
+        # back (fail_task creates the follow-up indexing task). Still on
+        # v1 → the original indexing pass. Anything else reaching here is
+        # the indexer reopening their own already-submitted record — from
+        # My Tasks, before the batch is completed — to fix a mistake,
+        # which isn't "rework" in the QA-rejection sense.
+        if status_before_completion == RecordStatus.qa_failed:
+            reason = VersionReason.rework_after_qa
+        elif record.current_version == 1:
+            reason = VersionReason.initial_indexing
+        else:
+            reason = VersionReason.correction
         await create_version(db, record=record, reason=reason, user_id=user_id, tenant_id=tenant_id)
         await audit_service.write_event(
             db,
@@ -163,11 +171,13 @@ async def complete_task(
         new_value={"status": "completed"},
     )
 
-    # Auto-advance batch when all records reach terminal indexing/QA state
+    # Indexing no longer auto-advances the batch to QA the moment the last
+    # record is indexed/skipped — the indexer stays in the batch (My Tasks
+    # keeps every record visible and reopenable for correction) until they
+    # explicitly press Complete Batch (see batch_service.complete_indexing_batch).
+    # QA and QC are unchanged: still auto-advance on their own last task.
     await db.flush()
-    if task.task_type == TaskType.indexing:
-        await _maybe_advance_to_qa(db, batch_id=task.batch_id, tenant_id=tenant_id)
-    elif task.task_type == TaskType.qa:
+    if task.task_type == TaskType.qa:
         await _maybe_complete_batch(db, batch_id=task.batch_id, tenant_id=tenant_id)
     elif task.task_type == TaskType.qc:
         await _maybe_finalise_lot(db, record=record, tenant_id=tenant_id)
@@ -175,28 +185,11 @@ async def complete_task(
     return task
 
 
-async def _maybe_advance_to_qa(db: AsyncSession, *, batch_id: int, tenant_id: int) -> None:
-    from app.models.record import SKIPPED_RECORD_STATUSES
-    # Skipped records (withdrawn/ineligible/legacy disqualified) are a
-    # terminal state that never gets QA'd (see skip_task) — they must count
-    # as "done" here too, or a single skipped record would block the batch
-    # from ever advancing.
-    non_indexed = (await db.execute(
-        select(Record).where(
-            Record.batch_id == batch_id,
-            Record.status.notin_([RecordStatus.indexed, *SKIPPED_RECORD_STATUSES]),
-        )
-    )).scalars().all()
-    if not non_indexed:
-        from app.services.batch_service import auto_advance_to_qa
-        await auto_advance_to_qa(db, batch_id=batch_id, tenant_id=tenant_id)
-
-
 async def _maybe_complete_batch(db: AsyncSession, *, batch_id: int, tenant_id: int) -> None:
     from app.models.record import SKIPPED_RECORD_STATUSES
     # auto_advance_to_qa (batch_service.py) skips these records when
     # creating QA tasks, so they never reach qa_passed — treat them as
-    # terminal here too, same reasoning as _maybe_advance_to_qa above.
+    # terminal here too.
     non_passed = (await db.execute(
         select(Record).where(
             Record.batch_id == batch_id,
@@ -401,7 +394,7 @@ async def fail_task(
     return task
 
 
-SKIPPABLE_STATUSES = (RecordStatus.withdrawn, RecordStatus.ineligible)
+SKIPPABLE_STATUSES = (RecordStatus.withdrawn, RecordStatus.ineligible, RecordStatus.excluded)
 
 
 async def skip_task(
@@ -412,13 +405,17 @@ async def skip_task(
     status: RecordStatus,
     tenant_id: int,
 ) -> Task:
-    """An indexer's third option alongside Save Progress / Submit & Complete
-    for a record that can't be indexed at all (blank page, wrong document,
-    unreadable scan, etc). Skips the schema form entirely — there's no data
-    to submit — and marks the record withdrawn or ineligible (the indexer's
+    """An indexer's third option alongside Save Progress / Done for a record
+    that can't be indexed at all (blank page, wrong document, unreadable
+    scan, etc). Skips the schema form entirely — there's no data to submit —
+    and marks the record withdrawn, ineligible, or excluded (the indexer's
     choice) rather than indexed, a terminal state that
-    _maybe_advance_to_qa/_maybe_complete_batch and auto_advance_to_qa
-    (batch_service.py) all treat as "done" without routing it through QA/QC."""
+    _maybe_complete_batch and batch_service's auto_advance_to_qa /
+    complete_indexing_batch all treat as "done" without routing it through
+    QA/QC. Calling this again on an already-skipped or already-indexed
+    record (reopened from My Tasks before the batch is completed) just
+    re-sets the terminal status — no version is created either way, since
+    skip never touches indexed_data."""
     if status not in SKIPPABLE_STATUSES:
         raise HTTPException(
             status_code=400,
@@ -453,6 +450,4 @@ async def skip_task(
         old_value={"status": "in_progress"}, new_value={"status": "completed", "reason": status.value},
     )
 
-    await db.flush()
-    await _maybe_advance_to_qa(db, batch_id=task.batch_id, tenant_id=tenant_id)
     return task

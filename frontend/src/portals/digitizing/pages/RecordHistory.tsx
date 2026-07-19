@@ -22,6 +22,7 @@ const RECORD_STATUS_COLOR: Record<string, string> = {
   disqualified: "Disqualified",
   withdrawn: "Withdrawn",
   ineligible: "Ineligible",
+  excluded: "Excluded",
 };
 
 function recordLabel(record: DocRecord) {

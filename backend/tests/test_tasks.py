@@ -210,9 +210,12 @@ class TestSkipTask:
             )
         assert exc_info.value.status_code == 400
 
-    async def test_batch_advances_to_qa_with_mix_of_indexed_and_skipped(self, db: AsyncSession, seed):
-        """A skipped record must not block the batch from advancing, and
-        must not get a QA task created for it (nothing was indexed)."""
+    async def test_completing_last_record_does_not_auto_advance_batch(self, db: AsyncSession, seed):
+        """Indexing/skipping every record in the batch no longer auto-advances
+        it to qa_review — the indexer must press Complete Batch (see
+        TestCompleteIndexingBatch below). The record stays visible in their
+        list (task.status == completed, but nothing hides it) rather than
+        disappearing, and no QA tasks get created until then."""
         from app.models import Batch, BatchStatus, Record, RecordStatus, Task as TaskModel
 
         task1 = await task_service.assign_task(
@@ -230,7 +233,7 @@ class TestSkipTask:
         await task_service.start_task(
             db, task_id=task1.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
         )
-        await task_service.complete_task(
+        completed1 = await task_service.complete_task(
             db, task_id=task1.id, user_id=seed["indexer"].id,
             tenant_id=seed["tenant"].id, indexed_data={"title": "Indexed"},
         )
@@ -244,10 +247,143 @@ class TestSkipTask:
         )
 
         batch = await db.get(Batch, seed["batch"].id)
-        assert batch.status == BatchStatus.qa_review
+        assert batch.status == BatchStatus.indexing
 
         record2 = await db.get(Record, seed["record2"].id)
         assert record2.status == RecordStatus.ineligible
+        # Both tasks are "completed" — that's what makes the record
+        # reopenable rather than hidden — but the batch hasn't moved on.
+        assert completed1.status == TaskStatus.completed
+
+        qa_tasks = (await db.execute(
+            select(TaskModel).where(
+                TaskModel.batch_id == seed["batch"].id,
+                TaskModel.task_type == TaskType.qa,
+            )
+        )).scalars().all()
+        assert qa_tasks == []
+
+    async def test_reopening_completed_indexing_task_creates_correction_version(
+        self, db: AsyncSession, seed
+    ):
+        """Reopening (start_task again) and resubmitting an already-indexed
+        record — before the batch is completed — versions the change as a
+        "correction", not "rework_after_qa" (that's reserved for the actual
+        post-QA-rejection resubmission)."""
+        from app.models import Record, RecordVersion
+        from app.models.record_version import VersionReason
+
+        task = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=task.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+        await task_service.complete_task(
+            db, task_id=task.id, user_id=seed["indexer"].id,
+            tenant_id=seed["tenant"].id, indexed_data={"title": "First pass"},
+        )
+
+        # Reopen the same (already-completed) task and resubmit a correction.
+        reopened = await task_service.start_task(
+            db, task_id=task.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+        assert reopened.status == TaskStatus.in_progress
+        record = await db.get(Record, seed["record"].id)
+        assert record.locked_by == seed["indexer"].id
+
+        await task_service.complete_task(
+            db, task_id=task.id, user_id=seed["indexer"].id,
+            tenant_id=seed["tenant"].id, indexed_data={"title": "Fixed typo"},
+        )
+
+        record = await db.get(Record, seed["record"].id)
+        assert record.indexed_data == {"title": "Fixed typo"}
+        assert record.current_version == 3  # two submissions: 1 -> 2 -> 3
+
+        versions = (await db.execute(
+            select(RecordVersion)
+            .where(RecordVersion.record_id == record.id)
+            .order_by(RecordVersion.version_number)
+        )).scalars().all()
+        assert versions[-1].reason == VersionReason.correction
+
+
+class TestCompleteIndexingBatch:
+    async def test_blocked_while_records_incomplete(self, db: AsyncSession, seed):
+        from fastapi import HTTPException
+        from app.services import batch_service
+
+        task1 = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await task_service.assign_task(
+            db, record_id=seed["record2"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=task1.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+        await task_service.complete_task(
+            db, task_id=task1.id, user_id=seed["indexer"].id,
+            tenant_id=seed["tenant"].id, indexed_data={"title": "Indexed"},
+        )
+        # record2 still pending — nothing done with it yet.
+
+        with pytest.raises(HTTPException) as exc_info:
+            await batch_service.complete_indexing_batch(
+                db, batch_id=seed["batch"].id, user_id=seed["indexer"].id,
+                tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 400
+        assert "1 record" in exc_info.value.detail
+
+        from app.models import Batch, BatchStatus
+        batch = await db.get(Batch, seed["batch"].id)
+        assert batch.status == BatchStatus.indexing
+
+    async def test_succeeds_once_all_records_terminal(self, db: AsyncSession, seed):
+        from app.models import Batch, BatchStatus, RecordStatus, Task as TaskModel
+        from app.services import batch_service
+
+        task1 = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        task2 = await task_service.assign_task(
+            db, record_id=seed["record2"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=task1.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+        await task_service.complete_task(
+            db, task_id=task1.id, user_id=seed["indexer"].id,
+            tenant_id=seed["tenant"].id, indexed_data={"title": "Indexed"},
+        )
+        await task_service.start_task(
+            db, task_id=task2.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+        await task_service.skip_task(
+            db, task_id=task2.id, user_id=seed["indexer"].id,
+            status=RecordStatus.excluded, tenant_id=seed["tenant"].id,
+        )
+
+        batch = await batch_service.complete_indexing_batch(
+            db, batch_id=seed["batch"].id, user_id=seed["indexer"].id,
+            tenant_id=seed["tenant"].id,
+        )
+        assert batch.status == BatchStatus.qa_review
 
         qa_tasks = (await db.execute(
             select(TaskModel).where(
@@ -257,6 +393,31 @@ class TestSkipTask:
         )).scalars().all()
         assert len(qa_tasks) == 1
         assert qa_tasks[0].record_id == seed["record"].id
+
+
+class TestSkipTaskExcluded:
+    async def test_skip_as_excluded_sets_record_status(self, db: AsyncSession, seed):
+        from app.models import Record, RecordStatus
+
+        task = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=task.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+
+        skipped = await task_service.skip_task(
+            db, task_id=task.id, user_id=seed["indexer"].id,
+            status=RecordStatus.excluded, tenant_id=seed["tenant"].id,
+        )
+        assert skipped.status == TaskStatus.completed
+
+        record = await db.get(Record, seed["record"].id)
+        assert record.status == RecordStatus.excluded
+        assert record.locked_by is None
 
 
 class TestBulkReassign:

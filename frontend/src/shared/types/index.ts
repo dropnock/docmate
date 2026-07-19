@@ -109,6 +109,8 @@ export interface Task {
   started_at: string | null;
   completed_at: string | null;
   processing_time_seconds: number | null;
+  // Only populated by GET /tasks/mine — see that endpoint. Null everywhere else.
+  batch_status: string | null;
 }
 
 export interface TaskTypeMetrics {

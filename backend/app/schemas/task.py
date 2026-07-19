@@ -26,6 +26,11 @@ class TaskOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     processing_time_seconds: int | None
+    # Only populated by GET /tasks/mine (see that endpoint) — lets the
+    # frontend tell an open indexing batch's tasks apart from everything
+    # else without a second request. Absent (null) elsewhere, same pattern
+    # as BatchOut.indexer_name.
+    batch_status: str | None = None
 
 
 class StartTaskRequest(BaseModel):
