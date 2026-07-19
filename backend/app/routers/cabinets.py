@@ -105,7 +105,9 @@ async def upload_image(
         raise HTTPException(status_code=400, detail="Project has no S3 bucket")
     key = f"cabinets/{cabinet_id}/{file.filename}"
     data = await file.read()
-    await s3_service.upload_object(project.s3_bucket_name, key, data, file.content_type)
+    await s3_service.put_object_bytes(
+        project.s3_bucket_name, key, data, file.content_type or "application/octet-stream"
+    )
     record = await cabinet_service.ingest_image_create_or_link(
         db,
         cabinet_id=cabinet_id,
