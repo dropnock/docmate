@@ -189,15 +189,15 @@ _RECOGNIZED_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png", "imag
 
 
 async def _resolve_content_type(bucket: str, key: str) -> str:
-    """The stored Content-Type comes from whatever the uploading client sent
-    on the presigned PUT (see CabinetManager.tsx's `fetch(upload_url, {
-    method: "PUT", body: file })` — no Content-Type header is set explicitly,
-    so it falls back to `file.type`, which browsers commonly leave empty for
-    TIFF). S3 and MinIO then apply their own default when no header is sent,
-    and that default differs by backend (MinIO: "application/octet-stream",
-    AWS S3: "binary/octet-stream") — so matching only the MinIO-observed
-    string here worked in dev but silently served the wrong Content-Type
-    against real S3, leaving the browser unable to decode the image."""
+    """The stored Content-Type comes from whatever the browser reported as
+    `file.type` on the uploaded File object (see cabinets.upload_image,
+    forwarded as UploadFile.content_type) — browsers commonly leave this
+    empty for TIFF. S3 and MinIO then apply their own default when no
+    Content-Type is set, and that default differs by backend (MinIO:
+    "application/octet-stream", AWS S3: "binary/octet-stream") — so matching
+    only the MinIO-observed string here worked in dev but silently served
+    the wrong Content-Type against real S3, leaving the browser unable to
+    decode the image."""
     content_type = await s3_service.get_object_content_type(bucket, key)
     if content_type not in _RECOGNIZED_CONTENT_TYPES:
         content_type = await s3_service.sniff_content_type(bucket, key)

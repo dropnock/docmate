@@ -117,6 +117,14 @@ async def sniff_content_type(bucket: str, key: str) -> str:
     return "application/octet-stream"
 
 
+async def upload_object(bucket: str, key: str, data: bytes, content_type: str | None = None) -> None:
+    async with _session.client("s3", **_client_kwargs()) as client:
+        kwargs: dict = {"Bucket": bucket, "Key": key, "Body": data}
+        if content_type:
+            kwargs["ContentType"] = content_type
+        await client.put_object(**kwargs)
+
+
 async def get_object_bytes(bucket: str, key: str) -> bytes:
     async with _session.client("s3", **_client_kwargs()) as client:
         resp = await client.get_object(Bucket=bucket, Key=key)
@@ -136,15 +144,6 @@ async def stream_object(bucket: str, key: str):
         resp = await client.get_object(Bucket=bucket, Key=key)
         async for chunk in resp["Body"].iter_chunks():
             yield chunk
-
-
-async def get_presigned_upload_url(bucket: str, key: str, expires: int = 3600) -> str:
-    async with _session.client("s3", **_presigned_client_kwargs()) as client:
-        return await client.generate_presigned_url(
-            "put_object",
-            Params={"Bucket": bucket, "Key": key},
-            ExpiresIn=expires,
-        )
 
 
 async def get_presigned_view_url(

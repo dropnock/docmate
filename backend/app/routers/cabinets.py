@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -86,37 +86,31 @@ async def ingest_json(
     return {"created": len(records)}
 
 
-@router.post("/{cabinet_id}/upload-url")
-async def get_upload_url(
+@router.post("/{cabinet_id}/upload")
+async def upload_image(
     cabinet_id: int,
-    filename: str,
+    file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("admin")),
 ):
+    """Receives the file on the backend's own origin and writes it to S3/MinIO
+    server-side, rather than handing the browser a presigned URL to PUT
+    directly to a separate MinIO origin — see s3_service.stream_object for
+    why a second, self-signed-cert origin is a problem for browser requests."""
     cabinet = await cabinet_service.get_cabinet(
         db, cabinet_id=cabinet_id, tenant_id=current_user._tenant_id
     )
     project = await db.get(Project, cabinet.project_id)
     if not project or not project.s3_bucket_name:
         raise HTTPException(status_code=400, detail="Project has no S3 bucket")
-    key = f"cabinets/{cabinet_id}/{filename}"
-    url = await s3_service.get_presigned_upload_url(project.s3_bucket_name, key)
-    return {"upload_url": url, "key": key}
-
-
-@router.patch("/{cabinet_id}/confirm-upload")
-async def confirm_upload(
-    cabinet_id: int,
-    original_filename: str,
-    s3_key: str,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_roles("admin")),
-):
+    key = f"cabinets/{cabinet_id}/{file.filename}"
+    data = await file.read()
+    await s3_service.upload_object(project.s3_bucket_name, key, data, file.content_type)
     record = await cabinet_service.ingest_image_create_or_link(
         db,
         cabinet_id=cabinet_id,
-        original_filename=original_filename,
-        s3_key=s3_key,
+        original_filename=file.filename,
+        s3_key=key,
         tenant_id=current_user._tenant_id,
         user_id=current_user.id,
     )

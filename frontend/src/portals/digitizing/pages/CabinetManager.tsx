@@ -86,16 +86,9 @@ export default function CabinetManager({ projectId }: Props) {
 
   const uploadImageMutation = useMutation({
     mutationFn: async ({ file }: { file: File }) => {
-      const urlRes = await api.post(
-        `/cabinets/${cabinet!.id}/upload-url?filename=${encodeURIComponent(file.name)}`
-      );
-      const { upload_url, key } = urlRes.data;
-      await fetch(upload_url, { method: "PUT", body: file });
-      await api.patch(
-        `/cabinets/${cabinet!.id}/confirm-upload`,
-        null,
-        { params: { original_filename: file.name, s3_key: key } }
-      );
+      const formData = new FormData();
+      formData.append("file", file);
+      await api.post(`/cabinets/${cabinet!.id}/upload`, formData);
     },
   });
 
@@ -316,17 +309,26 @@ export default function CabinetManager({ projectId }: Props) {
                         return true;
                       }}
                       customRequest={({ file, onSuccess, onError }) => {
-                        uploadImageMutation.mutate(
-                          { file: file as File },
-                          {
-                            onSuccess: () => {
-                              onSuccess?.("ok");
-                              setUploadStats((prev) => prev && { ...prev, done: prev.done + 1 });
-                            },
-                            onError: (e) => {
-                              onError?.(e as Error);
-                              setUploadStats((prev) => prev && { ...prev, failed: prev.failed + 1 });
-                            },
+                        // mutateAsync, not mutate — CabinetManager fires one
+                        // customRequest per file in rapid succession for a
+                        // multi-file drop, and uploadImageMutation is a single
+                        // shared useMutation() instance. mutate()'s per-call
+                        // {onSuccess, onError} are dispatched through the
+                        // mutation's shared observer, which each subsequent
+                        // mutate() call re-targets at its own mutation —
+                        // silently dropping the callback for every upload
+                        // that was still in flight when the next one started.
+                        // mutateAsync's returned promise is tied to that
+                        // call's own mutation execution, so it resolves
+                        // correctly regardless of later concurrent calls.
+                        uploadImageMutation.mutateAsync({ file: file as File }).then(
+                          () => {
+                            onSuccess?.("ok");
+                            setUploadStats((prev) => prev && { ...prev, done: prev.done + 1 });
+                          },
+                          (e) => {
+                            onError?.(e as Error);
+                            setUploadStats((prev) => prev && { ...prev, failed: prev.failed + 1 });
                           }
                         );
                       }}
