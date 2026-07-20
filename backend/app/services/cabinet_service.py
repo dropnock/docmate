@@ -90,6 +90,13 @@ async def get_cabinet_records(
     q = select(Record).where(Record.cabinet_id == cabinet.id)
     if status_filter:
         q = q.where(Record.status == status_filter)
+        # A record keeps status "pending" until its indexer actually starts
+        # the task (see task_service.start_task) — so a "pending" filter
+        # alone still matches records already parented to another batch
+        # awaiting pickup. Exclude those too, or the batch-assignment picker
+        # offers records that are already spoken for.
+        if status_filter == RecordStatus.pending.value:
+            q = q.where(Record.batch_id.is_(None))
     result = await db.execute(q.order_by(Record.id))
     return list(result.scalars().all())
 
@@ -250,6 +257,28 @@ async def create_indexing_batch(
         db, user_id=agent_id, project_id=project_id, task_type=TaskType.indexing,
     )
 
+    # Only records that are pending and not already parented to a batch are
+    # eligible — otherwise a record already in-flight in another batch would
+    # get silently re-parented and double-assigned.
+    result = await db.execute(
+        select(Record).where(
+            Record.id.in_(record_ids),
+            Record.cabinet_id == cabinet.id,
+            Record.status == RecordStatus.pending,
+            Record.batch_id.is_(None),
+        )
+    )
+    eligible_records = {r.id: r for r in result.scalars().all()}
+    ineligible_ids = [rid for rid in record_ids if rid not in eligible_records]
+    if ineligible_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Records must be pending and not already in a batch: "
+                f"ineligible record ids {ineligible_ids}"
+            ),
+        )
+
     batch = Batch(
         project_id=project_id,
         cabinet_id=cabinet.id,
@@ -266,10 +295,7 @@ async def create_indexing_batch(
     batch.name = f"Batch {batch.id} — {datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
 
     for record_id in record_ids:
-        record = await db.get(Record, record_id)
-        if not record or record.cabinet_id != cabinet.id:
-            continue
-        # Re-parent record to this batch
+        record = eligible_records[record_id]
         record.batch_id = batch.id
         task = Task(
             record_id=record_id,

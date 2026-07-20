@@ -156,6 +156,70 @@ class TestShiftRoleEnforcement:
             )
         assert exc_info.value.status_code == 400
 
+    async def test_create_indexing_batch_rejects_already_batched_record(self, db: AsyncSession, seed):
+        from app.models.cabinet import Cabinet
+        from app.models.record import Record, RecordStatus
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Test Cabinet")
+        db.add(cabinet)
+        await db.flush()
+        # Already parented to seed["batch"], still "pending" (record.status
+        # only advances once the indexer starts the task) — must not be
+        # eligible for a second batch.
+        already_batched = Record(
+            cabinet_id=cabinet.id, batch_id=seed["batch"].id,
+            status=RecordStatus.pending, current_version=1,
+        )
+        db.add(already_batched)
+        await db.flush()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await cabinet_service.create_indexing_batch(
+                db, cabinet_id=cabinet.id, project_id=seed["project"].id,
+                document_type_id=seed["doc_type"].id, record_ids=[already_batched.id],
+                agent_id=seed["indexer"].id,
+                supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 400
+        assert already_batched.batch_id == seed["batch"].id  # unchanged
+
+    async def test_create_indexing_batch_rejects_non_pending_record(self, db: AsyncSession, seed):
+        from app.models.cabinet import Cabinet
+        from app.models.record import Record, RecordStatus
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Test Cabinet")
+        db.add(cabinet)
+        await db.flush()
+        indexed_record = Record(cabinet_id=cabinet.id, status=RecordStatus.indexed, current_version=1)
+        db.add(indexed_record)
+        await db.flush()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await cabinet_service.create_indexing_batch(
+                db, cabinet_id=cabinet.id, project_id=seed["project"].id,
+                document_type_id=seed["doc_type"].id, record_ids=[indexed_record.id],
+                agent_id=seed["indexer"].id,
+                supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 400
+
+    async def test_create_indexing_batch_accepts_pending_unbatched_record(self, db: AsyncSession, seed):
+        from app.models.cabinet import Cabinet
+        from app.models.record import Record, RecordStatus
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Test Cabinet")
+        db.add(cabinet)
+        await db.flush()
+        eligible = Record(cabinet_id=cabinet.id, status=RecordStatus.pending, current_version=1)
+        db.add(eligible)
+        await db.flush()
+
+        new_batch = await cabinet_service.create_indexing_batch(
+            db, cabinet_id=cabinet.id, project_id=seed["project"].id,
+            document_type_id=seed["doc_type"].id, record_ids=[eligible.id],
+            agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        assert eligible.batch_id == new_batch.id
+
     async def test_assign_qa_agent_rejects_non_qa(self, db: AsyncSession, seed):
         from app.models import BatchStatus
         seed["batch"].status = BatchStatus.qa_review
