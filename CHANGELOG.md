@@ -7,6 +7,36 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-20
+
+### Added
+- Indexing workspace: an explicit "Complete Batch" action — indexed records stay
+  visible and reopenable in My Tasks until the indexer completes the batch
+  themselves, replacing the old implicit auto-advance to QA the moment every
+  record was indexed/skipped. My Tasks now groups open-batch work into batch
+  cards with a per-record detail view instead of a flat list.
+
+### Changed
+- TIFF scans are now converted to PDF once, at upload time, instead of being
+  re-decoded and re-encoded to PNG at full resolution on every single view —
+  the root cause of reported image-loading slowness.
+- Cabinet image uploads now stream through the backend instead of going
+  browser-direct to MinIO via a presigned URL.
+
+### Fixed
+- Cabinet image uploads no longer fail outright in environments where the
+  presigned URL's host isn't browser-resolvable; multi-file drag-upload no
+  longer hangs on "Uploading X of Y…" forever.
+- Customer supervisors assigning QC work no longer see QC agents belonging to
+  other customer organizations in the same tenant (also closed a 404-leak
+  letting an unrelated org query any project's QC agent list).
+- The customer QC screen now renders array/object indexed-data fields (e.g.
+  parcel volume/folio pairs) correctly instead of showing "[object Object]" —
+  it reuses the same schema-driven form the DE QA screen uses, in a new
+  read-only mode.
+- My Tasks list views (batch cards, flat list, batch detail) now have proper
+  top/right padding instead of running text edge-to-edge under the header.
+
 ## [0.2.0] - 2026-07-17
 
 ### Added
