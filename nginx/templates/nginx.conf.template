@@ -47,6 +47,12 @@ http {
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
 
+        # Cabinet image uploads (POST /api/cabinets/{id}/upload) proxy the
+        # file through the backend rather than going browser-direct to MinIO
+        # — nginx's 1m default would reject any real scan well under typical
+        # sizes. Same reasoning as the S3_HOSTNAME block below.
+        client_max_body_size 0;
+
         location /api/ {
             set $backend_upstream http://backend:8000;
             proxy_pass $backend_upstream;
@@ -65,6 +71,9 @@ http {
         proxy_set_header X-Portal "digitizing";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+
+        # See the localhost server block above for why this is unbounded.
+        client_max_body_size 0;
 
         location /api/ {
             set $backend_upstream http://backend:8000;
