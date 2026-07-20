@@ -419,6 +419,52 @@ class TestSkipTaskExcluded:
         assert record.status == RecordStatus.excluded
         assert record.locked_by is None
 
+    async def test_skip_as_lapsed_sets_record_status(self, db: AsyncSession, seed):
+        from app.models import Record, RecordStatus
+
+        task = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=task.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+
+        skipped = await task_service.skip_task(
+            db, task_id=task.id, user_id=seed["indexer"].id,
+            status=RecordStatus.lapsed, tenant_id=seed["tenant"].id,
+        )
+        assert skipped.status == TaskStatus.completed
+
+        record = await db.get(Record, seed["record"].id)
+        assert record.status == RecordStatus.lapsed
+        assert record.locked_by is None
+
+    async def test_skip_as_illegible_sets_record_status(self, db: AsyncSession, seed):
+        from app.models import Record, RecordStatus
+
+        task = await task_service.assign_task(
+            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
+            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        await task_service.start_task(
+            db, task_id=task.id, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
+        )
+
+        skipped = await task_service.skip_task(
+            db, task_id=task.id, user_id=seed["indexer"].id,
+            status=RecordStatus.illegible, tenant_id=seed["tenant"].id,
+        )
+        assert skipped.status == TaskStatus.completed
+
+        record = await db.get(Record, seed["record"].id)
+        assert record.status == RecordStatus.illegible
+        assert record.locked_by is None
+
 
 class TestBulkReassign:
     async def test_bulk_reassign_two_tasks(self, db: AsyncSession, seed):

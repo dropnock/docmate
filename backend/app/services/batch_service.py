@@ -206,7 +206,7 @@ async def complete_indexing_batch(
         raise HTTPException(
             status_code=400,
             detail=f"{incomplete_count} record(s) still need to be indexed, withdrawn, "
-                   f"ineligible, or excluded before the batch can be completed",
+                   f"ineligible, excluded, lapsed, or illegible before the batch can be completed",
         )
 
     return await auto_advance_to_qa(
@@ -223,7 +223,8 @@ async def auto_advance_to_qa(
 ) -> Batch:
     """Moves an indexing batch to qa_review and creates QA tasks. Called from
     complete_indexing_batch below once the indexer has confirmed every
-    record is indexed/withdrawn/ineligible/excluded — performed_by is theirs.
+    record is indexed/withdrawn/ineligible/excluded/lapsed/illegible —
+    performed_by is theirs.
     performed_by is None only for callers with no attributable user."""
     from app.models.project import Project
 

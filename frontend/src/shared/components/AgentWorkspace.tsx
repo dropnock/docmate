@@ -107,12 +107,12 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   // Skip — a third option alongside Save Progress / Done for a record that
   // can't be indexed at all (blank page, unreadable scan, wrong document).
   // Skips the schema form entirely — there's no data to submit — unlike
-  // Done, which requires it to validate. The user picks which of the three
+  // Done, which requires it to validate. The user picks which of the five
   // terminal statuses applies; that choice becomes the record's new status
   // directly, no separate confirmation step. Reopenable afterward like any
   // other record in the batch, same as an indexed one.
   const skipMutation = useMutation({
-    mutationFn: (status: "withdrawn" | "ineligible" | "excluded") =>
+    mutationFn: (status: "withdrawn" | "ineligible" | "excluded" | "lapsed" | "illegible") =>
       api.post(`/tasks/${task.id}/skip`, { status }),
     onSuccess: (_data, status) => {
       message.success(`Record marked ${status}`);
@@ -140,9 +140,10 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
   // Opening a task immediately (re-)starts it — no separate "Start" click
   // inside the workspace. This also covers reopening an already-completed
   // indexing task from My Tasks (record indexed/withdrawn/ineligible/
-  // excluded, batch not yet completed): start_task re-acquires the lock and
-  // flips the record back to "indexing" regardless of its prior status, so
-  // any non-"in_progress" task — not just "pending" — needs this. QA/QC
+  // excluded/lapsed/illegible, batch not yet completed): start_task
+  // re-acquires the lock and flips the record back to "indexing" regardless
+  // of its prior status, so any non-"in_progress" task — not just "pending"
+  // — needs this. QA/QC
   // tasks never reach here already-completed (they leave My Tasks for good
   // on completion, unchanged), so this never mis-fires for them. Guard with
   // a ref so this fires exactly once even if the component re-renders
@@ -358,7 +359,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
           batch list marked with the status you pick until you complete the batch, so you
           can still change your mind.
         </Typography.Paragraph>
-        <Space style={{ width: "100%" }} size="middle">
+        <Space style={{ width: "100%" }} size="middle" wrap>
           <Button
             block
             danger
@@ -385,6 +386,24 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
             onClick={() => skipMutation.mutate("ineligible")}
           >
             Ineligible
+          </Button>
+          <Button
+            block
+            danger
+            loading={skipMutation.isPending && skipMutation.variables === "lapsed"}
+            disabled={skipMutation.isPending}
+            onClick={() => skipMutation.mutate("lapsed")}
+          >
+            Lapsed
+          </Button>
+          <Button
+            block
+            danger
+            loading={skipMutation.isPending && skipMutation.variables === "illegible"}
+            disabled={skipMutation.isPending}
+            onClick={() => skipMutation.mutate("illegible")}
+          >
+            Illegible
           </Button>
         </Space>
       </Modal>
