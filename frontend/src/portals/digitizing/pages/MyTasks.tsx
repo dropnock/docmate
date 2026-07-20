@@ -232,7 +232,7 @@ export default function MyTasks() {
   // ─── Level 2: a single open indexing batch's records ────────────────────
   if (selectedBatchId != null) {
     return (
-      <div>
+      <div className="docmate-list-pad">
         <Typography.Title level={4}>My Tasks</Typography.Title>
         <BatchDetail
           batchId={selectedBatchId}
@@ -246,7 +246,7 @@ export default function MyTasks() {
 
   // ─── Level 1: batch cards (indexing) + flat list (everything else) ─────
   return (
-    <div>
+    <div className="docmate-list-pad">
       <Typography.Title level={4}>My Tasks</Typography.Title>
 
       {isLoading ? (

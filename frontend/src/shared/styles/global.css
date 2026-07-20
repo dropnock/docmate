@@ -40,6 +40,23 @@ code,
   }
 }
 
+/* My Tasks (/my-tasks) is a FULL_BLEED_ROUTE — App.tsx zeroes Content's
+   padding so the record workspace (image viewer + form) can go edge to
+   edge. The list views on that same route aren't a workspace though, so
+   they need their own top/right padding or text sits flush against the
+   header and window edge. */
+.docmate-list-pad {
+  padding-top: 16px;
+  padding-right: 16px;
+}
+
+@media (min-width: 1024px) {
+  .docmate-list-pad {
+    padding-top: 40px;
+    padding-right: 40px;
+  }
+}
+
 .docmate-card-view {
   display: none;
 }
