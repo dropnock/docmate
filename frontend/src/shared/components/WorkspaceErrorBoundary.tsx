@@ -1,5 +1,6 @@
-import { Component, type ReactNode } from "react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 import { Alert, Button } from "antd";
+import api from "@shared/api/client";
 
 interface Props { children: ReactNode }
 interface State { error: Error | null }
@@ -9,6 +10,22 @@ export class WorkspaceErrorBoundary extends Component<Props, State> {
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("WorkspaceErrorBoundary caught:", error, errorInfo.componentStack);
+    // Best-effort: an error boundary must never itself throw, so a failure
+    // to report the crash (network down, expired session, etc.) is
+    // swallowed rather than surfaced. Without this, a React crash was
+    // previously visible only to whoever's browser it happened in.
+    api
+      .post("/client-errors", {
+        message: error.message,
+        stack: error.stack,
+        component_stack: errorInfo.componentStack,
+        url: window.location.href,
+      })
+      .catch(() => {});
   }
 
   render() {

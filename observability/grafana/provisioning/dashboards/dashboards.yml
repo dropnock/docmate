@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: default
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      # Mounted separately from this file (see docker-compose.yml) — keeps
+      # provisioning config (this file, datasources.yml) apart from actual
+      # dashboard content (observability/grafana/dashboards/*.json).
+      path: /etc/grafana/dashboards

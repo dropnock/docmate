@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # Users must change it on first login (requiredActions=UPDATE_PASSWORD).
     seed_default_password: str = "changeme123"
 
+    log_level: str = "INFO"
+    environment: str = "development"
+
     @property
     def sqlalchemy_database_url(self) -> str:
         if self.database_url:
