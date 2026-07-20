@@ -4,7 +4,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import check_project_access, get_current_user, require_roles
 from app.models.project import Project
 from app.models.shift import ProjectShift, Shift, ShiftRole, UserProjectAssignment
 from app.models.user import User
@@ -227,11 +227,20 @@ async def get_qc_agents(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("customer_supervisor", "admin")),
 ):
-    """Returns all active customer_qc_agent users in the same tenant."""
+    """Returns all active customer_qc_agent users belonging to this
+    project's customer organization. A tenant can have several customer
+    organizations (see check_project_access) each with their own QC agents
+    — filtering by tenant_id alone, as this used to, let a supervisor at
+    one customer org assign records to another customer org's agents."""
     from app.models.user import UserRole
+
+    project = await db.get(Project, project_id)
+    check_project_access(project, current_user)
+
     result = await db.execute(
         select(User).where(
             User.tenant_id == current_user._tenant_id,
+            User.organization_id == project.customer_org_id,
             User.role == UserRole.customer_qc_agent,
             User.is_active == True,  # noqa: E712
         ).order_by(User.full_name)
