@@ -7,6 +7,20 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.3.4] - 2026-07-20
+
+### Fixed
+- Batch assignment no longer reassigns records that are already sitting in
+  another batch. `create_indexing_batch` accepted client-supplied record
+  ids with no eligibility check beyond cabinet membership; since a record's
+  status stays `pending` until its indexer actually starts the task, a
+  record already parented to an unstarted batch was still selectable and
+  got silently re-parented to a second batch with a competing task,
+  orphaning the original assignment. Only records with `status == pending`
+  and no existing `batch_id` are now eligible, and the batch-assignment
+  picker (`GET /cabinets/{id}/records?status=pending`) excludes
+  already-batched records too.
+
 ## [0.3.3] - 2026-07-20
 
 ### Fixed
