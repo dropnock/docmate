@@ -7,6 +7,15 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-07-20
+
+### Fixed
+- Cabinet image uploads no longer fail with 413 Request Entity Too Large.
+  The digitizing portal's nginx server blocks were missing the
+  `client_max_body_size` override that lets large scans through the backend
+  upload proxy (`POST /cabinets/{id}/upload`) — they fell back to nginx's
+  1MB default, well under typical scan sizes.
+
 ## [0.3.2] - 2026-07-20
 
 ### Added
