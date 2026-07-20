@@ -248,6 +248,9 @@ async def create_indexing_batch(
     from datetime import timedelta
     from app.models.project import Project
 
+    if not record_ids:
+        raise HTTPException(status_code=400, detail="record_ids must not be empty")
+
     cabinet = await get_cabinet(db, cabinet_id=cabinet_id, tenant_id=tenant_id)
     project = await db.get(Project, project_id)
     stale_hours = project.stale_threshold_hours if project else 24

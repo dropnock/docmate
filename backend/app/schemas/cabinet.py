@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CabinetCreate(BaseModel):
@@ -39,7 +39,7 @@ class IngestJsonRequest(BaseModel):
 class CreateIndexingBatchRequest(BaseModel):
     project_id: int
     document_type_id: int
-    record_ids: list[int]
+    record_ids: list[int] = Field(min_length=1)
     agent_id: int
 
 

@@ -220,6 +220,25 @@ class TestShiftRoleEnforcement:
         await db.flush()
         assert eligible.batch_id == new_batch.id
 
+    async def test_create_indexing_batch_rejects_empty_record_ids(self, db: AsyncSession, seed):
+        from app.models.cabinet import Cabinet
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Test Cabinet")
+        db.add(cabinet)
+        await db.flush()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await cabinet_service.create_indexing_batch(
+                db, cabinet_id=cabinet.id, project_id=seed["project"].id,
+                document_type_id=seed["doc_type"].id, record_ids=[],
+                agent_id=seed["indexer"].id,
+                supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 400
+
+        from app.models import Batch
+        result = await db.execute(select(Batch).where(Batch.cabinet_id == cabinet.id))
+        assert result.scalars().first() is None
+
     async def test_assign_qa_agent_rejects_non_qa(self, db: AsyncSession, seed):
         from app.models import BatchStatus
         seed["batch"].status = BatchStatus.qa_review
