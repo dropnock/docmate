@@ -148,6 +148,13 @@ async def put_object_bytes(bucket: str, key: str, data: bytes, content_type: str
         await client.put_object(Bucket=bucket, Key=key, Body=data, ContentType=content_type)
 
 
+async def delete_object(bucket: str, key: str) -> None:
+    """No-op if the key doesn't exist — S3/MinIO's DeleteObject is idempotent,
+    so callers don't need to check existence first."""
+    async with _session.client("s3", **_client_kwargs()) as client:
+        await client.delete_object(Bucket=bucket, Key=key)
+
+
 def derived_pdf_key(file_reference: str) -> str:
     """Deterministic S3 key for a TIFF's converted PDF — same path, original
     extension replaced with .pdf. Computed identically by the upload-time
