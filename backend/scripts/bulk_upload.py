@@ -169,7 +169,6 @@ def upload_one(
     cabinet_id: int,
     api_url: str,
     session: AuthSession,
-    http_client: httpx.Client | None,
     dry_run: bool,
 ) -> FileResult:
     filename = file.name  # basename only — see note in discover_files call site
@@ -178,43 +177,35 @@ def upload_one(
         return FileResult(filename=filename, status="skipped")
 
     try:
-        upload_resp = with_retries(
-            lambda: session.request(
-                "POST", f"{api_url}/api/cabinets/{cabinet_id}/upload-url", params={"filename": filename}
-            )
-        )
-        upload_resp.raise_for_status()
-        upload_data = upload_resp.json()
-
         content_type, _ = mimetypes.guess_type(filename)
         content_type = content_type or "application/octet-stream"
 
-        def _put():
-            # Reuse the shared http_client (not the httpx.put convenience
-            # function) so --insecure/--ca-bundle apply to the S3 PUT too —
-            # httpx.put() ignores the client's TLS config entirely.
+        def _upload():
+            # Single streamed multipart upload — the old upload-url/PUT-to-S3/
+            # confirm-upload dance is gone (see POST /cabinets/{id}/upload,
+            # which now receives the file on the backend's own origin and
+            # writes it to S3 server-side). TIFF scans are converted to a
+            # multi-page PDF server-side at this same step
+            # (cabinet_service._convert_tiff_if_needed) — this script sends
+            # the raw .tif/.tiff bytes exactly like any other extension and
+            # does no client-side conversion of its own.
             with file.open("rb") as fh:
-                resp = http_client.put(upload_data["upload_url"], content=fh, headers={"Content-Type": content_type})
+                resp = session.request(
+                    "POST",
+                    f"{api_url}/api/cabinets/{cabinet_id}/upload",
+                    files={"file": (filename, fh, content_type)},
+                )
                 resp.raise_for_status()
                 return resp
 
-        with_retries(_put)
-
-        confirm_resp = with_retries(
-            lambda: session.request(
-                "PATCH",
-                f"{api_url}/api/cabinets/{cabinet_id}/confirm-upload",
-                params={"original_filename": filename, "s3_key": upload_data["key"]},
-            )
-        )
-        confirm_resp.raise_for_status()
-        confirm_data = confirm_resp.json()
+        upload_resp = with_retries(_upload)
+        upload_data = upload_resp.json()
 
         return FileResult(
             filename=filename,
             status="success",
-            record_id=confirm_data.get("id"),
-            source_identifier=confirm_data.get("source_identifier"),
+            record_id=upload_data.get("id"),
+            source_identifier=upload_data.get("source_identifier"),
         )
     except Exception as exc:
         return FileResult(filename=filename, status="failed", error=str(exc))
@@ -308,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         results_by_file: dict[Path, FileResult] = {}
         with ThreadPoolExecutor(max_workers=args.concurrency) as pool:
             futures = {
-                pool.submit(upload_one, f, args.cabinet_id, args.api_url, session, http_client, args.dry_run): f
+                pool.submit(upload_one, f, args.cabinet_id, args.api_url, session, args.dry_run): f
                 for f in files
             }
             for future in as_completed(futures):

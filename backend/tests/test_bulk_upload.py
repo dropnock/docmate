@@ -112,7 +112,7 @@ def test_write_report_rejects_unknown_extension(tmp_path):
 def test_upload_one_dry_run_skips_network(tmp_path):
     f = tmp_path / "scan.pdf"
     f.write_bytes(b"%PDF-fake")
-    result = upload_one(f, cabinet_id=1, api_url="https://example.invalid", session=None, http_client=None, dry_run=True)
+    result = upload_one(f, cabinet_id=1, api_url="https://example.invalid", session=None, dry_run=True)
     assert result.status == "skipped"
 
 
@@ -124,7 +124,7 @@ def test_upload_one_uses_basename_even_when_nested(tmp_path):
     nested.mkdir(parents=True)
     f = nested / "scan.pdf"
     f.write_bytes(b"%PDF-fake")
-    result = upload_one(f, cabinet_id=1, api_url="https://example.invalid", session=None, http_client=None, dry_run=True)
+    result = upload_one(f, cabinet_id=1, api_url="https://example.invalid", session=None, dry_run=True)
     assert result.filename == "scan.pdf"
     assert "/" not in result.filename
 
@@ -133,40 +133,59 @@ def test_upload_one_full_flow_success(tmp_path):
     f = tmp_path / "scan.pdf"
     f.write_bytes(b"%PDF-fake-bytes")
 
-    put_calls = []
+    upload_calls = []
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/cabinets/1/upload-url":
-            return httpx.Response(200, json={"upload_url": "https://s3.example.invalid/put-here", "key": "cabinets/1/scan.pdf"})
-        if request.url.path == "/api/cabinets/1/confirm-upload":
+        if request.url.path == "/api/cabinets/1/upload":
+            upload_calls.append(request)
             return httpx.Response(200, json={"id": 99, "source_identifier": "scan"})
         raise AssertionError(f"unexpected request to {request.url}")
 
-    def s3_handler(request: httpx.Request) -> httpx.Response:
-        put_calls.append(request)
-        return httpx.Response(200)
-
     api_transport = httpx.MockTransport(handler)
-    s3_transport = httpx.MockTransport(s3_handler)
 
     class FakeSession:
         def request(self, method, url, **kwargs):
             with httpx.Client(transport=api_transport) as client:
                 return client.request(method, url, **kwargs)
 
-    # The S3 PUT must go through the same (shared) http_client used for the
-    # API calls — not the httpx.put convenience function — so that
-    # --insecure/--ca-bundle apply to it too.
-    with httpx.Client(transport=s3_transport) as s3_client:
-        result = upload_one(
-            f, cabinet_id=1, api_url="https://example.invalid", session=FakeSession(), http_client=s3_client, dry_run=False
-        )
+    result = upload_one(
+        f, cabinet_id=1, api_url="https://example.invalid", session=FakeSession(), dry_run=False
+    )
 
     assert result.status == "success"
     assert result.record_id == 99
     assert result.source_identifier == "scan"
-    assert len(put_calls) == 1
-    assert put_calls[0].headers["content-type"] == "application/pdf"
+    assert len(upload_calls) == 1
+
+
+def test_upload_one_sends_tiff_as_is_for_server_side_conversion(tmp_path):
+    """TIFF-to-PDF conversion happens server-side (cabinet_service.
+    _convert_tiff_if_needed) — the script just uploads the raw .tiff bytes
+    with an image/tiff content type, same as any other extension."""
+    f = tmp_path / "scan.tiff"
+    f.write_bytes(b"fake-tiff-bytes")
+
+    upload_calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/api/cabinets/1/upload"
+        upload_calls.append(request)
+        return httpx.Response(200, json={"id": 100, "source_identifier": "scan"})
+
+    api_transport = httpx.MockTransport(handler)
+
+    class FakeSession:
+        def request(self, method, url, **kwargs):
+            with httpx.Client(transport=api_transport) as client:
+                return client.request(method, url, **kwargs)
+
+    result = upload_one(
+        f, cabinet_id=1, api_url="https://example.invalid", session=FakeSession(), dry_run=False
+    )
+
+    assert result.status == "success"
+    assert len(upload_calls) == 1
+    assert b"image/tiff" in upload_calls[0].content
 
 
 def test_upload_one_failure_is_caught_not_raised(tmp_path, monkeypatch):
@@ -182,7 +201,7 @@ def test_upload_one_failure_is_caught_not_raised(tmp_path, monkeypatch):
             raise httpx.ConnectError("boom", request=httpx.Request(method, url))
 
     result = upload_one(
-        f, cabinet_id=1, api_url="https://example.invalid", session=FailingSession(), http_client=None, dry_run=False
+        f, cabinet_id=1, api_url="https://example.invalid", session=FailingSession(), dry_run=False
     )
     assert result.status == "failed"
     assert "boom" in result.error
