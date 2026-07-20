@@ -7,6 +7,17 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-07-20
+
+### Added
+- `scripts/wipe_project_data.py`: a reviewable, dry-run-by-default admin CLI
+  for permanently deleting all records (versions, tasks, lot_records, lots,
+  batches, batch_qc_results, matching audit_logs) and S3 images for a single
+  project, while leaving the project and its cabinet(s) in place. Requires
+  `--confirm` to execute and, without `--yes`, prompts to re-type the
+  project name as a final check; always writes a JSON report of every ID
+  touched on a real run.
+
 ## [0.3.1] - 2026-07-20
 
 ### Fixed
