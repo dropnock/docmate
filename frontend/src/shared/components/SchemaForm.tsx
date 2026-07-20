@@ -14,6 +14,12 @@ interface Props {
   initialValues?: Record<string, unknown>;
   onSubmit: (values: Record<string, unknown>) => void;
   formId: string;
+  // Renders every field (including array/object fields like ParcelArrayField)
+  // fully expanded but non-interactive — same widgets and structure as the
+  // editable form, just disabled. RJSF's disabled prop cascades to every
+  // field/widget automatically, and the custom widgets already read it
+  // correctly (see CustomWidgets.tsx's ui:disabled handling).
+  readOnly?: boolean;
 }
 
 function humanize(key: string): string {
@@ -128,7 +134,7 @@ function handleEnterNavigation(e: KeyboardEvent<HTMLDivElement>, root: HTMLDivEl
 }
 
 const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
-  { schema, initialValues, onSubmit, formId }: Props,
+  { schema, initialValues, onSubmit, formId, readOnly }: Props,
   ref,
 ) {
   const processedSchema = useMemo(() => preprocessSchema(schema), [schema]);
@@ -163,6 +169,7 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
           onSubmit={({ formData: fd }) => onSubmit(isObjectRecord(fd) ? fd : formData)}
           showErrorList={false}
           liveValidate={false}
+          disabled={readOnly}
           widgets={{ DateText: DateTextWidget, Country: CountryWidget }}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           fields={{ RangeArray: RangeArrayField, ParcelArray: ParcelArrayField } as any}

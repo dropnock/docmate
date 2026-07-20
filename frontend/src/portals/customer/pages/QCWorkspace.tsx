@@ -14,11 +14,13 @@ import {
 } from "antd";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
-import type { DocRecord, Task, UserRecord } from "@shared/types";
+import type { DocRecord, DocumentType, Task, UserRecord } from "@shared/types";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
+import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
 import StatusDot from "@shared/components/StatusDot";
 
@@ -52,6 +54,23 @@ export default function QCWorkspace() {
       api.get(`/records/${activeTask!.record_id}`).then((r) => r.data),
     enabled: !!activeTask,
     refetchInterval: 10_000,
+  });
+
+  // Fetch batch (for document_type_id) and the document type's schema, so
+  // the indexed data can be rendered through the same SchemaForm the DE QA
+  // screen uses — a plain Object.entries dump can't render array/object
+  // fields (parcels, registered owners, caveators, ...) at all, it just
+  // stringifies them to "[object Object]".
+  const { data: batchData } = useQuery({
+    queryKey: ["batch", activeTask?.batch_id],
+    queryFn: () => api.get(`/batches/${activeTask!.batch_id}`).then((r) => r.data),
+    enabled: !!activeTask,
+  });
+
+  const { data: docType } = useQuery<DocumentType>({
+    queryKey: ["doctype", batchData?.document_type_id],
+    queryFn: () => api.get(`/document-types/${batchData.document_type_id}`).then((r) => r.data),
+    enabled: !!batchData?.document_type_id,
   });
 
   // Cached at the app root (App.tsx queries the same ["me"] key on load) —
@@ -271,15 +290,17 @@ export default function QCWorkspace() {
               <Typography.Title level={5}>Indexed Data</Typography.Title>
               {record?.indexed_data ? (
                 <Card size="small">
-                  {Object.entries(record.indexed_data).map(([k, v]) => (
-                    <div key={k} style={{ marginBottom: 8 }}>
-                      <Typography.Text type="secondary" style={{ textTransform: "capitalize" }}>
-                        {k.replace(/_/g, " ")}
-                      </Typography.Text>
-                      <br />
-                      <Typography.Text>{String(v)}</Typography.Text>
-                    </div>
-                  ))}
+                  {docType ? (
+                    <SchemaForm
+                      schema={docType.json_schema as RJSFSchema}
+                      initialValues={record.indexed_data}
+                      onSubmit={() => {}}
+                      formId={`qc-view-${activeTask.record_id}`}
+                      readOnly
+                    />
+                  ) : (
+                    <Spin style={{ margin: 16 }} />
+                  )}
                 </Card>
               ) : (
                 <Typography.Text type="secondary">No indexed data yet.</Typography.Text>
