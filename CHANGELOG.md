@@ -7,6 +7,15 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-07-20
+
+### Fixed
+- `scripts/bulk_upload.py` now uses the single-endpoint upload flow
+  (`POST /cabinets/{id}/upload`) instead of the removed `upload-url`/
+  `confirm-upload` pair — the script was broken for every file, not just
+  TIFFs. TIFF-to-PDF conversion needs no client-side handling; it already
+  happens server-side inside that same endpoint.
+
 ## [0.3.0] - 2026-07-20
 
 ### Added
