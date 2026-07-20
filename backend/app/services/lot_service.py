@@ -171,6 +171,50 @@ async def create_qc_batches(
     if lot.status != LotStatus.qc_in_progress:
         raise HTTPException(status_code=409, detail="Lot must be in qc_in_progress to create QC batches")
 
+    if not assignments:
+        raise HTTPException(status_code=400, detail="assignments must not be empty")
+    if any(not a["record_ids"] for a in assignments):
+        raise HTTPException(status_code=400, detail="each assignment must include at least one record")
+    all_record_ids = [rid for a in assignments for rid in a["record_ids"]]
+    if len(all_record_ids) != len(set(all_record_ids)):
+        raise HTTPException(status_code=400, detail="a record cannot be assigned to more than one QC batch in the same request")
+
+    # A record is only eligible for a new QC batch if it belongs to this lot,
+    # is sampled for QC (qc_pending — record.status stays qc_pending for the
+    # whole time it's being worked, see task_service.start_task), and has no
+    # existing pending/in-progress QC task — otherwise the same record could
+    # be silently double-assigned across separate qc-batch requests, the same
+    # class of bug fixed for create_indexing_batch above.
+    eligible_result = await db.execute(
+        select(Record.id)
+        .join(LotRecord, LotRecord.record_id == Record.id)
+        .where(
+            Record.id.in_(all_record_ids),
+            LotRecord.lot_id == lot_id,
+            Record.status == RecordStatus.qc_pending,
+        )
+    )
+    eligible_ids = set(eligible_result.scalars().all())
+
+    active_qc_result = await db.execute(
+        select(Task.record_id).where(
+            Task.record_id.in_(all_record_ids),
+            Task.task_type == TaskType.qc,
+            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+        )
+    )
+    eligible_ids -= set(active_qc_result.scalars().all())
+
+    ineligible_ids = [rid for rid in all_record_ids if rid not in eligible_ids]
+    if ineligible_ids:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Records must belong to this lot, be qc_pending, and not already "
+                f"assigned to a QC batch: ineligible record ids {ineligible_ids}"
+            ),
+        )
+
     project = await db.get(Project, project_id)
     stale_hours = project.stale_threshold_hours if project else 24
     due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)

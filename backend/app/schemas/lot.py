@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LotCreate(BaseModel):
@@ -31,13 +31,13 @@ class ApplySampleRequest(BaseModel):
 
 class QcBatchAssignment(BaseModel):
     agent_id: int
-    record_ids: list[int]
+    record_ids: list[int] = Field(min_length=1)
 
 
 class CreateQcBatchesRequest(BaseModel):
     project_id: int
     document_type_id: int
-    assignments: list[QcBatchAssignment]
+    assignments: list[QcBatchAssignment] = Field(min_length=1)
 
 
 class RemediationRequest(BaseModel):
