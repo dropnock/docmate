@@ -62,6 +62,7 @@ async def get_cabinet_records(
             "has_image": r.file_reference is not None,
             "has_data": r.indexed_data is not None,
             "cabinet_id": r.cabinet_id,
+            "batch_id": r.batch_id,
         }
         for r in records
     ]

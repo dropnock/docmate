@@ -45,6 +45,7 @@ export interface CabinetRecord {
   has_image: boolean;
   has_data: boolean;
   cabinet_id: number | null;
+  batch_id: number | null;
 }
 
 export interface Lot {
