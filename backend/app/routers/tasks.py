@@ -157,7 +157,7 @@ async def fail_task(
 
 
 class SkipTaskRequest(BaseModel):
-    status: Literal["withdrawn", "ineligible", "excluded"]
+    status: Literal["withdrawn", "ineligible", "excluded", "lapsed", "illegible"]
 
 
 @router.post("/{task_id}/skip", response_model=TaskOut)

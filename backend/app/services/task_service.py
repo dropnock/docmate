@@ -394,7 +394,13 @@ async def fail_task(
     return task
 
 
-SKIPPABLE_STATUSES = (RecordStatus.withdrawn, RecordStatus.ineligible, RecordStatus.excluded)
+SKIPPABLE_STATUSES = (
+    RecordStatus.withdrawn,
+    RecordStatus.ineligible,
+    RecordStatus.excluded,
+    RecordStatus.lapsed,
+    RecordStatus.illegible,
+)
 
 
 async def skip_task(
@@ -408,8 +414,8 @@ async def skip_task(
     """An indexer's third option alongside Save Progress / Done for a record
     that can't be indexed at all (blank page, wrong document, unreadable
     scan, etc). Skips the schema form entirely — there's no data to submit —
-    and marks the record withdrawn, ineligible, or excluded (the indexer's
-    choice) rather than indexed, a terminal state that
+    and marks the record withdrawn, ineligible, excluded, lapsed, or
+    illegible (the indexer's choice) rather than indexed, a terminal state that
     _maybe_complete_batch and batch_service's auto_advance_to_qa /
     complete_indexing_batch all treat as "done" without routing it through
     QA/QC. Calling this again on an already-skipped or already-indexed

@@ -31,12 +31,16 @@ const RECORD_STATUS_LABEL: Record<string, string> = {
   withdrawn: "Withdrawn",
   ineligible: "Ineligible",
   excluded: "Excluded",
+  lapsed: "Lapsed",
+  illegible: "Illegible",
 };
 
 // A record in one of these statuses needs no further indexing work — it's
 // what Complete Batch requires of every record before it'll submit (mirrors
 // backend/app/models/record.py's RecordStatus.indexed + SKIPPED_RECORD_STATUSES).
-const RECORD_DONE_STATUSES = new Set(["indexed", "withdrawn", "ineligible", "excluded"]);
+const RECORD_DONE_STATUSES = new Set([
+  "indexed", "withdrawn", "ineligible", "excluded", "lapsed", "illegible",
+]);
 
 // An indexing task belongs to the still-open batch worklist (grouped view,
 // reopenable, gated by an explicit Complete Batch) only while its batch is
@@ -91,7 +95,7 @@ function BatchDetail({
         <Button icon={<ArrowLeft size={16} />} onClick={onBack}>
           Back to tasks
         </Button>
-        <Tooltip title={remaining > 0 ? `${remaining} record(s) still need to be indexed, withdrawn, ineligible, or excluded` : undefined}>
+        <Tooltip title={remaining > 0 ? `${remaining} record(s) still need to be indexed, withdrawn, ineligible, excluded, lapsed, or illegible` : undefined}>
           <Button
             type="primary"
             icon={<CheckCircle2 size={16} />}

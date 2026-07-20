@@ -23,6 +23,8 @@ const RECORD_STATUS_COLOR: Record<string, string> = {
   withdrawn: "Withdrawn",
   ineligible: "Ineligible",
   excluded: "Excluded",
+  lapsed: "Lapsed",
+  illegible: "Illegible",
 };
 
 function recordLabel(record: DocRecord) {

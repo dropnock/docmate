@@ -30,6 +30,8 @@ const RECORD_STATUS_LABEL: Record<string, string> = {
   withdrawn: "Withdrawn",
   ineligible: "Ineligible",
   excluded: "Excluded",
+  lapsed: "Lapsed",
+  illegible: "Illegible",
 };
 
 const RECORD_STATUS_FILLED = new Set(["indexed", "qa_passed", "qc_passed"]);

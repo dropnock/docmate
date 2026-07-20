@@ -21,6 +21,8 @@ class RecordStatus(str, enum.Enum):
     withdrawn = "withdrawn"
     ineligible = "ineligible"
     excluded = "excluded"
+    lapsed = "lapsed"
+    illegible = "illegible"
 
 
 # A record in any of these statuses was skipped rather than indexed (see
@@ -33,6 +35,8 @@ SKIPPED_RECORD_STATUSES = frozenset({
     RecordStatus.withdrawn,
     RecordStatus.ineligible,
     RecordStatus.excluded,
+    RecordStatus.lapsed,
+    RecordStatus.illegible,
 })
 
 
