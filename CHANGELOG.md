@@ -7,6 +7,20 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.3.6] - 2026-07-20
+
+### Fixed
+- Batches could be created with zero records. `create_indexing_batch`'s
+  eligibility check only validated *requested* record ids that turned out
+  ineligible — an empty `record_ids` list vacuously passed, so a `Batch`
+  row was created with no `Task`/`Record` rows attached. Now rejects an
+  empty `record_ids` list outright (backend guard + schema `min_length=1`).
+- `create_qc_batches` had no eligibility validation at all — same
+  empty-list gap, plus no check that a record belongs to the lot, is
+  `qc_pending`, or isn't already claimed by another active QC task. Now
+  enforces the same eligibility check `create_indexing_batch` already had,
+  and rejects duplicate record ids across assignments in one request.
+
 ## [0.3.5] - 2026-07-20
 
 ### Added
