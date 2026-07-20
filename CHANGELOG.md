@@ -7,6 +7,13 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.3.5] - 2026-07-20
+
+### Added
+- Two more indexer skip reasons, `Lapsed` and `Illegible`, alongside the
+  existing `Withdrawn`/`Ineligible`/`Excluded` — same terminal-status
+  treatment throughout (never blocks batch completion, no data submitted).
+
 ## [0.3.4] - 2026-07-20
 
 ### Fixed
