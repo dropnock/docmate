@@ -1,0 +1,26 @@
+# Scrapes the backend's /metrics directly over the docker-compose network —
+# never routed through nginx, never publicly exposed. See main.py's
+# Instrumentator().instrument(app).expose(app) for what's served there.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: docmate-backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:8000"]
+
+  - job_name: cadvisor
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: docmate-volumes
+    metrics_path: /metrics
+    # volume-exporter's busybox httpd serves the metrics file with no
+    # Content-Type header — Prometheus 3.x's scrape-protocol negotiation
+    # rejects that outright without this fallback telling it to assume
+    # plain Prometheus text exposition format instead.
+    fallback_scrape_protocol: PrometheusText0.0.4
+    static_configs:
+      - targets: ["volume-exporter:9101"]

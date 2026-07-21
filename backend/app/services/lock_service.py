@@ -1,11 +1,15 @@
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.metrics import lock_conflicts_total
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.record import Record
 from app.services import audit_service
+
+logger = logging.getLogger(__name__)
 
 
 async def acquire_lock(
@@ -17,6 +21,12 @@ async def acquire_lock(
 ) -> None:
     """Acquire a pessimistic lock. Raises 409 if another user holds it."""
     if record.locked_by is not None and record.locked_by != user_id:
+        logger.warning(
+            "lock conflict on record %s: held by user %s, requested by user %s",
+            record.id, record.locked_by, user_id,
+            extra={"record_id": record.id, "holder_id": record.locked_by, "requester_id": user_id},
+        )
+        lock_conflicts_total.inc()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -28,6 +38,11 @@ async def acquire_lock(
     if record.locked_by != user_id:
         record.locked_by = user_id
         record.locked_at = datetime.now(timezone.utc)
+        logger.info(
+            "lock acquired on record %s by user %s",
+            record.id, user_id,
+            extra={"record_id": record.id, "user_id": user_id},
+        )
         await audit_service.write_event(
             db,
             tenant_id=tenant_id,
@@ -50,6 +65,11 @@ async def release_lock(
         return
     record.locked_by = None
     record.locked_at = None
+    logger.info(
+        "lock released on record %s by user %s",
+        record.id, user_id,
+        extra={"record_id": record.id, "user_id": user_id},
+    )
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,

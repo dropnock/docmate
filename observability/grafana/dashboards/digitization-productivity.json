@@ -1,0 +1,365 @@
+{
+  "id": null,
+  "uid": "docmate-digitization-productivity",
+  "title": "Digitization Team Productivity",
+  "tags": ["docmate", "business"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5m",
+  "time": { "from": "now-30d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "project",
+        "label": "Project",
+        "type": "query",
+        "datasource": { "type": "postgres", "uid": "postgres" },
+        "query": "SELECT name AS __text, id AS __value FROM projects ORDER BY name",
+        "refresh": 1,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Records in Cabinet",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"Total Records\" FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Records Indexed",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"Records Indexed\" FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project AND r.status NOT IN ('pending','indexing','disqualified','withdrawn','ineligible','excluded','lapsed','illegible')"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Records QA'ed",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"Records QA'ed\" FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project AND r.status IN ('qa_passed','qa_failed','qc_pending','qc_passed','qc_failed')"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Lots Released",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"Lots Released\" FROM lots WHERE project_id = $project AND released_at IS NOT NULL"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Total Records Released",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT COUNT(*) AS \"Records Released\" FROM lot_records lr JOIN lots l ON lr.lot_id = l.id WHERE l.project_id = $project AND l.released_at IS NOT NULL"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Quality Rate",
+      "description": "Customer-QC accuracy across released lots (sample-size weighted) — mirrors lot_service.calculate_accuracy's pass bar of 90%.",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value" },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT CASE WHEN SUM(sample_size) > 0 THEN ROUND((100.0 * SUM(accuracy_rate * sample_size) / SUM(sample_size))::numeric, 1) ELSE NULL END AS \"Quality Rate\" FROM lots WHERE project_id = $project AND accuracy_rate IS NOT NULL"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Completion %",
+      "description": "Records QA-passed or beyond, out of total in the cabinet — same definition as analytics_service.project_kpis().",
+      "type": "gauge",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH total AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project), complete AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project AND r.status IN ('qa_passed','qc_pending','qc_passed')) SELECT CASE WHEN total.c = 0 THEN 0 ELSE ROUND(100.0 * complete.c / total.c, 1) END AS \"Completion %\" FROM total, complete"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Current Daily Rate",
+      "description": "QA-completed records/day, trailing 7 days — same window analytics_service.project_kpis() uses for daily_throughput_rate.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT ROUND(COUNT(*)::numeric / 7.0, 2) AS \"Current Daily Rate\" FROM tasks t JOIN batches b ON t.batch_id = b.id WHERE b.project_id = $project AND t.task_type = 'qa' AND t.status = 'completed' AND t.completed_at >= now() - interval '7 days'"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Required Daily Rate",
+      "description": "Records remaining ÷ days left until Proposed End Date.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 2 }, "overrides": [] },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH total AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project), complete AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project AND r.status IN ('qa_passed','qc_pending','qc_passed')), proj AS (SELECT proposed_end_date FROM projects WHERE id = $project) SELECT CASE WHEN proj.proposed_end_date IS NULL THEN NULL WHEN (proj.proposed_end_date - CURRENT_DATE) <= 0 THEN NULL ELSE ROUND((total.c - complete.c) / (proj.proposed_end_date - CURRENT_DATE), 2) END AS \"Required Daily Rate\" FROM total, complete, proj"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Projected Completion",
+      "description": "Today + (records remaining ÷ current daily rate) — same formula as analytics_service.project_kpis()'s projected_end_date.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "time:MMM D, YYYY" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false } },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH total AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project), complete AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project AND r.status IN ('qa_passed','qc_pending','qc_passed')), rate AS (SELECT COUNT(*)::numeric / 7.0 AS r FROM tasks t JOIN batches b ON t.batch_id = b.id WHERE b.project_id = $project AND t.task_type = 'qa' AND t.status = 'completed' AND t.completed_at >= now() - interval '7 days') SELECT CASE WHEN total.c - complete.c <= 0 THEN CURRENT_DATE WHEN rate.r > 0 THEN (CURRENT_DATE + ((total.c - complete.c) / rate.r) * interval '1 day')::date ELSE NULL END AS \"Projected Completion\" FROM total, complete, rate"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Proposed Completion",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": { "defaults": { "unit": "time:MMM D, YYYY" }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false } },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT proposed_end_date AS \"Proposed Completion\" FROM projects WHERE id = $project"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Status",
+      "description": "RAG vs. the Proposed Completion date, background color only (no Red/Amber/Green label). The field itself is numeric — days late vs. Proposed Completion (negative/zero = ahead of or on schedule) — colored by ordinary thresholds, not text matching. Two sentinel values stand in for the non-numeric cases: no Proposed Completion date set at all (shown as 'No target date set', neutral), or currently zero throughput with records still remaining, which can never complete at this rate (shown as 'Stalled — no throughput', red). Green ≤ 0 days late, Amber 1–7 days late, Red 8+ days late.",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 4 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "days behind schedule",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "text", "value": null },
+              { "color": "green", "value": -999998 },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 8 }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-999999": { "text": "No target date set", "index": 0 },
+                "999999": { "text": "Stalled — no throughput", "index": 1 }
+              }
+            },
+            {
+              "type": "range",
+              "options": { "from": -999998, "to": 0, "result": { "text": "On Track", "index": 2 } }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/.*/", "values": false }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH total AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project), complete AS (SELECT COUNT(*)::numeric AS c FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project AND r.status IN ('qa_passed','qc_pending','qc_passed')), rate AS (SELECT COUNT(*)::numeric / 7.0 AS r FROM tasks t JOIN batches b ON t.batch_id = b.id WHERE b.project_id = $project AND t.task_type = 'qa' AND t.status = 'completed' AND t.completed_at >= now() - interval '7 days'), proj AS (SELECT proposed_end_date FROM projects WHERE id = $project), projected AS (SELECT CASE WHEN total.c - complete.c <= 0 THEN CURRENT_DATE WHEN rate.r > 0 THEN (CURRENT_DATE + ((total.c - complete.c) / rate.r) * interval '1 day')::date ELSE NULL END AS d FROM total, complete, rate) SELECT CASE WHEN proj.proposed_end_date IS NULL THEN -999999 WHEN projected.d IS NULL THEN 999999 ELSE (projected.d - proj.proposed_end_date) END AS \"Status\" FROM proj, projected"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Completion Trend — Actual vs. Projected",
+      "description": "Cumulative QA-completed records, trailing 30 days, plus a forward projection at the trailing-7-day rate — same series analytics_service.burnup_chart_data() returns.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "lineWidth": 2, "pointSize": 4, "spanNulls": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Projected" },
+            "properties": [
+              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 6] } },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "semi-dark-orange" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Actual" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }
+            ]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "WITH proj_total AS (SELECT COUNT(*)::numeric AS total FROM records r JOIN cabinets cb ON r.cabinet_id = cb.id WHERE cb.project_id = $project), daily AS (SELECT date_trunc('day', t.completed_at)::date AS day, COUNT(*) AS n FROM tasks t JOIN batches b ON t.batch_id = b.id WHERE b.project_id = $project AND t.task_type = 'qa' AND t.status = 'completed' AND t.completed_at >= now() - interval '29 days' GROUP BY 1), spine AS (SELECT generate_series(current_date - interval '29 days', current_date, interval '1 day')::date AS day), actual AS (SELECT s.day, SUM(COALESCE(d.n, 0)) OVER (ORDER BY s.day) AS cumulative FROM spine s LEFT JOIN daily d ON d.day = s.day), recent_rate AS (SELECT COALESCE(SUM(n), 0) / 7.0 AS rate FROM daily WHERE day >= current_date - interval '6 days'), last_actual AS (SELECT cumulative FROM actual ORDER BY day DESC LIMIT 1), future_spine AS (SELECT generate_series(1, 30) AS n) SELECT day AS \"time\", cumulative AS \"Actual\", NULL::numeric AS \"Projected\" FROM actual UNION ALL SELECT (current_date + (fs.n * interval '1 day'))::date AS \"time\", NULL::numeric AS \"Actual\", LEAST(la.cumulative + fs.n * rr.rate, pt.total) AS \"Projected\" FROM future_spine fs, recent_rate rr, last_actual la, proj_total pt ORDER BY 1"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Team Productivity by User",
+      "description": "Completed tasks per user assigned to the project, for the dashboard's selected time range (top-right time picker) — unlike the other panels here, this one is not a fixed rolling window. Blue = Indexing tasks completed, Green = Quality (QA) tasks completed. Every active staff assignment for the project is shown, including 0/0 bars for anyone with no completed work in the selected range.",
+      "type": "barchart",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
+      "datasource": { "type": "postgres", "uid": "postgres" },
+      "fieldConfig": {
+        "defaults": { "unit": "short", "decimals": 0 },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Indexing" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Quality" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi" },
+        "xField": "User",
+        "orientation": "auto",
+        "groupWidth": 0.7,
+        "barWidth": 0.9
+      },
+      "targets": [
+        {
+          "datasource": { "type": "postgres", "uid": "postgres" },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT u.full_name AS \"User\", COUNT(*) FILTER (WHERE t.task_type = 'indexing') AS \"Indexing\", COUNT(*) FILTER (WHERE t.task_type = 'qa') AS \"Quality\" FROM users u JOIN user_project_assignments upa ON upa.user_id = u.id AND upa.project_id = $project AND upa.is_active = true LEFT JOIN tasks t ON t.assigned_to = u.id AND t.batch_id IN (SELECT id FROM batches WHERE project_id = $project) AND t.status = 'completed' AND t.completed_at >= $__timeFrom() AND t.completed_at <= $__timeTo() GROUP BY u.id, u.full_name ORDER BY u.full_name"
+        }
+      ]
+    }
+  ]
+}

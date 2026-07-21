@@ -27,6 +27,15 @@ api.interceptors.request.use(async (config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
+    // Backend echoes the same X-Request-ID it logged the failure under (see
+    // request_context_middleware in main.py) — surfacing it here means a
+    // user can hand this to support and it's directly searchable server-side,
+    // instead of "it broke" with no way to find the matching backend log line.
+    console.error(
+      `API ${err.config?.method?.toUpperCase()} ${err.config?.url} failed:`,
+      err.response?.status,
+      "request-id:", err.response?.headers?.["x-request-id"]
+    );
     if (err.response?.status === 401 && !isAuthRecoveryInFlight()) {
       // Session genuinely expired (startSessionKeepAlive covers the false-
       // positive "still actively working" case) — a bare reload with no

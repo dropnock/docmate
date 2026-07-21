@@ -19,6 +19,7 @@ A multi-tenant document digitization management platform. DocMate manages the fu
 - [Key Workflows](#key-workflows)
 - [Tech Stack](#tech-stack)
 - [Versioning & Releases](#versioning--releases)
+- [Observability](#observability)
 - [Notes for Production](#notes-for-production)
 
 ---
@@ -228,6 +229,7 @@ Add the following to your hosts file, pointing at wherever Docker is reachable (
 | **MinIO Console** | http://localhost:9001 | S3-compatible object store UI |
 | **Direct DE frontend** | http://localhost:5173 | Bypasses nginx/TLS entirely (fast iteration; portal header enforcement doesn't apply) |
 | **Direct Customer frontend** | http://localhost:5174 | Bypasses nginx/TLS entirely (fast iteration; portal header enforcement doesn't apply) |
+| **Grafana** | http://localhost:3000 | Dashboards + log search — user `admin`, password from `GRAFANA_ADMIN_PASSWORD` |
 
 ---
 
@@ -524,6 +526,24 @@ curl http://localhost:8000/version
 
 The same two values also appear in `/health`'s response and in the header of both
 portals.
+
+---
+
+## Observability
+
+The backend emits structured (JSON) logs, exposes Prometheus metrics, and every request gets a correlation ID — Grafana, backed by Prometheus (metrics) and Loki (logs, shipped by Promtail from every container's stdout), is the place to look at all of it. All four run as part of `docker-compose.yml`; nothing extra to install.
+
+**Grafana** — http://localhost:3000, user `admin`, password from `GRAFANA_ADMIN_PASSWORD` (`.env`). Prometheus and Loki are pre-provisioned as datasources (no manual setup), and a starter "DocMate Backend Overview" dashboard ships out of the box: request rate, 5xx error rate, and p95 latency by route, a `docmate_lock_conflicts_total` counter (record-lock 409s), and a live log panel filtered to backend errors.
+
+**Correlating a user-reported error back to logs** — every backend response carries an `X-Request-ID` header, and any 4xx/5xx JSON body includes the same value as `request_id`. A user (or the browser console, which logs it on every failed API call — see `shared/api/client.ts`) can hand you that ID, and it's directly searchable: `docker-compose logs -f backend | grep <id>`, or in Grafana's Loki panel: `{service="backend"} |= "<id>"`.
+
+**Frontend crashes** — `WorkspaceErrorBoundary` reports any React crash it catches to the backend (`POST /api/client-errors`), so they land in the same log stream as backend errors instead of only being visible in whoever's browser hit them. Requires the user to have a valid session — a crash caused by a broken auth token won't be reported, an accepted gap rather than an unauthenticated endpoint.
+
+**The background stale-checker job** (APScheduler, runs every 15 minutes — see `backend/app/background/stale_checker.py`) now logs on start/completion/failure with a count of tasks processed; previously it ran completely silently in both the success and failure case.
+
+**Security note**: Grafana is exposed on host port 3000 with its own login, but is **not** proxied through nginx or otherwise hardened for public exposure. Don't leave port 3000 open to the internet in production — restrict it via firewall rules, a VPN, or an SSH tunnel. That restriction is a deployment-time decision and isn't configured by anything in this repo.
+
+Config for all four services lives under `observability/` (`prometheus/`, `loki/`, `promtail/`, `grafana/provisioning/` + `grafana/dashboards/`), mirroring the "config lives next to the thing it configures" convention already used by `nginx/`.
 
 ---
 

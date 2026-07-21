@@ -119,8 +119,16 @@ services:
       # sync with the docmate-de Keycloak client's redirect URIs on startup.
       DE_PORTAL_BASE_URLS: ${DE_PORTAL_BASE_URLS:-https://www.docmate.local,https://digitizing.docmate.local}
       SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-changeme123}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
+    healthcheck:
+      # python:3.11-slim has no curl — reuse the interpreter that's already there.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   frontend-de:
     build:
@@ -176,6 +184,114 @@ services:
       - ./nginx/templates/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
       - ./nginx/certs:/etc/nginx/certs:ro
 
+  # ── Observability ──────────────────────────────────────────────────────
+  # Prometheus/Loki/Promtail have no host port mappings — reached only
+  # through Grafana, on the same docker-compose network as everything else.
+  # Grafana itself is on a host port with its own login; see README's
+  # Observability section for why it isn't proxied through nginx and the
+  # note about restricting it at the network level in production.
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  cadvisor:
+    # Per-container CPU/memory/uptime metrics — the backend's own /metrics
+    # (scraped above) only covers the app process, not container resource
+    # usage. cAdvisor reads this host's cgroup/docker state directly and
+    # exposes it in Prometheus format; no host port mapping, only reached by
+    # Prometheus internally (same "no host port" pattern as Loki/Promtail
+    # below). Not run --privileged — on some hosts/kernels cAdvisor reports
+    # incomplete metrics without it; add `privileged: true` and a `/dev/kmsg`
+    # device mount if the Container Infrastructure dashboard's CPU/memory
+    # panels come back empty. Deliberately NOT used for volume/storage
+    # usage — cAdvisor only sees each container's own writable layer, not
+    # data inside a mounted named volume (see volume-exporter below).
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    restart: unless-stopped
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+
+  volume-exporter:
+    # cAdvisor can't see inside a mounted named volume (its filesystem
+    # metrics only cover each container's own writable layer — verified:
+    # postgres_data is ~77MB on disk but cAdvisor reports ~68KB for the
+    # postgres container). Each volume below is bind-mounted read-only so
+    # entrypoint.sh can `du` it directly and serve the real sizes in
+    # Prometheus format — a few lines of shell rather than a new
+    # third-party exporter dependency for something this small.
+    image: alpine:3.20
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    volumes:
+      - ./observability/volume-exporter/entrypoint.sh:/entrypoint.sh:ro
+      - postgres_data:/volumes/postgres_data:ro
+      - minio_data:/volumes/minio_data:ro
+      - prometheus_data:/volumes/prometheus_data:ro
+      - loki_data:/volumes/loki_data:ro
+      - grafana_data:/volumes/grafana_data:ro
+
+  loki:
+    image: grafana/loki:latest
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki-config.yml"]
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+
+  promtail:
+    image: grafana/promtail:latest
+    restart: unless-stopped
+    command: ["-config.file=/etc/promtail/promtail-config.yml"]
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Read by datasources.yml's ${VAR} expansion (Grafana provisioning
+      # supports env-var interpolation) to point the read-only Postgres
+      # datasource at the same database the backend uses — no separate
+      # credential to manage for business-metrics dashboards.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-docmate}
+      POSTGRES_USER: ${POSTGRES_USER:-docmate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-docmate}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+      - postgres
+
 volumes:
   postgres_data:
   minio_data:
+  prometheus_data:
+  loki_data:
+  grafana_data:
