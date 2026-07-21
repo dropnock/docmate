@@ -7,6 +7,46 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-21
+
+### Added
+- Structured JSON logging with a per-request `X-Request-ID`, propagated
+  through validation-error and unhandled-exception handlers so a
+  client-visible error can be traced straight to its server-side log line.
+  Frontend `WorkspaceErrorBoundary` now reports caught render errors to a
+  new `POST /api/client-errors` endpoint instead of only being visible in
+  whoever's browser hit the crash.
+- Prometheus `/metrics` endpoint (prometheus-fastapi-instrumentator) plus
+  custom counters for record-lock conflicts and stale-task processing, and
+  a DB-aware `/health` check.
+- Full observability stack in `docker-compose.yml`: Prometheus, Loki,
+  Promtail, Grafana, cAdvisor (per-container CPU/memory/network/uptime),
+  and a small custom volume-exporter sidecar (cAdvisor can't see data
+  inside a mounted named volume, only each container's own writable
+  layer). Grafana also gets a read-only Postgres datasource, reusing the
+  backend's own DB credentials, for dashboards that need direct access to
+  app data rather than request/latency metrics.
+- Grafana dashboard: **Digitization Team Productivity** — per-project
+  ($project variable) records indexed/QA'ed/released, lots released,
+  quality rate, completion %, current/required daily throughput,
+  projected vs. proposed completion dates with an on-track status tile,
+  a 30-day actual-vs-projected completion trend, and per-user
+  productivity (Indexing in blue, Quality/QA in green). Mirrors
+  `analytics_service.py`'s existing `project_kpis()`/`burnup_chart_data()`
+  formulas so it can't silently disagree with what the app reports.
+- Grafana dashboard: **Container Infrastructure** — CPU, memory, and
+  uptime per container; real per-volume disk usage; network usage per
+  container plus a dedicated external-traffic panel for nginx, the sole
+  external-facing ingress/egress in this architecture.
+
+### Fixed
+- `stale_checker.py`'s `_tenant_id_for_task` was a hardcoded placeholder
+  returning 0, violating `audit_logs.tenant_id`'s FK constraint and
+  aborting the whole stale-check run's transaction — no tasks got flagged
+  or unlocked. `tenant_id` is now resolved once per task via
+  batch→project, before either write, same as the run's other audit event
+  already did.
+
 ## [0.3.6] - 2026-07-20
 
 ### Fixed
