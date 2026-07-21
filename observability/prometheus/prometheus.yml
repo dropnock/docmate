@@ -9,3 +9,18 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["backend:8000"]
+
+  - job_name: cadvisor
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: docmate-volumes
+    metrics_path: /metrics
+    # volume-exporter's busybox httpd serves the metrics file with no
+    # Content-Type header — Prometheus 3.x's scrape-protocol negotiation
+    # rejects that outright without this fallback telling it to assume
+    # plain Prometheus text exposition format instead.
+    fallback_scrape_protocol: PrometheusText0.0.4
+    static_configs:
+      - targets: ["volume-exporter:9101"]

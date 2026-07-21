@@ -15,3 +15,32 @@ datasources:
     access: proxy
     url: http://loki:3100
     editable: false
+
+  # Read-only access to the app database itself, for business/domain
+  # dashboards (project productivity, quality, throughput) that have no
+  # equivalent in Prometheus's request/latency metrics. Credentials come
+  # from the same POSTGRES_* env vars the backend uses (see grafana's
+  # environment block in docker-compose.yml) — Grafana expands ${VAR} in
+  # provisioning files against its own container's environment.
+  - name: PostgreSQL
+    uid: postgres
+    type: postgres
+    access: proxy
+    url: ${POSTGRES_HOST}:${POSTGRES_PORT}
+    user: ${POSTGRES_USER}
+    database: ${POSTGRES_DB}
+    jsonData:
+      # Grafana's newer grafana-postgresql-datasource plugin (default since
+      # Grafana ~10) reads the database name from here — the top-level
+      # `database` key above is legacy and silently ignored by it, which is
+      # why omitting this produces "no default database configured" even
+      # with `database` set.
+      database: ${POSTGRES_DB}
+      sslmode: disable
+      postgresVersion: 1600
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    secureJsonData:
+      password: ${POSTGRES_PASSWORD}
+    editable: false

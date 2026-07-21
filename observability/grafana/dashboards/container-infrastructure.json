@@ -1,0 +1,153 @@
+{
+  "id": null,
+  "uid": "docmate-container-infrastructure",
+  "title": "Container Infrastructure",
+  "tags": ["docmate", "infrastructure"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "container",
+        "label": "Container",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(container_last_seen{container_label_com_docker_compose_project=\"docmate\"}, container_label_com_docker_compose_service)",
+        "refresh": 2,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "current": {}
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU Usage",
+      "description": "Percent of one CPU core in use per container (cAdvisor container_cpu_usage_seconds_total, 1m rate). Can exceed 100% for a container using more than one core.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "percent", "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (container_label_com_docker_compose_service) (rate(container_cpu_usage_seconds_total{container_label_com_docker_compose_project=\"docmate\", container_label_com_docker_compose_service=~\"$container\"}[1m])) * 100",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Memory Usage",
+      "description": "Working set memory per container (cAdvisor container_memory_working_set_bytes) — the same figure the kernel's OOM killer looks at, not raw usage including reclaimable cache.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (container_label_com_docker_compose_service) (container_memory_working_set_bytes{container_label_com_docker_compose_project=\"docmate\", container_label_com_docker_compose_service=~\"$container\"})",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Volume Usage",
+      "description": "Real size of each persistent named volume (postgres_data, minio_data, prometheus_data, loki_data, grafana_data), measured directly via `du` in the volume-exporter sidecar. Not from cAdvisor — cAdvisor's per-container filesystem metrics only see each container's own writable layer, not data inside a mounted volume (verified: postgres_data is ~77MB on disk but cAdvisor reports ~68KB for the postgres container). Not scoped to $container — volumes aren't containers.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "bytes", "custom": { "lineWidth": 2, "fillOpacity": 10 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "docmate_volume_usage_bytes",
+          "legendFormat": "{{volume}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Container Uptime",
+      "description": "Time since each container last started (time() - container_start_time_seconds). A container that crash-looped and restarted recently shows a short uptime here even if the service has existed for a long time.",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 18 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 0 }, "overrides": [] },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "time() - container_start_time_seconds{container_label_com_docker_compose_project=\"docmate\", container_label_com_docker_compose_service=~\"$container\"}",
+          "legendFormat": "{{container_label_com_docker_compose_service}}",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Network Usage — All Containers",
+      "description": "Total network I/O per container (receive + transmit, cAdvisor container_network_*_bytes_total). This is everything on each container's network interface — cAdvisor can't distinguish traffic that crossed the host boundary from ordinary container-to-container chatter on the docker network. See 'External Network Traffic (nginx)' alongside this for genuinely external-only visibility.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "Bps", "custom": { "lineWidth": 2 } }, "overrides": [] },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (container_label_com_docker_compose_service) (rate(container_network_receive_bytes_total{container_label_com_docker_compose_project=\"docmate\", container_label_com_docker_compose_service=~\"$container\"}[1m]) + rate(container_network_transmit_bytes_total{container_label_com_docker_compose_project=\"docmate\", container_label_com_docker_compose_service=~\"$container\"}[1m]))",
+          "legendFormat": "{{container_label_com_docker_compose_service}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "External Network Traffic (nginx)",
+      "description": "nginx is the sole external-facing entry/exit point in this stack — TLS termination and reverse proxy for both portals, auth, and S3 (see CLAUDE.md) — so its network traffic is, in practice, the real external traffic, unlike the all-containers panel alongside it which mixes in internal docker-network chatter. Fixed to nginx regardless of the $container filter above.",
+      "type": "timeseries",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": { "unit": "Bps", "custom": { "lineWidth": 2 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Inbound (from clients)" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Outbound (to clients)" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(container_network_receive_bytes_total{container_label_com_docker_compose_project=\"docmate\", container_label_com_docker_compose_service=\"nginx\"}[1m])",
+          "legendFormat": "Inbound (from clients)"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "rate(container_network_transmit_bytes_total{container_label_com_docker_compose_project=\"docmate\", container_label_com_docker_compose_service=\"nginx\"}[1m])",
+          "legendFormat": "Outbound (to clients)"
+        }
+      ]
+    }
+  ]
+}
