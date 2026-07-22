@@ -20,7 +20,7 @@
         "sort": 1,
         "multi": true,
         "includeAll": true,
-        "current": {}
+        "current": { "text": "All", "value": ["$__all"] }
       }
     ]
   },
