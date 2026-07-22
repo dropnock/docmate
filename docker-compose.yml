@@ -219,7 +219,21 @@ services:
     # panels come back empty. Deliberately NOT used for volume/storage
     # usage — cAdvisor only sees each container's own writable layer, not
     # data inside a mounted named volume (see volume-exporter below).
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    #
+    # Pinned >= v0.54.0: earlier cAdvisor (we shipped v0.49.1 initially)
+    # can't read Docker's containerd-snapshotter image store (Docker Engine's
+    # newer default on some hosts — check `docker info --format
+    # '{{.DriverStatus}}'` for `driver-type: io.containerd.snapshotter.v1`).
+    # It fails per-container with "failed to identify the read-write layer
+    # ID ... layerdb/mounts/<id>/mount-id: no such file or directory" and
+    # silently falls back to reporting only generic host systemd cgroups
+    # instead of real containers — every Container Infrastructure dashboard
+    # panel goes empty with no error anywhere. Fixed by
+    # https://github.com/google/cadvisor/pull/3709, first released in v0.54.0.
+    # gcr.io/cadvisor/cadvisor only ever published versions before v0.53.0 —
+    # v0.53.0+ moved to ghcr.io/google/cadvisor (note: no repeated
+    # "/cadvisor" in the ghcr.io path, unlike the old gcr.io one).
+    image: ghcr.io/google/cadvisor:v0.60.5
     restart: unless-stopped
     volumes:
       - /:/rootfs:ro
