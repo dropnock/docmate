@@ -206,6 +206,7 @@ Add the following to your hosts file, pointing at wherever Docker is reachable (
 127.0.0.1  www.docmate.local
 127.0.0.1  digitizing.docmate.local
 127.0.0.1  auth.docmate.local
+127.0.0.1  grafana.docmate.local
 127.0.0.1  acme-archive.docmate.local
 ```
 
@@ -229,7 +230,8 @@ Add the following to your hosts file, pointing at wherever Docker is reachable (
 | **MinIO Console** | http://localhost:9001 | S3-compatible object store UI |
 | **Direct DE frontend** | http://localhost:5173 | Bypasses nginx/TLS entirely (fast iteration; portal header enforcement doesn't apply) |
 | **Direct Customer frontend** | http://localhost:5174 | Bypasses nginx/TLS entirely (fast iteration; portal header enforcement doesn't apply) |
-| **Grafana** | http://localhost:3000 | Dashboards + log search — user `admin`, password from `GRAFANA_ADMIN_PASSWORD` |
+| **Grafana** | https://grafana.docmate.local | Dashboards + log search — user `admin`, password from `GRAFANA_ADMIN_PASSWORD` |
+| **Grafana (no TLS setup)** | http://localhost:3000 | Same Grafana, works without hosts-file/cert setup |
 
 ---
 
@@ -533,7 +535,7 @@ portals.
 
 The backend emits structured (JSON) logs, exposes Prometheus metrics, and every request gets a correlation ID — Grafana, backed by Prometheus (metrics) and Loki (logs, shipped by Promtail from every container's stdout), is the place to look at all of it. All four run as part of `docker-compose.yml`; nothing extra to install.
 
-**Grafana** — http://localhost:3000, user `admin`, password from `GRAFANA_ADMIN_PASSWORD` (`.env`). Prometheus and Loki are pre-provisioned as datasources (no manual setup), and a starter "DocMate Backend Overview" dashboard ships out of the box: request rate, 5xx error rate, and p95 latency by route, a `docmate_lock_conflicts_total` counter (record-lock 409s), and a live log panel filtered to backend errors.
+**Grafana** — https://grafana.docmate.local (or http://localhost:3000 without hosts-file/cert setup), user `admin`, password from `GRAFANA_ADMIN_PASSWORD` (`.env`). Prometheus and Loki are pre-provisioned as datasources (no manual setup), and a starter "DocMate Backend Overview" dashboard ships out of the box: request rate, 5xx error rate, and p95 latency by route, a `docmate_lock_conflicts_total` counter (record-lock 409s), and a live log panel filtered to backend errors.
 
 **Correlating a user-reported error back to logs** — every backend response carries an `X-Request-ID` header, and any 4xx/5xx JSON body includes the same value as `request_id`. A user (or the browser console, which logs it on every failed API call — see `shared/api/client.ts`) can hand you that ID, and it's directly searchable: `docker-compose logs -f backend | grep <id>`, or in Grafana's Loki panel: `{service="backend"} |= "<id>"`.
 
@@ -541,7 +543,7 @@ The backend emits structured (JSON) logs, exposes Prometheus metrics, and every 
 
 **The background stale-checker job** (APScheduler, runs every 15 minutes — see `backend/app/background/stale_checker.py`) now logs on start/completion/failure with a count of tasks processed; previously it ran completely silently in both the success and failure case.
 
-**Security note**: Grafana is exposed on host port 3000 with its own login, but is **not** proxied through nginx or otherwise hardened for public exposure. Don't leave port 3000 open to the internet in production — restrict it via firewall rules, a VPN, or an SSH tunnel. That restriction is a deployment-time decision and isn't configured by anything in this repo.
+**Security note**: Grafana is proxied through nginx over TLS at `grafana.docmate.local` like the rest of the stack, but it's also still exposed directly on host port 3000 (plain HTTP, no hosts-file/cert setup needed) — both paths land on the same login. Neither is hardened for public exposure beyond Grafana's own auth. Don't leave either reachable from the internet in production — restrict at the network level (firewall rules, a VPN, or an SSH tunnel), and consider dropping the port 3000 mapping entirely once the nginx route is in place. That restriction is a deployment-time decision and isn't configured by anything in this repo.
 
 Config for all four services lives under `observability/` (`prometheus/`, `loki/`, `promtail/`, `grafana/provisioning/` + `grafana/dashboards/`), mirroring the "config lives next to the thing it configures" convention already used by `nginx/`.
 

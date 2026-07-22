@@ -15,6 +15,14 @@ http {
     # proxying to the old dead IP until it's manually restarted.
     resolver 127.0.0.11 valid=10s;
 
+    # For the Grafana block below: only send "Connection: upgrade" on an
+    # actual WebSocket request (Grafana Live) — sending it unconditionally
+    # would send a nonstandard header on every ordinary HTTP request too.
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        ''      close;
+    }
+
     # Keycloak's SameSite=None session cookie requires Secure, which browsers
     # only honor over HTTPS on a non-localhost hostname — so the configured
     # wildcard domain (CUSTOMER_DOMAIN) must be served over TLS or login
@@ -126,11 +134,34 @@ http {
         }
     }
 
-    # ── Protect www/digitizing, auth, and s3 on port 8080 ─────────────────────
+    # ── Grafana ─────────────────────────────────────────────────────────────────
+    # Still also reachable directly on host port 3000 (see docker-compose.yml) —
+    # this is a TLS-fronted alternative under the same wildcard domain as
+    # everything else, not a replacement. Grafana Live (dashboard auto-refresh
+    # push) needs the WebSocket upgrade headers below or it silently falls back
+    # to polling.
+    server {
+        listen 443 ssl;
+        server_name ${GRAFANA_HOSTNAME};
+
+        location / {
+            set $grafana_upstream http://grafana:3000;
+            proxy_pass $grafana_upstream;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection $connection_upgrade;
+        }
+    }
+
+    # ── Protect www/digitizing, auth, s3, and grafana on port 8080 ────────────
     # Exact names always beat the customer wildcard regex below.
     server {
         listen 8080;
-        server_name ${DE_HOSTNAMES} ${AUTH_HOSTNAME} ${S3_HOSTNAME};
+        server_name ${DE_HOSTNAMES} ${AUTH_HOSTNAME} ${S3_HOSTNAME} ${GRAFANA_HOSTNAME};
         return 444;
     }
 

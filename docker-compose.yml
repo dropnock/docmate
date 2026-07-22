@@ -166,6 +166,7 @@ services:
       - frontend-de
       - frontend-cust
       - minio
+      - grafana
     environment:
       # Rendered into nginx.conf from nginx.conf.template via the official
       # image's built-in envsubst-on-templates entrypoint step. The output
@@ -176,6 +177,7 @@ services:
       AUTH_HOSTNAME: ${AUTH_HOSTNAME:-auth.docmate.local}
       CUSTOMER_DOMAIN: ${CUSTOMER_DOMAIN:-docmate.local}
       S3_HOSTNAME: ${S3_HOSTNAME:-s3.docmate.local}
+      GRAFANA_HOSTNAME: ${GRAFANA_HOSTNAME:-grafana.docmate.local}
     ports:
       - "80:80"      # Digitizing Entity portal
       - "443:443"    # TLS (required for Keycloak's Secure session cookie)
