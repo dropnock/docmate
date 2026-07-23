@@ -90,7 +90,10 @@ export interface Batch {
 export interface RecordsDashboard {
   batches_indexed: number;
   batches_qa_completed: number;
-  total_records: number;
+  batches_to_be_qad: number;
+  total_records_indexed: number;
+  total_records_qad: number;
+  total_records_remaining: number;
   records_withdrawn: number;
   records_illegible: number;
 }

@@ -251,6 +251,12 @@ _BATCHES_INDEXED_STATUSES = (
 _BATCHES_QA_COMPLETED_STATUSES = (
     BatchStatus.customer_qc, BatchStatus.passed, BatchStatus.rejected, BatchStatus.complete,
 )
+_BATCHES_TO_BE_QA_STATUSES = (BatchStatus.qa_review,)
+
+# Same "complete" line project_kpis() draws (qa_passed or beyond) — reused
+# here so the two dashboards can never silently disagree on what counts as
+# QA'd.
+_RECORDS_QAD_STATUSES = (RecordStatus.qa_passed, RecordStatus.qc_pending, RecordStatus.qc_passed)
 
 
 async def records_dashboard(
@@ -263,14 +269,18 @@ async def records_dashboard(
     from app.models.cabinet import Cabinet
 
     def _batch_count(statuses: tuple[BatchStatus, ...]):
+        # Filtered on created_at, not completed_at — a batch sitting in
+        # qa_review/customer_qc has no completed_at yet, which would
+        # silently exclude every still-in-progress batch from any date
+        # range (see the History tab's identical fix).
         q = select(func.count(Batch.id)).where(
             Batch.project_id == project_id,
             Batch.status.in_(statuses),
         )
         if date_from:
-            q = q.where(Batch.completed_at >= datetime.combine(date_from, datetime.min.time()))
+            q = q.where(Batch.created_at >= datetime.combine(date_from, datetime.min.time()))
         if date_to:
-            q = q.where(Batch.completed_at <= datetime.combine(date_to, datetime.max.time()))
+            q = q.where(Batch.created_at <= datetime.combine(date_to, datetime.max.time()))
         return q
 
     batches_indexed_q = await db.execute(_batch_count(_BATCHES_INDEXED_STATUSES))
@@ -279,12 +289,36 @@ async def records_dashboard(
     batches_qa_completed_q = await db.execute(_batch_count(_BATCHES_QA_COMPLETED_STATUSES))
     batches_qa_completed = batches_qa_completed_q.scalar() or 0
 
+    batches_to_be_qad_q = await db.execute(_batch_count(_BATCHES_TO_BE_QA_STATUSES))
+    batches_to_be_qad = batches_to_be_qad_q.scalar() or 0
+
+    # Record-level counts are real-time snapshots, not date-filtered — we
+    # don't track a per-record "entered this status at" timestamp (only a
+    # per-batch one, via completed_at/audit_logs), so there's no meaningful
+    # way to scope these to a date range.
     total_q = await db.execute(
         select(func.count(Record.id))
         .join(Cabinet, Record.cabinet_id == Cabinet.id)
         .where(Cabinet.project_id == project_id)
     )
     total_records = total_q.scalar() or 0
+
+    indexed_q = await db.execute(
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(
+            Cabinet.project_id == project_id,
+            Record.status.notin_([RecordStatus.pending, RecordStatus.indexing]),
+        )
+    )
+    total_records_indexed = indexed_q.scalar() or 0
+
+    qad_q = await db.execute(
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(Cabinet.project_id == project_id, Record.status.in_(_RECORDS_QAD_STATUSES))
+    )
+    total_records_qad = qad_q.scalar() or 0
 
     withdrawn_q = await db.execute(
         select(func.count(Record.id))
@@ -303,7 +337,10 @@ async def records_dashboard(
     return {
         "batches_indexed": batches_indexed,
         "batches_qa_completed": batches_qa_completed,
-        "total_records": total_records,
+        "batches_to_be_qad": batches_to_be_qad,
+        "total_records_indexed": total_records_indexed,
+        "total_records_qad": total_records_qad,
+        "total_records_remaining": total_records - total_records_qad,
         "records_withdrawn": records_withdrawn,
         "records_illegible": records_illegible,
     }

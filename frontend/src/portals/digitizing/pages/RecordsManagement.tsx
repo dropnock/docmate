@@ -65,13 +65,30 @@ function DashboardTab({ projectId }: { projectId: number }) {
     refetchInterval: 60_000,
   });
 
-  const tiles = [
+  const batchTiles = [
     { title: "Batches Indexed", value: data?.batches_indexed },
     { title: "Batches QA'd", value: data?.batches_qa_completed },
-    { title: "Total Records", value: data?.total_records },
+    { title: "Batches to be QA'd", value: data?.batches_to_be_qad },
+  ];
+  const recordTiles = [
+    { title: "Total Records Indexed", value: data?.total_records_indexed },
+    { title: "Total Records QA'd", value: data?.total_records_qad },
+    { title: "Total Records Remaining", value: data?.total_records_remaining },
     { title: "Records Withdrawn", value: data?.records_withdrawn },
     { title: "Records Illegible", value: data?.records_illegible },
   ];
+
+  const renderTiles = (tiles: typeof batchTiles) => (
+    <Row gutter={[16, 16]}>
+      {tiles.map((tile) => (
+        <Col key={tile.title} xs={24} sm={12} md={8} lg={6}>
+          <Card>
+            <Statistic title={tile.title} value={tile.value ?? 0} />
+          </Card>
+        </Col>
+      ))}
+    </Row>
+  );
 
   return (
     <div>
@@ -79,17 +96,19 @@ function DashboardTab({ projectId }: { projectId: number }) {
         <RangePicker value={range as never} onChange={(v) => setRange(v as DateRange)} allowClear />
       </Space>
       {isLoading ? (
-        <PageSkeleton variant="cards" count={5} />
+        <PageSkeleton variant="cards" count={8} />
       ) : (
-        <Row gutter={[16, 16]}>
-          {tiles.map((tile) => (
-            <Col key={tile.title} xs={24} sm={12} md={8} lg={6}>
-              <Card>
-                <Statistic title={tile.title} value={tile.value ?? 0} />
-              </Card>
-            </Col>
-          ))}
-        </Row>
+        <>
+          <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+            Batches created in the selected range
+          </Typography.Text>
+          {renderTiles(batchTiles)}
+
+          <Typography.Text type="secondary" style={{ display: "block", margin: "20px 0 8px" }}>
+            Records — current totals, not affected by the date range
+          </Typography.Text>
+          {renderTiles(recordTiles)}
+        </>
       )}
     </div>
   );
