@@ -116,10 +116,14 @@ async def list_batches(
     query = select(Batch).where(Batch.project_id == project_id)
     if status is not None:
         query = query.where(Batch.status == status)
+    # Filtered on created_at (when the batch was created/began indexing), not
+    # completed_at — most batches sit in an in-progress status for a while,
+    # and completed_at is NULL until they reach a terminal status, which
+    # would silently exclude every still-active batch from any date range.
     if date_from is not None:
-        query = query.where(Batch.completed_at >= date_from)
+        query = query.where(Batch.created_at >= date_from)
     if date_to is not None:
-        query = query.where(Batch.completed_at <= date_to)
+        query = query.where(Batch.created_at <= date_to)
     result = await db.execute(query)
     batches = list(result.scalars().all())
     batches = await _attach_indexer_names(db, batches)
