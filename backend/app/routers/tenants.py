@@ -147,7 +147,6 @@ async def create_project(
         name=body.name,
         description=body.description,
         proposed_end_date=body.proposed_end_date,
-        stale_threshold_hours=body.stale_threshold_hours,
         s3_bucket_status=S3BucketStatus.provisioning,
     )
     db.add(project)

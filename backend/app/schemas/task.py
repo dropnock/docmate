@@ -22,7 +22,6 @@ class TaskOut(BaseModel):
     task_type: str
     assigned_to: int | None
     status: str
-    due_at: datetime | None
     started_at: datetime | None
     completed_at: datetime | None
     processing_time_seconds: int | None

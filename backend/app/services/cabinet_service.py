@@ -15,7 +15,6 @@ from app.models.cabinet import Cabinet
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.services import audit_service, image_service, s3_service, staff_assignment_service
-from app.services.task_service import _get_stale_hours
 
 logger = logging.getLogger(__name__)
 
@@ -245,16 +244,10 @@ async def create_indexing_batch(
     tenant_id: int,
 ) -> Batch:
     """Create an indexing batch from selected cabinet records and assign tasks."""
-    from datetime import timedelta
-    from app.models.project import Project
-
     if not record_ids:
         raise HTTPException(status_code=400, detail="record_ids must not be empty")
 
     cabinet = await get_cabinet(db, cabinet_id=cabinet_id, tenant_id=tenant_id)
-    project = await db.get(Project, project_id)
-    stale_hours = project.stale_threshold_hours if project else 24
-    due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
 
     await staff_assignment_service.require_shift_role_for_task_type(
         db, user_id=agent_id, project_id=project_id, task_type=TaskType.indexing,
@@ -307,7 +300,6 @@ async def create_indexing_batch(
             assigned_to=agent_id,
             assigned_by=supervisor_id,
             status=TaskStatus.pending,
-            due_at=due_at,
         )
         db.add(task)
 

@@ -1,6 +1,4 @@
-"""Task assignment, bulk-reassign, and stale detection tests."""
-from datetime import datetime, timedelta
-
+"""Task assignment and bulk-reassign tests."""
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,7 +19,6 @@ class TestTaskAssignment:
         assert task.id is not None
         assert task.assigned_to == seed["indexer"].id
         assert task.status == TaskStatus.pending
-        assert task.due_at is not None
 
     async def test_start_task_acquires_lock(self, db: AsyncSession, seed):
         task = await task_service.assign_task(
@@ -512,35 +509,3 @@ class TestBulkReassign:
         data = resp.json()
         assert len(data) == 2
         assert all(t["assigned_to"] == seed["indexer2"].id for t in data)
-
-
-class TestStaleTaskDetection:
-    async def test_get_stale_tasks_returns_overdue(self, db: AsyncSession, seed):
-        task = await task_service.assign_task(
-            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
-            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
-            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
-        )
-        await db.flush()
-
-        # Backdate due_at to the past to simulate a stale task
-        task.due_at = datetime.utcnow() - timedelta(hours=1)
-        await db.flush()
-
-        stale = await task_service.get_stale_tasks(
-            db, project_id=seed["project"].id, tenant_id=seed["tenant"].id
-        )
-        assert any(t.id == task.id for t in stale)
-
-    async def test_non_overdue_task_not_in_stale_list(self, db: AsyncSession, seed):
-        task = await task_service.assign_task(
-            db, record_id=seed["record"].id, batch_id=seed["batch"].id,
-            task_type=TaskType.indexing, agent_id=seed["indexer"].id,
-            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
-        )
-        await db.flush()
-        # due_at defaults to now + stale_threshold (8h) → not stale yet
-        stale = await task_service.get_stale_tasks(
-            db, project_id=seed["project"].id, tenant_id=seed["tenant"].id
-        )
-        assert not any(t.id == task.id for t in stale)

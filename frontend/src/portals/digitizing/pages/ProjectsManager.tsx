@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Table, Button, Modal, Form, Input, InputNumber,
+  Table, Button, Modal, Form, Input,
   DatePicker, Select, message, Space,
 } from "antd";
 import { Plus, FolderOpen, Pencil } from "lucide-react";
@@ -88,7 +88,6 @@ export default function ProjectsManager({ onOpen }: Props) {
       name: project.name,
       description: project.description,
       proposed_end_date: project.proposed_end_date ? dayjs(project.proposed_end_date) : null,
-      stale_threshold_hours: project.stale_threshold_hours,
     });
     setEditOpen(true);
   };
@@ -201,9 +200,6 @@ export default function ProjectsManager({ onOpen }: Props) {
           <Form.Item name="proposed_end_date" label="Proposed End Date">
             <DatePicker style={{ width: "100%" }} />
           </Form.Item>
-          <Form.Item name="stale_threshold_hours" label="Stale Threshold (hours)" initialValue={8}>
-            <InputNumber min={1} style={{ width: "100%" }} />
-          </Form.Item>
         </Form>
       </Modal>
 
@@ -225,9 +221,6 @@ export default function ProjectsManager({ onOpen }: Props) {
           </Form.Item>
           <Form.Item name="proposed_end_date" label="Proposed End Date">
             <DatePicker style={{ width: "100%" }} />
-          </Form.Item>
-          <Form.Item name="stale_threshold_hours" label="Stale Threshold (hours)">
-            <InputNumber min={1} style={{ width: "100%" }} />
           </Form.Item>
         </Form>
       </Modal>

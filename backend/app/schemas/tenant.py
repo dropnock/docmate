@@ -35,14 +35,12 @@ class ProjectCreate(BaseModel):
     name: str
     description: str | None = None
     proposed_end_date: date | None = None
-    stale_threshold_hours: float = 8.0
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     proposed_end_date: date | None = None
-    stale_threshold_hours: float | None = None
 
 
 class ProjectOut(BaseModel):
@@ -56,4 +54,3 @@ class ProjectOut(BaseModel):
     proposed_end_date: date | None
     s3_bucket_name: str | None
     s3_bucket_status: str
-    stale_threshold_hours: float

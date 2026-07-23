@@ -1,6 +1,7 @@
 import enum
+from datetime import datetime
 
-from sqlalchemy import Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -38,6 +39,7 @@ class Batch(Base, TimestampMixin):
     )
     aql_level_snapshot: Mapped[float | None] = mapped_column(Float, nullable=True)
     aql_sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     project: Mapped["Project"] = relationship(back_populates="batches")
     cabinet: Mapped["Cabinet | None"] = relationship(backref="batches")

@@ -18,7 +18,6 @@ class TaskStatus(str, enum.Enum):
     in_progress = "in_progress"
     completed = "completed"
     failed = "failed"
-    stale = "stale"
 
 
 class Task(Base, TimestampMixin):
@@ -33,7 +32,6 @@ class Task(Base, TimestampMixin):
     status: Mapped[TaskStatus] = mapped_column(
         Enum(TaskStatus), default=TaskStatus.pending, nullable=False, index=True
     )
-    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processing_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)

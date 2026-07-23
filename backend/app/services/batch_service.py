@@ -1,5 +1,5 @@
 """Batch state machine — all transitions are explicit methods."""
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -226,8 +226,6 @@ async def auto_advance_to_qa(
     record is indexed/withdrawn/ineligible/excluded/lapsed/illegible —
     performed_by is theirs.
     performed_by is None only for callers with no attributable user."""
-    from app.models.project import Project
-
     batch = await db.get(Batch, batch_id)
     if not batch or batch.status != BatchStatus.indexing:
         return batch  # Already advanced or wrong state
@@ -240,10 +238,6 @@ async def auto_advance_to_qa(
     )
 
     # Create QA tasks for every record in the batch
-    project = await db.get(Project, batch.project_id)
-    stale_hours = project.stale_threshold_hours if project else 24
-    due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
-
     # Skipped records (withdrawn/ineligible/legacy disqualified — see
     # task_service.skip_task) never get a QA task — there's nothing indexed
     # to review.
@@ -261,7 +255,6 @@ async def auto_advance_to_qa(
             batch_id=batch_id,
             task_type=TaskType.qa,
             status=TaskStatus.pending,
-            due_at=due_at,
         ))
 
     await db.flush()
@@ -277,8 +270,6 @@ async def assign_qa_agent(
     tenant_id: int,
 ) -> Batch:
     """Assign all unassigned QA tasks in the batch to a single QA agent."""
-    from app.models.project import Project
-
     batch = await db.get(Batch, batch_id)
     if not batch or batch.status != BatchStatus.qa_review:
         raise HTTPException(status_code=400, detail="Batch must be in qa_review to assign QA agent")
@@ -286,10 +277,6 @@ async def assign_qa_agent(
     await staff_assignment_service.require_shift_role_for_task_type(
         db, user_id=agent_id, project_id=batch.project_id, task_type=TaskType.qa,
     )
-
-    project = await db.get(Project, batch.project_id)
-    stale_hours = project.stale_threshold_hours if project else 24
-    due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
 
     tasks_result = await db.execute(
         select(Task).where(
@@ -301,7 +288,6 @@ async def assign_qa_agent(
     for task in tasks_result.scalars().all():
         task.assigned_to = agent_id
         task.assigned_by = supervisor_id
-        task.due_at = due_at
 
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.task, entity_id=batch_id,
@@ -322,9 +308,44 @@ async def mark_complete(
     if not batch:
         return batch
     batch.status = BatchStatus.complete
+    batch.completed_at = datetime.now(timezone.utc)
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.batch, entity_id=batch_id,
         action=AuditAction.status_changed, performed_by=None,
         old_value={"status": "qa_review"}, new_value={"status": "complete"},
     )
     return batch
+
+
+async def reassign_batch(
+    db: AsyncSession,
+    *,
+    batch_id: int,
+    task_type: TaskType,
+    new_agent_id: int,
+    supervisor_id: int,
+    tenant_id: int,
+) -> list[Task]:
+    """Reassigns every still-actionable (pending/in_progress) task of the
+    given type in this batch to a new agent — completed tasks are left
+    alone. Delegates to task_service.reassign_task per task (same approach
+    as task_service.bulk_reassign, just sourced by batch+type instead of an
+    explicit id list) so lock release, shift-role validation, and the
+    'reassigned' audit event all stay in one place."""
+    from app.services import task_service
+
+    tasks_result = await db.execute(
+        select(Task).where(
+            Task.batch_id == batch_id,
+            Task.task_type == task_type,
+            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+        )
+    )
+    task_ids = [t.id for t in tasks_result.scalars().all()]
+    return [
+        await task_service.reassign_task(
+            db, task_id=tid, new_agent_id=new_agent_id,
+            supervisor_id=supervisor_id, tenant_id=tenant_id,
+        )
+        for tid in task_ids
+    ]

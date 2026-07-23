@@ -15,7 +15,6 @@ const STATUS_LABEL: Record<string, string> = {
   in_progress: "In Progress",
   completed: "Completed",
   failed: "Failed",
-  stale: "Stale",
 };
 
 const TASK_TYPE_LABEL: Record<string, string> = {
@@ -319,7 +318,6 @@ export default function MyTasks() {
                           filled={task.status === "completed"}
                           label={STATUS_LABEL[task.status] ?? task.status}
                         />
-                        {task.due_at && ` · Due ${new Date(task.due_at).toLocaleString()}`}
                       </Typography.Text>
                     }
                   />

@@ -48,7 +48,7 @@ Core features:
 - **AQL acceptance sampling** — full ISO 2859-1 Inspection Level II table; auto-escalation (normal → tightened → reduced)
 - **Full audit trail** — every state change, lock, assignment, submission, and version is logged to an append-only `audit_logs` table
 - **Analytics** — staff productivity metrics, project KPI dashboards, burn-up "path to completion" chart
-- **Stale task detection** — APScheduler job clears locks and flags overdue tasks every 15 minutes
+- **Records Management** — dashboard of batch/record counts plus a filterable, date-ranged batch history with per-batch reassignment to a different indexer/QA agent
 - **S3-compatible file storage** — MinIO (dev) or AWS S3 (prod); presigned upload and view URLs
 - **Unified design system** — single primary/slate palette, `lucide-react` icons, self-hosted Inter/JetBrains Mono fonts, responsive down to mobile (collapsible nav drawer, card-based tables)
 
@@ -110,8 +110,6 @@ backend/app/
 │   ├── analytics_service.py         # productivity + KPI + burnup queries
 │   ├── keycloak_service.py          # per-tenant realm/client provisioning, Keycloak user management
 │   └── s3_service.py                # bucket provisioning + presigned URLs
-└── background/
-    └── stale_checker.py      # APScheduler: stale task detection every 15 min
 ```
 
 ### Frontend layout
@@ -120,8 +118,8 @@ backend/app/
 frontend/src/
 ├── portals/
 │   ├── digitizing/pages/     # Organisations, Projects, Cabinets, Cabinet Assignment, Lots,
-│   │                         # Staff Assignment, Shifts, Users, My Tasks, Stale Tasks,
-│   │                         # Staff Productivity, Project KPIs, Record History
+│   │                         # Staff Assignment, Shifts, Users, My Tasks,
+│   │                         # Staff Productivity, Project KPIs, Records Management
 │   └── customer/pages/       # Lots (QC sampling), QC Workspace, Project KPIs, Record History
 └── shared/
     ├── components/
@@ -485,7 +483,7 @@ Run with `--dry-run` first to preview what would be uploaded without writing any
 
 - **Staff Productivity** — per-agent metrics: records today, avg processing time, error rate
 - **Project KPIs** — completion %, projected end date vs proposed, "Path to Completion" burn-up chart
-- **Stale Tasks** — tasks overdue beyond the project's stale threshold; bulk or individual reassignment
+- **Records Management** — dashboard of batches indexed/QA'd, total/withdrawn/illegible records; a date-ranged, filterable batch history with reassignment to a different indexer/QA agent
 
 ---
 
@@ -497,7 +495,6 @@ Run with `--dry-run` first to preview what would be uploaded without writing any
 | Database | PostgreSQL 16 |
 | Identity | Keycloak 24 (OIDC + PKCE via `keycloak-js`, one realm per tenant organisation) |
 | File storage | MinIO (dev) / AWS S3 (prod) via `boto3` |
-| Background jobs | APScheduler (stale task detection) |
 | Frontend | React 18 · TypeScript · Vite (multi-page build) |
 | UI components | Ant Design 5 (themed via `ConfigProvider` — single primary/slate palette) |
 | Icons | lucide-react |
@@ -540,8 +537,6 @@ The backend emits structured (JSON) logs, exposes Prometheus metrics, and every 
 **Correlating a user-reported error back to logs** — every backend response carries an `X-Request-ID` header, and any 4xx/5xx JSON body includes the same value as `request_id`. A user (or the browser console, which logs it on every failed API call — see `shared/api/client.ts`) can hand you that ID, and it's directly searchable: `docker-compose logs -f backend | grep <id>`, or in Grafana's Loki panel: `{service="backend"} |= "<id>"`.
 
 **Frontend crashes** — `WorkspaceErrorBoundary` reports any React crash it catches to the backend (`POST /api/client-errors`), so they land in the same log stream as backend errors instead of only being visible in whoever's browser hit them. Requires the user to have a valid session — a crash caused by a broken auth token won't be reported, an accepted gap rather than an unauthenticated endpoint.
-
-**The background stale-checker job** (APScheduler, runs every 15 minutes — see `backend/app/background/stale_checker.py`) now logs on start/completion/failure with a count of tasks processed; previously it ran completely silently in both the success and failure case.
 
 **Security note**: Grafana is proxied through nginx over TLS at `grafana.docmate.local` like the rest of the stack, but it's also still exposed directly on host port 3000 (plain HTTP, no hosts-file/cert setup needed) — both paths land on the same login. Neither is hardened for public exposure beyond Grafana's own auth. Don't leave either reachable from the internet in production — restrict at the network level (firewall rules, a VPN, or an SSH tunnel), and consider dropping the port 3000 mapping entirely once the nginx route is in place. That restriction is a deployment-time decision and isn't configured by anything in this repo.
 

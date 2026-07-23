@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -7,15 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import check_project_access, get_current_user, require_roles
-from app.models.batch import Batch
+from app.models.batch import Batch, BatchStatus
 from app.models.document_type import DocumentType
 from app.models.project import Project
 from app.models.record import Record
 from app.models.task import Task, TaskType
 from app.models.user import User
 from app.schemas.batch import (
-    BatchOut, DocumentTypeCreate, DocumentTypeOut, RecordOut,
+    BatchOut, BatchReassignRequest, DocumentTypeCreate, DocumentTypeOut, RecordOut,
 )
+from app.schemas.task import TaskOut
 from app.services import batch_service, image_service, s3_service
 
 router = APIRouter(prefix="/api", tags=["batches"])
@@ -84,19 +86,66 @@ async def _attach_indexer_names(db: AsyncSession, batches: list[Batch]) -> list[
     return batches
 
 
+async def _attach_record_counts(db: AsyncSession, batches: list[Batch]) -> list[Batch]:
+    batch_ids = [b.id for b in batches]
+    if not batch_ids:
+        return batches
+
+    counts = await db.execute(
+        select(Record.batch_id, func.count())
+        .where(Record.batch_id.in_(batch_ids))
+        .group_by(Record.batch_id)
+    )
+    count_by_batch = dict(counts.all())
+    for b in batches:
+        b.record_count = count_by_batch.get(b.id, 0)
+    return batches
+
+
 @router.get("/projects/{project_id}/batches", response_model=list[BatchOut])
 async def list_batches(
     project_id: int,
+    status: BatchStatus | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     project = await db.get(Project, project_id)
     check_project_access(project, current_user)
-    result = await db.execute(
-        select(Batch).where(Batch.project_id == project_id)
-    )
+    query = select(Batch).where(Batch.project_id == project_id)
+    if status is not None:
+        query = query.where(Batch.status == status)
+    if date_from is not None:
+        query = query.where(Batch.completed_at >= date_from)
+    if date_to is not None:
+        query = query.where(Batch.completed_at <= date_to)
+    result = await db.execute(query)
     batches = list(result.scalars().all())
-    return await _attach_indexer_names(db, batches)
+    batches = await _attach_indexer_names(db, batches)
+    return await _attach_record_counts(db, batches)
+
+
+@router.post("/batches/{batch_id}/reassign", response_model=list[TaskOut])
+async def reassign_batch(
+    batch_id: int,
+    body: BatchReassignRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
+):
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    project = await db.get(Project, batch.project_id)
+    check_project_access(project, current_user)
+    return await batch_service.reassign_batch(
+        db,
+        batch_id=batch_id,
+        task_type=TaskType(body.task_type),
+        new_agent_id=body.agent_id,
+        supervisor_id=current_user.id,
+        tenant_id=current_user._tenant_id,
+    )
 
 
 @router.get("/batches/{batch_id}", response_model=BatchOut)

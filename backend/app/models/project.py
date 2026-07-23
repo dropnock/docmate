@@ -1,7 +1,7 @@
 import enum
 from datetime import date
 
-from sqlalchemy import Date, Enum, Float, ForeignKey, Integer, String
+from sqlalchemy import Date, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -27,8 +27,6 @@ class Project(Base, TimestampMixin):
     s3_bucket_status: Mapped[S3BucketStatus] = mapped_column(
         Enum(S3BucketStatus), default=S3BucketStatus.provisioning, nullable=False
     )
-    stale_threshold_hours: Mapped[float] = mapped_column(Float, default=8.0, nullable=False)
-
     tenant: Mapped["Tenant"] = relationship(back_populates="projects")
     digitizing_org: Mapped["Organization"] = relationship(foreign_keys=[digitizing_org_id])
     customer_org: Mapped["Organization"] = relationship(foreign_keys=[customer_org_id])

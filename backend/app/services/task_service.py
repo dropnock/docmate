@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select, update
@@ -6,17 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch, BatchStatus, BatchType
-from app.models.project import Project
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.services import audit_service, staff_assignment_service
 from app.services.lock_service import acquire_lock, release_lock
-
-
-async def _get_stale_hours(db: AsyncSession, batch_id: int) -> float:
-    batch = await db.get(Batch, batch_id)
-    project = await db.get(Project, batch.project_id)
-    return project.stale_threshold_hours
 
 
 async def assign_task(
@@ -29,7 +22,6 @@ async def assign_task(
     supervisor_id: int,
     tenant_id: int,
 ) -> Task:
-    stale_hours = await _get_stale_hours(db, batch_id)
     batch = await db.get(Batch, batch_id)
     await staff_assignment_service.require_shift_role_for_task_type(
         db, user_id=agent_id, project_id=batch.project_id, task_type=task_type,
@@ -41,7 +33,6 @@ async def assign_task(
         assigned_to=agent_id,
         assigned_by=supervisor_id,
         status=TaskStatus.pending,
-        due_at=datetime.now(timezone.utc) + timedelta(hours=stale_hours),
     )
     db.add(task)
     await db.flush()
@@ -71,8 +62,6 @@ async def start_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if task.assigned_to != user_id:
         raise HTTPException(status_code=403, detail="Not your task")
-    if task.status == TaskStatus.stale:
-        raise HTTPException(status_code=409, detail="Task is stale — contact supervisor")
 
     record = await db.get(Record, task.record_id)
     await acquire_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
@@ -235,12 +224,9 @@ async def reassign_task(
     if record.locked_by == old_agent:
         await release_lock(db, record=record, user_id=old_agent or supervisor_id, tenant_id=tenant_id)
 
-    # Reset stale due_at
-    stale_hours = await _get_stale_hours(db, task.batch_id)
     task.assigned_to = new_agent_id
     task.assigned_by = supervisor_id
     task.status = TaskStatus.pending
-    task.due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
 
     await audit_service.write_event(
         db,
@@ -273,24 +259,6 @@ async def bulk_reassign(
         )
         for tid in task_ids
     ]
-
-
-async def get_stale_tasks(
-    db: AsyncSession,
-    *,
-    project_id: int,
-    tenant_id: int,
-) -> list[Task]:
-    result = await db.execute(
-        select(Task)
-        .join(Batch, Task.batch_id == Batch.id)
-        .where(
-            Batch.project_id == project_id,
-            Task.status.in_([TaskStatus.pending, TaskStatus.in_progress, TaskStatus.stale]),
-            Task.due_at <= datetime.now(timezone.utc),
-        )
-    )
-    return list(result.scalars().all())
 
 
 async def fail_task(
@@ -330,7 +298,6 @@ async def fail_task(
             user_id=user_id, tenant_id=tenant_id,
         )
         # Create a new indexing task to send back for rework
-        stale_hours = await _get_stale_hours(db, task.batch_id)
         db.add(Task(
             record_id=record.id,
             batch_id=task.batch_id,
@@ -338,7 +305,6 @@ async def fail_task(
             assigned_to=None,
             assigned_by=user_id,
             status=TaskStatus.pending,
-            due_at=datetime.now(timezone.utc) + timedelta(hours=stale_hours),
         ))
         await audit_service.write_event(
             db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,
@@ -360,7 +326,6 @@ async def fail_task(
         # assignable work gets its own batch) to make this record
         # immediately assignable to a QA agent via the existing UI.
         original_batch = await db.get(Batch, task.batch_id)
-        stale_hours = await _get_stale_hours(db, task.batch_id)
         rework_batch = Batch(
             project_id=original_batch.project_id,
             cabinet_id=original_batch.cabinet_id,
@@ -380,7 +345,6 @@ async def fail_task(
             assigned_to=None,
             assigned_by=user_id,
             status=TaskStatus.pending,
-            due_at=datetime.now(timezone.utc) + timedelta(hours=stale_hours),
         ))
 
         await db.flush()

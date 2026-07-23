@@ -64,7 +64,7 @@ Each transition is an explicit method (`submit_batch`, `advance_to_indexing`, et
 Full ISO 2859-1 Inspection Level II lookup table. `compute_sample_size(batch_size, aql_level)` returns `(sample_size, acceptance_number)`. `evaluate_batch()` compares defects to the acceptance number, updates `AQLConfig.current_status` (normal → tightened → reduced), and emits a `batch_escalated` audit event on escalation.
 
 ### Record locking (`services/lock_service.py`)
-Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises `409` with `{locked_by, locked_at}` if another user holds it. `release_lock()` is called on task complete, fail, reassign, or stale expiry. The APScheduler job in `background/stale_checker.py` clears locks for stale tasks every 15 minutes.
+Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises `409` with `{locked_by, locked_at}` if another user holds it. `release_lock()` is called on task complete, fail, or reassign.
 
 ### Record versioning (`services/version_service.py`)
 `create_version()` snapshots `record.indexed_data` into an immutable `RecordVersion` row and increments `record.current_version`. Called in two places only:

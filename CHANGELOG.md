@@ -7,6 +7,26 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+### Removed
+- Stale-task auto-flagging, end to end: the 15-minute APScheduler background
+  job, `TaskStatus.stale`, `AuditAction.stale_flagged`/`lock_expired`,
+  `Task.due_at`, `Project.stale_threshold_hours`, the "Stale Tasks"
+  supervisor page, `GET /tasks/stale`, and the per-agent `stale_task_count`
+  productivity metric. It wasn't having its intended effect; overdue tasks
+  now simply stay `pending`/`in_progress` until a supervisor manually
+  reassigns them (unchanged: `PATCH /tasks/{id}/reassign`,
+  `POST /tasks/bulk-reassign`). A hand-written migration narrows the
+  `taskstatus`/`auditaction` Postgres enums and drops the two columns.
+
+### Added
+- **Records Management** (digitizing portal, supervisors/admins) — replaces
+  the old "Record History" page. A Dashboard tab shows batches
+  indexed/QA'd, total/withdrawn/illegible records, optionally filtered by
+  date range. A History tab lists batches with status/date-range filtering,
+  totals, per-batch reassignment of indexing/QA work to a different agent,
+  and a drill-down into a batch's records (audit trail, versions, and
+  force-unlock for a locked record).
+
 ## [0.4.0] - 2026-07-21
 
 ### Added

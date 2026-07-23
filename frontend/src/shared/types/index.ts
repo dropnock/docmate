@@ -14,7 +14,6 @@ export interface Project {
   proposed_end_date: string | null;
   s3_bucket_name: string | null;
   s3_bucket_status: string;
-  stale_threshold_hours: number;
   digitizing_org_id: number;
   customer_org_id: number;
 }
@@ -83,6 +82,17 @@ export interface Batch {
   aql_level_snapshot: number | null;
   aql_sample_size: number | null;
   indexer_name: string | null;
+  record_count: number | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface RecordsDashboard {
+  batches_indexed: number;
+  batches_qa_completed: number;
+  total_records: number;
+  records_withdrawn: number;
+  records_illegible: number;
 }
 
 export interface DocRecord {
@@ -106,7 +116,6 @@ export interface Task {
   task_type: string;
   assigned_to: number | null;
   status: string;
-  due_at: string | null;
   started_at: string | null;
   completed_at: string | null;
   processing_time_seconds: number | null;
@@ -119,7 +128,6 @@ export interface TaskTypeMetrics {
   records_today: number;
   avg_processing_time_seconds: number;
   error_rate: number;
-  stale_task_count: number;
   tasks_in_progress: number;
 }
 

@@ -1,4 +1,4 @@
-import { Badge, Table, Tag } from "antd";
+import { Table, Tag } from "antd";
 import type { ColumnType } from "antd/es/table";
 import type { StaffMetric, TaskTypeMetrics } from "@shared/types";
 
@@ -30,12 +30,6 @@ const columns: ColumnType<Row>[] = [
       const pct = (r * 100).toFixed(1);
       return <span style={{ color: "#0F172A", fontWeight: r > 0.05 ? 700 : 400 }}>{pct}%</span>;
     },
-  },
-  {
-    title: "Stale",
-    dataIndex: "stale_task_count",
-    key: "stale",
-    render: (n) => n > 0 ? <Badge count={n} color="#1E40AF" /> : "—",
   },
   {
     title: "In Progress",

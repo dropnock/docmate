@@ -162,11 +162,6 @@ export default function QCWorkspace() {
                     <>
                       Batch #{task.batch_id} ·{" "}
                       <StatusDot filled={task.status === "in_progress"} label={task.status} />
-                      {task.due_at && (
-                        <Typography.Text type="secondary" style={{ marginLeft: 8 }}>
-                          Due: {new Date(task.due_at).toLocaleString()}
-                        </Typography.Text>
-                      )}
                     </>
                   }
                 />

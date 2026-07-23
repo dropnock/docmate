@@ -35,7 +35,6 @@ from app.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.background.stale_checker import start_scheduler
     from app.services.keycloak_service import sync_de_client
 
     try:
@@ -43,9 +42,7 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to sync docmate-de Keycloak client redirect URIs at startup")
 
-    scheduler = start_scheduler()
     yield
-    scheduler.shutdown(wait=False)
 
 
 app = FastAPI(title="DocMate API", version=settings.app_version, lifespan=lifespan)

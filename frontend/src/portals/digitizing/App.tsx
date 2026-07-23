@@ -5,7 +5,6 @@ import {
   Archive,
   List,
   Users,
-  AlertTriangle,
   Gauge,
   BarChart3,
   History,
@@ -35,8 +34,7 @@ import type { UserRecord } from "@shared/types";
 
 const StaffProductivityDashboard = lazy(() => import("./pages/StaffProductivityDashboard"));
 const ProjectKPIDashboard = lazy(() => import("./pages/ProjectKPIDashboard"));
-const StaleTaskManager = lazy(() => import("./pages/StaleTaskManager"));
-const RecordHistory = lazy(() => import("./pages/RecordHistory"));
+const RecordsManagement = lazy(() => import("./pages/RecordsManagement"));
 const ProjectsManager = lazy(() => import("./pages/ProjectsManager"));
 const UsersManager = lazy(() => import("./pages/UsersManager"));
 const StaffAssignment = lazy(() => import("./pages/StaffAssignment"));
@@ -54,10 +52,9 @@ const SUPERVISOR_PAGES = [
   { key: "/cabinet-assignment", label: "Cabinet Assignment", icon: <Archive size={16} /> },
   { key: "/lots", label: "Lots", icon: <List size={16} /> },
   { key: "/staff-assignment", label: "Staff Assignment", icon: <Users size={16} /> },
-  { key: "/stale-tasks", label: "Stale Tasks", icon: <AlertTriangle size={16} /> },
   { key: "/productivity", label: "Staff Productivity", icon: <Gauge size={16} /> },
   { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
-  { key: "/history", label: "Record History", icon: <History size={16} /> },
+  { key: "/records-management", label: "Records Management", icon: <History size={16} /> },
 ];
 
 const AGENT_PAGES = [
@@ -210,16 +207,6 @@ function AppInner() {
                 }
               />
               <Route
-                path="/stale-tasks"
-                element={
-                  <RequireRole allow={isSupervisor}>
-                    <ProjectScopedRoute>
-                      {(projectId) => <StaleTaskManager projectId={projectId} />}
-                    </ProjectScopedRoute>
-                  </RequireRole>
-                }
-              />
-              <Route
                 path="/productivity"
                 element={
                   <RequireRole allow={isSupervisor}>
@@ -240,11 +227,11 @@ function AppInner() {
                 }
               />
               <Route
-                path="/history"
+                path="/records-management"
                 element={
                   <RequireRole allow={isSupervisor}>
                     <ProjectScopedRoute>
-                      {(projectId) => <RecordHistory projectId={projectId} />}
+                      {(projectId) => <RecordsManagement projectId={projectId} />}
                     </ProjectScopedRoute>
                   </RequireRole>
                 }

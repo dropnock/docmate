@@ -6,7 +6,6 @@ const ACTION_COLOR: Record<string, string> = {
   created: "blue",
   locked: "orange",
   unlocked: "cyan",
-  lock_expired: "gold",
   assigned: "purple",
   reassigned: "geekblue",
   indexing_submitted: "green",
@@ -17,7 +16,6 @@ const ACTION_COLOR: Record<string, string> = {
   qc_rejected: "error",
   disqualified: "error",
   batch_escalated: "warning",
-  stale_flagged: "warning",
   status_changed: "default",
   sampled: "lime",
 };

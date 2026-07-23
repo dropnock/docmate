@@ -88,17 +88,6 @@ async def staff_productivity(
         total_attempted = total_count + failed_count
         error_rate = round(failed_count / total_attempted, 4) if total_attempted else 0.0
 
-        # Stale tasks
-        stale_q = await db.execute(
-            select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
-                Batch.project_id == project_id,
-                Task.assigned_to == user_id,
-                Task.task_type == task_type,
-                Task.status == TaskStatus.stale,
-            )
-        )
-        stale_count = stale_q.scalar() or 0
-
         # In-progress tasks
         inprogress_q = await db.execute(
             select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
@@ -115,7 +104,6 @@ async def staff_productivity(
             "records_today": today_count,
             "avg_processing_time_seconds": round(float(avg_time)),
             "error_rate": error_rate,
-            "stale_task_count": stale_count,
             "tasks_in_progress": inprogress_count,
         }
 
@@ -254,3 +242,68 @@ async def burnup_chart_data(db: AsyncSession, *, project_id: int) -> list[dict]:
         points.append({"date": d.isoformat(), "completed": None, "projected": round(current_complete, 1)})
 
     return points
+
+
+_BATCHES_INDEXED_STATUSES = (
+    BatchStatus.qa_review, BatchStatus.customer_qc, BatchStatus.passed,
+    BatchStatus.rejected, BatchStatus.complete,
+)
+_BATCHES_QA_COMPLETED_STATUSES = (
+    BatchStatus.customer_qc, BatchStatus.passed, BatchStatus.rejected, BatchStatus.complete,
+)
+
+
+async def records_dashboard(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict:
+    from app.models.cabinet import Cabinet
+
+    def _batch_count(statuses: tuple[BatchStatus, ...]):
+        q = select(func.count(Batch.id)).where(
+            Batch.project_id == project_id,
+            Batch.status.in_(statuses),
+        )
+        if date_from:
+            q = q.where(Batch.completed_at >= datetime.combine(date_from, datetime.min.time()))
+        if date_to:
+            q = q.where(Batch.completed_at <= datetime.combine(date_to, datetime.max.time()))
+        return q
+
+    batches_indexed_q = await db.execute(_batch_count(_BATCHES_INDEXED_STATUSES))
+    batches_indexed = batches_indexed_q.scalar() or 0
+
+    batches_qa_completed_q = await db.execute(_batch_count(_BATCHES_QA_COMPLETED_STATUSES))
+    batches_qa_completed = batches_qa_completed_q.scalar() or 0
+
+    total_q = await db.execute(
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(Cabinet.project_id == project_id)
+    )
+    total_records = total_q.scalar() or 0
+
+    withdrawn_q = await db.execute(
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(Cabinet.project_id == project_id, Record.status == RecordStatus.withdrawn)
+    )
+    records_withdrawn = withdrawn_q.scalar() or 0
+
+    illegible_q = await db.execute(
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(Cabinet.project_id == project_id, Record.status == RecordStatus.illegible)
+    )
+    records_illegible = illegible_q.scalar() or 0
+
+    return {
+        "batches_indexed": batches_indexed,
+        "batches_qa_completed": batches_qa_completed,
+        "total_records": total_records,
+        "records_withdrawn": records_withdrawn,
+        "records_illegible": records_illegible,
+    }

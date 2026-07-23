@@ -164,9 +164,6 @@ async def create_qc_batches(
     supervisor_id: int,
     tenant_id: int,
 ) -> list[Batch]:
-    from datetime import timedelta
-    from app.models.project import Project
-
     lot = await _get_lot(db, lot_id, tenant_id)
     if lot.status != LotStatus.qc_in_progress:
         raise HTTPException(status_code=409, detail="Lot must be in qc_in_progress to create QC batches")
@@ -215,10 +212,6 @@ async def create_qc_batches(
             ),
         )
 
-    project = await db.get(Project, project_id)
-    stale_hours = project.stale_threshold_hours if project else 24
-    due_at = datetime.now(timezone.utc) + timedelta(hours=stale_hours)
-
     batches: list[Batch] = []
     for assignment in assignments:
         agent_id = assignment["agent_id"]
@@ -246,7 +239,6 @@ async def create_qc_batches(
                 assigned_to=agent_id,
                 assigned_by=supervisor_id,
                 status=TaskStatus.pending,
-                due_at=due_at,
             )
             db.add(task)
 

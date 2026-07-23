@@ -2,6 +2,8 @@
 ISO 2859-1 Acceptance Sampling — Inspection Level II
 Sample size code letters and acceptance/rejection numbers.
 """
+from datetime import datetime, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.aql import AQLConfig, AQLStatus
@@ -102,6 +104,7 @@ async def evaluate_batch(
     # Update batch status
     batch = await db.get(Batch, batch_id)
     batch.status = BatchStatus.passed if outcome == "passed" else BatchStatus.rejected
+    batch.completed_at = datetime.now(timezone.utc)
 
     old_status = config.current_status.value
 

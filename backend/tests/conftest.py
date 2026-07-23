@@ -112,7 +112,7 @@ async def seed(db: AsyncSession):
 
     project = Project(
         tenant_id=tenant.id, digitizing_org_id=de_org.id, customer_org_id=cust_org.id,
-        name="Test Project", stale_threshold_hours=8.0,
+        name="Test Project",
         s3_bucket_status=S3BucketStatus.ready,
     )
     db.add(project)
