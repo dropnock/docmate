@@ -7,6 +7,8 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-07-25
+
 ### Removed
 - Stale-task auto-flagging, end to end: the 15-minute APScheduler background
   job, `TaskStatus.stale`, `AuditAction.stale_flagged`/`lock_expired`,
