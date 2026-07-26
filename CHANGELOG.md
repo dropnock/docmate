@@ -27,6 +27,14 @@ See `RELEASING.md` for how to cut a release.
   and a drill-down into a batch's records (audit trail, versions, and
   force-unlock for a locked record).
 
+### Fixed
+- Records dashboard date-range filters (`GET /analytics/records-dashboard`)
+  now accept full timestamps instead of plain dates, matching
+  `list_batches`' own param type — the previous truncation silently
+  excluded any batch still in progress from a date-filtered dashboard.
+  Failed dashboard/history fetches now also surface as a toast instead of
+  silently rendering empty-state zeros.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added

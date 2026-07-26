@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Button, Card, Col, DatePicker, Drawer, Empty, Modal, Row, Select, Space,
   Statistic, Table, Tabs, Tag, Typography, message,
@@ -52,11 +52,21 @@ function toDateParams(range: DateRange) {
   };
 }
 
+// useQuery (unlike useMutation) has no onError callback in react-query v5 —
+// without this, a failed fetch just leaves `data` undefined and every tile/
+// row silently renders its empty-state fallback (e.g. "0"), which is exactly
+// what made the records-dashboard 422 invisible until reported by a user.
+function useQueryErrorToast(isError: boolean, error: unknown, fallback: string) {
+  useEffect(() => {
+    if (isError) message.error(formatApiError(error, fallback));
+  }, [isError, error, fallback]);
+}
+
 function DashboardTab({ projectId }: { projectId: number }) {
   const [range, setRange] = useState<DateRange>(null);
   const { date_from, date_to } = toDateParams(range);
 
-  const { data, isLoading } = useQuery<RecordsDashboard>({
+  const { data, isLoading, isError, error } = useQuery<RecordsDashboard>({
     queryKey: ["records-dashboard", projectId, date_from, date_to],
     queryFn: () =>
       api
@@ -64,6 +74,7 @@ function DashboardTab({ projectId }: { projectId: number }) {
         .then((r) => r.data),
     refetchInterval: 60_000,
   });
+  useQueryErrorToast(isError, error, "Failed to load dashboard");
 
   const batchTiles = [
     { title: "Batches Indexed", value: data?.batches_indexed },
@@ -311,13 +322,14 @@ function HistoryTab({ projectId }: { projectId: number }) {
   const [detailTarget, setDetailTarget] = useState<Batch | null>(null);
   const { date_from, date_to } = toDateParams(range);
 
-  const { data: batches = [], isLoading } = useQuery<Batch[]>({
+  const { data: batches = [], isLoading, isError, error } = useQuery<Batch[]>({
     queryKey: ["records-history-batches", projectId, status, date_from, date_to],
     queryFn: () =>
       api
         .get(`/projects/${projectId}/batches`, { params: { status, date_from, date_to } })
         .then((r) => r.data),
   });
+  useQueryErrorToast(isError, error, "Failed to load batch history");
 
   const totalRecords = useMemo(
     () => batches.reduce((sum, b) => sum + (b.record_count ?? 0), 0),

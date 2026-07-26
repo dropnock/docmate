@@ -1,4 +1,4 @@
-from datetime import date as date_type
+from datetime import date as date_type, datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -44,8 +44,8 @@ async def get_burnup(
 @router.get("/records-dashboard")
 async def get_records_dashboard(
     project_id: int,
-    date_from: date_type | None = None,
-    date_to: date_type | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):

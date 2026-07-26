@@ -263,8 +263,8 @@ async def records_dashboard(
     db: AsyncSession,
     *,
     project_id: int,
-    date_from: date | None = None,
-    date_to: date | None = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
 ) -> dict:
     from app.models.cabinet import Cabinet
 
@@ -272,15 +272,18 @@ async def records_dashboard(
         # Filtered on created_at, not completed_at — a batch sitting in
         # qa_review/customer_qc has no completed_at yet, which would
         # silently exclude every still-in-progress batch from any date
-        # range (see the History tab's identical fix).
+        # range (see the History tab's identical fix). date_from/date_to
+        # are already full datetimes (the frontend sends start-of-day /
+        # end-of-day timestamps) — matching list_batches' own param type,
+        # not the plain `date` staff_productivity uses.
         q = select(func.count(Batch.id)).where(
             Batch.project_id == project_id,
             Batch.status.in_(statuses),
         )
         if date_from:
-            q = q.where(Batch.created_at >= datetime.combine(date_from, datetime.min.time()))
+            q = q.where(Batch.created_at >= date_from)
         if date_to:
-            q = q.where(Batch.created_at <= datetime.combine(date_to, datetime.max.time()))
+            q = q.where(Batch.created_at <= date_to)
         return q
 
     batches_indexed_q = await db.execute(_batch_count(_BATCHES_INDEXED_STATUSES))
