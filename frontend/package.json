@@ -38,6 +38,7 @@
     "vite": "^6.0.5"
   },
   "overrides": {
-    "fast-uri": "3.1.4"
+    "fast-uri": "3.1.4",
+    "postcss": "8.5.23"
   }
 }
