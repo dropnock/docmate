@@ -37,7 +37,7 @@ class TestQcAgentsScoping:
         sup_token = token(our_supervisor, portal_override="customer")
         resp = await client.get(
             f"/api/projects/{seed['project'].id}/qc-agents",
-            headers={"Authorization": f"Bearer {sup_token}"},
+            headers={"Authorization": f"Bearer {sup_token}", "X-Portal": "customer"},
         )
         assert resp.status_code == 200
         names = {a["full_name"] for a in resp.json()}
@@ -61,6 +61,6 @@ class TestQcAgentsScoping:
         sup_token = token(other_supervisor, portal_override="customer")
         resp = await client.get(
             f"/api/projects/{seed['project'].id}/qc-agents",
-            headers={"Authorization": f"Bearer {sup_token}"},
+            headers={"Authorization": f"Bearer {sup_token}", "X-Portal": "customer"},
         )
         assert resp.status_code == 404

@@ -1,15 +1,29 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
-from app.models.task import TaskType
+from app.core.security import check_project_access, get_current_user, require_roles
+from app.models.batch import Batch
+from app.models.project import Project
+from app.models.task import Task, TaskType
 from app.schemas.task import AssignTaskRequest, BulkReassignRequest, CompleteTaskRequest, TaskOut
 from app.services import task_service
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+async def _check_batch_access(batch_id: int, db: AsyncSession, current_user) -> None:
+    """Same boundary batches.py's router applies before touching a batch —
+    task_service/batch_service accept tenant_id only to stamp audit events,
+    never as a query filter, so callers must enforce it here."""
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    project = await db.get(Project, batch.project_id)
+    check_project_access(project, current_user)
 
 
 @router.post("/assign", response_model=TaskOut, status_code=201)
@@ -18,6 +32,7 @@ async def assign_task(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
+    await _check_batch_access(body.batch_id, db, current_user)
     task = await task_service.assign_task(
         db,
         record_id=body.record_id,
@@ -64,6 +79,10 @@ async def reassign_task(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await _check_batch_access(task.batch_id, db, current_user)
     return await task_service.reassign_task(
         db,
         task_id=task_id,
@@ -79,6 +98,12 @@ async def bulk_reassign(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
+    tasks_result = await db.execute(select(Task).where(Task.id.in_(body.task_ids)))
+    tasks = tasks_result.scalars().all()
+    if len(tasks) != len(set(body.task_ids)):
+        raise HTTPException(status_code=404, detail="One or more tasks not found")
+    for batch_id in {t.batch_id for t in tasks}:
+        await _check_batch_access(batch_id, db, current_user)
     return await task_service.bulk_reassign(
         db,
         task_ids=body.task_ids,

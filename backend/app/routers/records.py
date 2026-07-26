@@ -5,11 +5,11 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import check_project_access, get_current_user, require_roles
 from app.models.record import Record
 from app.models.record_version import RecordVersion
 from app.schemas.batch import AuditEventOut, RecordOut, RecordVersionOut
-from app.services import audit_service
+from app.services import audit_service, s3_service
 from app.services.lock_service import release_lock
 
 
@@ -19,16 +19,25 @@ class SaveDraftRequest(BaseModel):
 router = APIRouter(prefix="/api/records", tags=["records"])
 
 
+async def _get_authorized_record(record_id: int, db: AsyncSession, current_user) -> Record:
+    """Fetch a record and enforce the same tenant/portal boundary every
+    other project-scoped endpoint enforces via check_project_access —
+    record_id alone is not sufficient, since it's a bare sequential PK."""
+    record = await db.get(Record, record_id)
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+    project = await s3_service.resolve_record_project(record, db)
+    check_project_access(project, current_user)
+    return record
+
+
 @router.get("/{record_id}", response_model=RecordOut)
 async def get_record(
     record_id: int,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    record = await db.get(Record, record_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
-    return record
+    return await _get_authorized_record(record_id, db, current_user)
 
 
 @router.patch("/{record_id}/draft", response_model=RecordOut)
@@ -38,9 +47,7 @@ async def save_draft(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    record = await db.get(Record, record_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
+    record = await _get_authorized_record(record_id, db, current_user)
     if record.locked_by != current_user.id:
         raise HTTPException(status_code=403, detail="You do not hold the lock on this record")
     record.indexed_data = body.indexed_data
@@ -59,9 +66,7 @@ async def unlock_record(
     behind by anything outside those paths (a crash, a race, manual data
     fixes) has no task to reassign it away from, so this is a direct escape
     hatch supervisors can reach for regardless of task state."""
-    record = await db.get(Record, record_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Record not found")
+    record = await _get_authorized_record(record_id, db, current_user)
     await release_lock(db, record=record, user_id=current_user.id, tenant_id=current_user._tenant_id)
     return record
 
@@ -72,6 +77,7 @@ async def get_versions(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    await _get_authorized_record(record_id, db, current_user)
     result = await db.execute(
         select(RecordVersion)
         .where(RecordVersion.record_id == record_id)

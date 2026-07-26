@@ -1,9 +1,12 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import check_project_access, get_current_user, require_roles
+from app.models.batch import Batch
 from app.models.project import Project
 from app.models.record import Record
 from app.schemas.cabinet import (
@@ -104,7 +107,14 @@ async def upload_image(
     project = await db.get(Project, cabinet.project_id)
     if not project or not project.s3_bucket_name:
         raise HTTPException(status_code=400, detail="Project has no S3 bucket")
-    key = f"cabinets/{cabinet_id}/{file.filename}"
+    # .name strips any directory components the client's filename carries
+    # (e.g. "../7/x.pdf" → "x.pdf") — the bucket is shared across every
+    # project/cabinet in the org, so an unsanitized filename could otherwise
+    # place the object outside this cabinet's own key prefix.
+    safe_filename = Path(file.filename or "").name
+    if not safe_filename or safe_filename in (".", ".."):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    key = f"cabinets/{cabinet_id}/{safe_filename}"
     data = await file.read()
     await s3_service.put_object_bytes(
         project.s3_bucket_name, key, data, file.content_type or "application/octet-stream"
@@ -174,6 +184,12 @@ async def assign_qa_agent(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "admin")),
 ):
+    existing_batch = await db.get(Batch, batch_id)
+    if not existing_batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    project = await db.get(Project, existing_batch.project_id)
+    check_project_access(project, current_user)
+
     batch = await batch_service.assign_qa_agent(
         db,
         batch_id=batch_id,

@@ -503,7 +503,7 @@ class TestBulkReassign:
         resp = await client.post(
             "/api/tasks/bulk-reassign",
             json={"task_ids": [t1.id, t2.id], "agent_id": seed["indexer2"].id},
-            headers={"Authorization": f"Bearer {sup_token}"},
+            headers={"Authorization": f"Bearer {sup_token}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 200
         data = resp.json()

@@ -35,6 +35,27 @@ See `RELEASING.md` for how to cut a release.
   Failed dashboard/history fetches now also surface as a toast instead of
   silently rendering empty-state zeros.
 
+### Security
+- Fixed several endpoints that resolved a record/batch/task/AQL-config
+  purely by its integer ID with no tenant or project ownership check,
+  letting any authenticated user (any tenant, any role) read or, in some
+  cases, write another tenant's data: `GET /records/{id}`,
+  `PATCH /records/{id}/draft`, `GET /records/{id}/versions`,
+  `POST /records/{id}/unlock`, `GET /projects/{id}/aql`, and the
+  task-assignment endpoints (`POST /tasks/assign`,
+  `PATCH /tasks/{id}/reassign`, `POST /tasks/bulk-reassign`,
+  `PATCH /batches/{id}/assign-qa`). All now enforce `check_project_access`,
+  the same tenant/portal boundary already used elsewhere in the API.
+- Portal enforcement (`X-Portal` header vs. JWT `portal` claim) now fails
+  closed — a missing header is rejected rather than skipped — and the
+  backend's Docker port is bound to loopback only, closing a path that let
+  a client bypass nginx (the only party meant to set `X-Portal`) entirely.
+- Removed `verify=False` from the Keycloak JWKS fetch, which disabled TLS
+  certificate validation on the call that retrieves JWT signing keys.
+- Cabinet image uploads now sanitize the client-supplied filename before
+  it's used to build the S3 object key, closing a path-traversal risk in
+  the shared per-org bucket.
+
 ## [0.4.0] - 2026-07-21
 
 ### Added

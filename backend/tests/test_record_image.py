@@ -39,7 +39,7 @@ class TestRecordImageProxy:
 
         resp = await client.get(
             f"/api/records/{record.id}/image",
-            headers={"Authorization": f"Bearer {token(seed['indexer'])}"},
+            headers={"Authorization": f"Bearer {token(seed['indexer'])}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/png"
@@ -57,7 +57,7 @@ class TestRecordImageProxy:
 
         resp = await client.get(
             f"/api/records/{record.id}/image",
-            headers={"Authorization": f"Bearer {token(seed['indexer'])}"},
+            headers={"Authorization": f"Bearer {token(seed['indexer'])}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/png"
@@ -66,14 +66,14 @@ class TestRecordImageProxy:
         record = seed["record"]  # file_reference left unset
         resp = await client.get(
             f"/api/records/{record.id}/image",
-            headers={"Authorization": f"Bearer {token(seed['indexer'])}"},
+            headers={"Authorization": f"Bearer {token(seed['indexer'])}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 404
 
     async def test_404_for_nonexistent_record(self, db: AsyncSession, seed, client):
         resp = await client.get(
             "/api/records/999999/image",
-            headers={"Authorization": f"Bearer {token(seed['indexer'])}"},
+            headers={"Authorization": f"Bearer {token(seed['indexer'])}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 404
 
@@ -119,7 +119,7 @@ class TestTiffToPdfSelfHeal:
 
         resp = await client.get(
             f"/api/records/{record.id}/image",
-            headers={"Authorization": f"Bearer {token(seed['indexer'])}"},
+            headers={"Authorization": f"Bearer {token(seed['indexer'])}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/pdf"
@@ -154,7 +154,7 @@ class TestTiffToPdfSelfHeal:
 
         resp = await client.get(
             f"/api/records/{record.id}/image",
-            headers={"Authorization": f"Bearer {token(seed['indexer'])}"},
+            headers={"Authorization": f"Bearer {token(seed['indexer'])}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "application/pdf"

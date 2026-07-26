@@ -21,7 +21,7 @@ class TestProjectVisibility:
         indexer_token = token(seed["indexer"])
         resp = await client.get(
             "/api/projects",
-            headers={"Authorization": f"Bearer {indexer_token}"},
+            headers={"Authorization": f"Bearer {indexer_token}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 200
         project_ids = {p["id"] for p in resp.json()}
@@ -44,7 +44,7 @@ class TestProjectVisibility:
         sup_token = token(seed["supervisor"])
         resp = await client.get(
             "/api/projects",
-            headers={"Authorization": f"Bearer {sup_token}"},
+            headers={"Authorization": f"Bearer {sup_token}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 200
         project_ids = {p["id"] for p in resp.json()}

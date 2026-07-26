@@ -121,7 +121,13 @@ services:
       SEED_DEFAULT_PASSWORD: ${SEED_DEFAULT_PASSWORD:-changeme123}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
-      - "8000:8000"
+      # Loopback-only: nginx is the sole intended entry point for portal
+      # enforcement (it sets X-Portal and overwrites any client-supplied
+      # value) — a direct network-reachable port here lets a client bypass
+      # nginx and self-supply whatever X-Portal it wants. Bound to 127.0.0.1
+      # rather than removed entirely to keep localhost:8000/docs working for
+      # local development (see CLAUDE.md).
+      - "127.0.0.1:8000:8000"
     healthcheck:
       # python:3.11-slim has no curl — reuse the interpreter that's already there.
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]

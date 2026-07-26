@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user
+from app.core.security import check_project_access, get_current_user
 from app.models.aql import AQLConfig
+from app.models.project import Project
 from app.services.aql_service import compute_sample_size, get_current_aql_level
 
 router = APIRouter(prefix="/api", tags=["aql"])
@@ -15,6 +16,8 @@ async def get_aql_status(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    project = await db.get(Project, project_id)
+    check_project_access(project, current_user)
     config = await db.get(AQLConfig, project_id)
     if not config:
         return {"status": "not_configured"}

@@ -52,7 +52,7 @@ class TestRecordLocking:
         i2_token = token(seed["indexer2"])
         resp = await client.post(
             f"/api/tasks/{task2.id}/start",
-            headers={"Authorization": f"Bearer {i2_token}"},
+            headers={"Authorization": f"Bearer {i2_token}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 409
         assert "locked" in resp.json()["detail"].lower()

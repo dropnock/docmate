@@ -48,14 +48,17 @@ class TestPortalEnforcement:
         )
         assert resp.status_code == 200
 
-    async def test_no_portal_header_allowed(self, client, seed):
-        """No X-Portal header at all → check skipped, request succeeds."""
+    async def test_no_portal_header_rejected(self, client, seed):
+        """No X-Portal header at all → fails closed, not skipped. A request
+        reaching the backend with no header means nginx (the only party that
+        should ever set X-Portal) was bypassed, so it must be rejected the
+        same as an explicit mismatch."""
         de_token = token(seed["admin"])
         resp = await client.get(
             "/api/users/me",
             headers={"Authorization": f"Bearer {de_token}"},
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
     async def test_unauthenticated_request_rejected(self, client, seed):
         resp = await client.get("/api/users/me")
@@ -70,6 +73,6 @@ class TestPortalEnforcement:
                 "email": "new@test.com", "password": "pass", "full_name": "New",
                 "role": "de_staff", "portal": "digitizing",
             },
-            headers={"Authorization": f"Bearer {indexer_token}"},
+            headers={"Authorization": f"Bearer {indexer_token}", "X-Portal": "digitizing"},
         )
         assert resp.status_code == 403

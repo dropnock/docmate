@@ -32,7 +32,7 @@ async def _get_jwks(realm_slug: str) -> dict:
         f"{settings.keycloak_internal_url.rstrip('/')}"
         f"/realms/{realm_slug}/protocol/openid-connect/certs"
     )
-    async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=5.0) as client:
         resp = await client.get(url)
         resp.raise_for_status()
         jwks = resp.json()
@@ -122,9 +122,13 @@ async def get_current_user(
             detail="Missing sub claim",
         )
 
-    # Enforce portal based on realm: doc → digitizing, all others → customer
+    # Enforce portal based on realm: doc → digitizing, all others → customer.
+    # Fails closed — a missing header is rejected, not skipped, since nginx
+    # is the only party that should ever be setting X-Portal (it overwrites
+    # any client-supplied value via proxy_set_header); a request reaching
+    # here with no header at all means nginx was bypassed.
     token_portal = "digitizing" if realm_slug == "doc" else "customer"
-    if x_portal and x_portal != token_portal:
+    if x_portal != token_portal:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Portal mismatch",
