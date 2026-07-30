@@ -7,6 +7,34 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-30
+
+### Added
+- **Records CSV export** (`scripts/export_records_report.py`) — one-off
+  report of every record's current status, resolved project/cabinet/batch,
+  and lock holder. Streams results in pages by record id rather than
+  loading the whole table; filterable by `--tenant-id`, `--project-id`,
+  `--status`.
+
+### Fixed
+- Per-agent error rate (`GET /analytics/staff-productivity`) was always 0%
+  — `task_service.fail_task()` was writing `TaskStatus.completed` instead
+  of `TaskStatus.failed` on QA/QC rejection, even though its own audit log
+  call already recorded the correct outcome. `scripts/
+  backfill_task_failed_status.py` retroactively corrects historical tasks
+  from the audit trail.
+- Project-level error rate wasn't tracked at all. `GET /analytics/
+  project-kpis/{id}` now reports `error_rate`/`defects_found`/
+  `records_inspected`, aggregated from AQL `BatchQCResult`s, and shown on
+  the Project KPIs dashboard.
+
+### Security
+- Pinned `fast-uri` to 3.1.4, fixing GHSA-v2hh-gcrm-f6hx (host confusion
+  via backslash authority delimiter, CVSS 7.5) — transitive via
+  `@rjsf/utils`/`ajv`.
+- Pinned `postcss` to 8.5.23, fixing GHSA-r28c-9q8g-f849 (path traversal
+  disclosing arbitrary `.map` files, CVSS 7.5) — transitive via `vite`.
+
 ## [0.4.1] - 2026-07-25
 
 ### Removed
