@@ -31,7 +31,7 @@ export default function ProjectKPIDashboard({ projectId }: Props) {
     return (
       <div>
         <PageHeader title="Project KPIs" />
-        <PageSkeleton variant="cards" count={7} />
+        <PageSkeleton variant="cards" count={8} />
       </div>
     );
   }
@@ -80,6 +80,19 @@ export default function ProjectKPIDashboard({ projectId }: Props) {
             <Tag>{aql?.current_status?.toUpperCase()}</Tag>
             <div style={{ marginTop: 8, fontSize: 12 }}>Level: {aql?.current_aql_level}</div>
             <div style={{ fontSize: 12 }}>Consecutive failures: {aql?.consecutive_failures}</div>
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={8} lg={6}>
+          <Card>
+            <Statistic
+              title="Error Rate"
+              value={kpis ? kpis.error_rate * 100 : undefined}
+              suffix="%"
+              precision={1}
+            />
+            <div style={{ fontSize: 12, color: "#64748B" }}>
+              {kpis?.defects_found ?? 0} defects / {kpis?.records_inspected ?? 0} inspected
+            </div>
           </Card>
         </Col>
       </Row>

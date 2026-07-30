@@ -285,7 +285,7 @@ async def fail_task(
     await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
 
     now = datetime.now(timezone.utc)
-    task.status = TaskStatus.completed
+    task.status = TaskStatus.failed
     task.completed_at = now
     if task.started_at:
         task.processing_time_seconds = int((now - task.started_at).total_seconds())
