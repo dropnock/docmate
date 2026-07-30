@@ -10,7 +10,7 @@ import {
   Navigate,
   useNavigate,
   useLocation,
-} from "react-router-dom";
+} from "react-router";
 import { initKeycloak, logout, startSessionKeepAlive } from "@shared/api/keycloak";
 import ProjectScopedRoute from "@shared/routing/ProjectScopedRoute";
 import PageSkeleton from "@shared/components/PageSkeleton";

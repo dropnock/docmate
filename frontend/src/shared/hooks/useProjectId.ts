@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 
 /** The selected project is a cross-cutting filter shared across many pages,
  * modeled as a query param rather than a path segment so switching pages
