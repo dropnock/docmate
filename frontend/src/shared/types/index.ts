@@ -153,6 +153,9 @@ export interface ProjectKPIs {
   proposed_end_date: string | null;
   days_to_proposed_end: number | null;
   on_track: boolean | null;
+  error_rate: number;
+  records_inspected: number;
+  defects_found: number;
 }
 
 export interface BurnupPoint {
