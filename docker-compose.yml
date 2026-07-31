@@ -219,12 +219,12 @@ services:
     # usage. cAdvisor reads this host's cgroup/docker state directly and
     # exposes it in Prometheus format; no host port mapping, only reached by
     # Prometheus internally (same "no host port" pattern as Loki/Promtail
-    # below). Not run --privileged — on some hosts/kernels cAdvisor reports
-    # incomplete metrics without it; add `privileged: true` and a `/dev/kmsg`
-    # device mount if the Container Infrastructure dashboard's CPU/memory
-    # panels come back empty. Deliberately NOT used for volume/storage
-    # usage — cAdvisor only sees each container's own writable layer, not
-    # data inside a mounted named volume (see volume-exporter below).
+    # below). Run --privileged with a /dev/kmsg mount — on some hosts/
+    # kernels cAdvisor reports incomplete metrics without it (the Container
+    # Infrastructure dashboard's CPU/memory panels come back empty).
+    # Deliberately NOT used for volume/storage usage — cAdvisor only sees
+    # each container's own writable layer, not data inside a mounted named
+    # volume (see volume-exporter below).
     #
     # Pinned >= v0.54.0: earlier cAdvisor (we shipped v0.49.1 initially)
     # can't read Docker's containerd-snapshotter image store (Docker Engine's
@@ -241,6 +241,9 @@ services:
     # "/cadvisor" in the ghcr.io path, unlike the old gcr.io one).
     image: ghcr.io/google/cadvisor:v0.60.5
     restart: unless-stopped
+    privileged: true
+    devices:
+      - /dev/kmsg:/dev/kmsg
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
