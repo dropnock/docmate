@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.audit_log import AuditAction, AuditEntityType
@@ -76,6 +76,7 @@ async def list_project_records(
     *,
     project_id: int,
     statuses: list[RecordStatus] | None,
+    filename: str | None,
     limit: int,
     offset: int,
 ) -> tuple[list[Record], int]:
@@ -83,7 +84,13 @@ async def list_project_records(
     project via Cabinet.project_id first, falling back to Batch.project_id
     (Record.batch_id is nullable) — same precedence
     s3_service.resolve_record_project uses per-record, expressed here as a
-    SQL join for bulk-list efficiency."""
+    SQL join for bulk-list efficiency.
+
+    filename is a case-insensitive substring match against
+    original_filename OR source_identifier (the same fallback the frontend
+    table's "Filename" column itself displays) — a plain substring match
+    already lets a search like "invoice123" find "invoice123.pdf" with no
+    special extension-stripping needed."""
     resolved_project_id = func.coalesce(Cabinet.project_id, Batch.project_id)
     base = (
         select(Record)
@@ -93,6 +100,11 @@ async def list_project_records(
     )
     if statuses:
         base = base.where(Record.status.in_(statuses))
+    if filename:
+        pattern = f"%{filename}%"
+        base = base.where(
+            or_(Record.original_filename.ilike(pattern), Record.source_identifier.ilike(pattern))
+        )
 
     total = (await db.execute(
         select(func.count()).select_from(base.with_only_columns(Record.id).subquery())

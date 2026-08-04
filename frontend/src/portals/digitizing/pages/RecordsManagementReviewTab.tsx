@@ -53,17 +53,23 @@ function RequeueConfirmModal({
 export default function RecordsManagementReviewTab({ projectId }: { projectId: number }) {
   const qc = useQueryClient();
   const [status, setStatus] = useState<string[]>([]);
+  const [filename, setFilename] = useState("");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [viewerRecordId, setViewerRecordId] = useState<number | null>(null);
   const [requeueTarget, setRequeueTarget] = useState<"indexing" | "qa" | null>(null);
 
   const { data, isLoading } = useQuery<RecordListResponse>({
-    queryKey: ["project-records", projectId, status, page],
+    queryKey: ["project-records", projectId, status, filename, page],
     queryFn: () =>
       api
         .get(`/projects/${projectId}/records`, {
-          params: { status, limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE },
+          params: {
+            status,
+            filename: filename || undefined,
+            limit: PAGE_SIZE,
+            offset: (page - 1) * PAGE_SIZE,
+          },
           paramsSerializer: { indexes: null },
         })
         .then((r) => r.data),
@@ -127,6 +133,18 @@ export default function RecordsManagementReviewTab({ projectId }: { projectId: n
   return (
     <div>
       <Space style={{ marginBottom: 12 }} wrap>
+        <Input.Search
+          placeholder="Search by filename — no need to type the extension"
+          allowClear
+          style={{ width: 320 }}
+          defaultValue={filename}
+          onSearch={(v) => { setFilename(v.trim()); setPage(1); }}
+          onChange={(e) => {
+            // allowClear's (x) button doesn't always fire onSearch — reset
+            // immediately once the box is empty rather than waiting on it.
+            if (!e.target.value) { setFilename(""); setPage(1); }
+          }}
+        />
         <Select
           mode="multiple"
           placeholder="Filter by status"

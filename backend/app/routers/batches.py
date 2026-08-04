@@ -135,6 +135,7 @@ async def list_batches(
 async def list_records_for_project(
     project_id: int,
     status: list[RecordStatus] | None = Query(None),
+    filename: str | None = Query(None),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
@@ -143,11 +144,12 @@ async def list_records_for_project(
     """Project-wide, status-filterable record list for supervisor review —
     unlike list_batches/get_batch_records above, this isn't scoped to a
     single batch. See record_service.list_project_records for the
-    cabinet-then-batch project resolution."""
+    cabinet-then-batch project resolution and the filename search
+    semantics."""
     project = await db.get(Project, project_id)
     check_project_access(project, current_user)
     records, total = await record_service.list_project_records(
-        db, project_id=project_id, statuses=status, limit=limit, offset=offset,
+        db, project_id=project_id, statuses=status, filename=filename, limit=limit, offset=offset,
     )
     await record_service.attach_task_attribution(db, records)
     return {"items": records, "total": total}

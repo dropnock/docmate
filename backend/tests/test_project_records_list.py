@@ -9,7 +9,7 @@ from app.services import record_service, task_service
 class TestListProjectRecords:
     async def test_resolves_project_via_batch_when_no_cabinet(self, db: AsyncSession, seed):
         records, total = await record_service.list_project_records(
-            db, project_id=seed["project"].id, statuses=None, limit=100, offset=0,
+            db, project_id=seed["project"].id, statuses=None, filename=None, limit=100, offset=0,
         )
         assert {r.id for r in records} == {seed["record"].id, seed["record2"].id}
         assert total == 2
@@ -23,7 +23,7 @@ class TestListProjectRecords:
         await db.flush()
 
         records, total = await record_service.list_project_records(
-            db, project_id=seed["project"].id, statuses=None, limit=100, offset=0,
+            db, project_id=seed["project"].id, statuses=None, filename=None, limit=100, offset=0,
         )
         assert unassigned.id in {r.id for r in records}
         assert total == 3
@@ -34,17 +34,17 @@ class TestListProjectRecords:
         await db.flush()
 
         records, total = await record_service.list_project_records(
-            db, project_id=seed["project"].id, statuses=[RecordStatus.qa_failed], limit=100, offset=0,
+            db, project_id=seed["project"].id, statuses=[RecordStatus.qa_failed], filename=None, limit=100, offset=0,
         )
         assert {r.id for r in records} == {seed["record"].id}
         assert total == 1
 
     async def test_pagination(self, db: AsyncSession, seed):
         first_page, total = await record_service.list_project_records(
-            db, project_id=seed["project"].id, statuses=None, limit=1, offset=0,
+            db, project_id=seed["project"].id, statuses=None, filename=None, limit=1, offset=0,
         )
         second_page, total2 = await record_service.list_project_records(
-            db, project_id=seed["project"].id, statuses=None, limit=1, offset=1,
+            db, project_id=seed["project"].id, statuses=None, filename=None, limit=1, offset=1,
         )
         assert len(first_page) == 1
         assert len(second_page) == 1
@@ -53,7 +53,47 @@ class TestListProjectRecords:
 
     async def test_other_project_scoping(self, db: AsyncSession, seed):
         records, total = await record_service.list_project_records(
-            db, project_id=seed["project"].id + 999, statuses=None, limit=100, offset=0,
+            db, project_id=seed["project"].id + 999, statuses=None, filename=None, limit=100, offset=0,
+        )
+        assert records == []
+        assert total == 0
+
+    async def test_filename_search_matches_without_typing_extension(self, db: AsyncSession, seed):
+        seed["record"].original_filename = "Invoice123.pdf"
+        seed["record2"].original_filename = "Receipt456.tiff"
+        await db.flush()
+
+        records, total = await record_service.list_project_records(
+            db, project_id=seed["project"].id, statuses=None, filename="invoice123", limit=100, offset=0,
+        )
+        assert {r.id for r in records} == {seed["record"].id}
+        assert total == 1
+
+    async def test_filename_search_is_case_insensitive_substring(self, db: AsyncSession, seed):
+        seed["record"].original_filename = "Deed_Of_Trust_2024.pdf"
+        await db.flush()
+
+        records, total = await record_service.list_project_records(
+            db, project_id=seed["project"].id, statuses=None, filename="of_trust", limit=100, offset=0,
+        )
+        assert {r.id for r in records} == {seed["record"].id}
+
+    async def test_filename_search_falls_back_to_source_identifier(self, db: AsyncSession, seed):
+        seed["record"].original_filename = None
+        seed["record"].source_identifier = "scan-batch-42"
+        await db.flush()
+
+        records, total = await record_service.list_project_records(
+            db, project_id=seed["project"].id, statuses=None, filename="batch-42", limit=100, offset=0,
+        )
+        assert {r.id for r in records} == {seed["record"].id}
+
+    async def test_filename_search_no_match_returns_empty(self, db: AsyncSession, seed):
+        seed["record"].original_filename = "Invoice123.pdf"
+        await db.flush()
+
+        records, total = await record_service.list_project_records(
+            db, project_id=seed["project"].id, statuses=None, filename="nonexistent", limit=100, offset=0,
         )
         assert records == []
         assert total == 0
