@@ -7,6 +7,36 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-04
+
+### Added
+- **Supervisor record review & requeue** (Records Management → "Review &
+  Requeue" tab, `de_supervisor`/`admin`) — project-wide, status-filterable
+  record list; view a record's image via the existing backend proxy; see
+  who most recently indexed and QA'd each record; send selected records
+  back for re-indexing or a fresh internal QA pass; export selected
+  records' current data as a ZIP of one JSON file per record.
+- CSV export of raw per-user error rates (`scripts/export_user_error_rates.py`).
+- `scripts/backup_database.sh`.
+
+### Fixed
+- Container Infrastructure Grafana dashboard: `cadvisor` now runs
+  privileged with a `/dev/kmsg` mount, fixing CPU Usage, Memory Usage,
+  Container Uptime, and Network Usage — All Containers, which were coming
+  back blank.
+- Records sent back for re-indexing now reset to `status=pending`,
+  detached from any batch, instead of `qa_failed` inside a dedicated
+  one-off rework batch — the old state had no assignment UI anywhere.
+  `scripts/backfill_supervisor_requeue_status.py` corrects any records
+  already stuck in the old state.
+
+### Security
+- Migrated `react-router-dom` v6 to `react-router` v7, closing 3
+  Dependabot alerts (GHSA-wrjc-x8rr-h8h6, GHSA-jjmj-jmhj-qwj2,
+  GHSA-337j-9hxr-rhxg) — the `react-router-dom` 6.x line had no patch
+  available for one of them; the fix only ever landed in the unified
+  `react-router` package.
+
 ## [0.5.0] - 2026-07-30
 
 ### Added
