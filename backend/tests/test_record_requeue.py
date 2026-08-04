@@ -1,10 +1,12 @@
 """Supervisor record requeue (scripts/../services/record_service.py:
 requeue_record, bulk_requeue_records) — send a record back for re-indexing
 or a fresh internal QA pass, outside the normal per-task workflow."""
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Batch, BatchStatus, Record, RecordStatus, Task, TaskStatus, TaskType
+from app.models import Batch, BatchStatus, Cabinet, Record, RecordStatus, Task, TaskStatus, TaskType
 from app.models.audit_log import AuditAction, AuditEntityType, AuditLog
 from app.models.record_version import RecordVersion, VersionReason
 from app.services import lock_service, record_service, task_service
@@ -12,8 +14,15 @@ from tests.conftest import token
 
 
 class TestRequeueRecordToIndexing:
-    async def test_creates_rework_batch_task_version_and_audit(self, db: AsyncSession, seed):
+    async def test_resets_to_pending_and_detaches_batch_with_version_and_audit(
+        self, db: AsyncSession, seed
+    ):
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Cabinet 1")
+        db.add(cabinet)
+        await db.flush()
+
         record = seed["record"]
+        record.cabinet_id = cabinet.id
         record.status = RecordStatus.qa_passed
         record.indexed_data = {"title": "Doc A"}
         record.current_version = 1
@@ -28,20 +37,21 @@ class TestRequeueRecordToIndexing:
         )
         await db.flush()
 
-        assert result.status == RecordStatus.qa_failed
-        assert result.batch_id != original_batch_id
+        # Detached back into the same unbatched-pending pool
+        # cabinet_service.create_indexing_batch already serves — no rework
+        # batch/task, since assignment happens later via the existing
+        # "allocate pending records to indexers" flow.
+        assert result.status == RecordStatus.pending
+        assert result.batch_id is None
+        assert original_batch_id is not None
 
-        rework_batch = await db.get(Batch, result.batch_id)
-        assert rework_batch.status == BatchStatus.indexing
-        assert rework_batch.document_type_id == seed["doc_type"].id
-
-        task = (await db.execute(
-            select(Task).where(Task.record_id == record.id, Task.task_type == TaskType.indexing)
+        open_tasks = (await db.execute(
+            select(Task).where(
+                Task.record_id == record.id,
+                Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
+            )
         )).scalars().all()
-        pending_tasks = [t for t in task if t.status == TaskStatus.pending]
-        assert len(pending_tasks) == 1
-        assert pending_tasks[0].batch_id == rework_batch.id
-        assert pending_tasks[0].assigned_to is None
+        assert open_tasks == []
 
         versions = (await db.execute(
             select(RecordVersion).where(RecordVersion.record_id == record.id)
@@ -59,24 +69,29 @@ class TestRequeueRecordToIndexing:
             )
         )).scalar_one()
         assert audit.performed_by == seed["supervisor"].id
+        assert audit.old_value == {"status": "qa_passed"}
+        assert audit.new_value == {"status": "pending"}
         assert audit.metadata_ == {"note": "Illegible field"}
 
-    async def test_requires_batch_id(self, db: AsyncSession, seed):
-        unbatched = Record(status=RecordStatus.indexed, current_version=1)
-        db.add(unbatched)
-        await db.flush()
+    async def test_requires_cabinet_id(self, db: AsyncSession, seed):
+        # seed's record has no cabinet_id — it can never appear in the
+        # unbatched-pending pool this target relies on.
+        record = seed["record"]
+        assert record.cabinet_id is None
 
-        from fastapi import HTTPException
-        import pytest
         with pytest.raises(HTTPException) as exc_info:
             await record_service.requeue_record(
-                db, record_id=unbatched.id, target="indexing",
+                db, record_id=record.id, target="indexing",
                 supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
             )
         assert exc_info.value.status_code == 400
 
     async def test_force_unlocks_a_lock_held_by_another_user(self, db: AsyncSession, seed):
         record = seed["record"]
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Cabinet 1")
+        db.add(cabinet)
+        await db.flush()
+        record.cabinet_id = cabinet.id
         await lock_service.acquire_lock(
             db, record=record, user_id=seed["indexer"].id, tenant_id=seed["tenant"].id
         )
@@ -101,6 +116,10 @@ class TestRequeueRecordToIndexing:
 
     async def test_closes_out_an_in_progress_task_first(self, db: AsyncSession, seed):
         record = seed["record"]
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Cabinet 1")
+        db.add(cabinet)
+        await db.flush()
+        record.cabinet_id = cabinet.id
         existing_task = await task_service.assign_task(
             db, record_id=record.id, batch_id=record.batch_id,
             task_type=TaskType.indexing, agent_id=seed["indexer"].id,
@@ -177,14 +196,31 @@ class TestRequeueRecordToQa:
 
 
 class TestBulkRequeueRecords:
-    async def test_creates_one_rework_batch_per_record(self, db: AsyncSession, seed):
+    async def test_qa_target_creates_one_rework_batch_per_record(self, db: AsyncSession, seed):
+        results = await record_service.bulk_requeue_records(
+            db, record_ids=[seed["record"].id, seed["record2"].id], target="qa",
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+
+        assert len({r.batch_id for r in results}) == 2
+
+    async def test_indexing_target_detaches_all_records_to_pending(self, db: AsyncSession, seed):
+        cabinet = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Cabinet 1")
+        db.add(cabinet)
+        await db.flush()
+        seed["record"].cabinet_id = cabinet.id
+        seed["record2"].cabinet_id = cabinet.id
+        await db.flush()
+
         results = await record_service.bulk_requeue_records(
             db, record_ids=[seed["record"].id, seed["record2"].id], target="indexing",
             supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
         )
         await db.flush()
 
-        assert len({r.batch_id for r in results}) == 2
+        assert all(r.status == RecordStatus.pending for r in results)
+        assert all(r.batch_id is None for r in results)
 
 
 class TestRequeueRouter:

@@ -116,23 +116,44 @@ async def requeue_record(
 ) -> Record:
     """Supervisor-initiated rework trigger — not tied to any in-flight Task
     (unlike task_service.fail_task, which fails a task the caller currently
-    holds). For target="indexing" mirrors fail_task's QA-fail branch
-    (version snapshot + new pending indexing Task); for target="qa" mirrors
-    batch_service.auto_advance_to_qa (no version, new pending qa Task).
-    Always creates a dedicated 1-record rework Batch — same convention
-    fail_task's QC-fail branch uses — since the record's original batch may
-    already be closed out, and Batch.document_type_id is required and
-    single-valued so records can't share one rework batch across document
-    types."""
+    holds).
+
+    target="indexing" resets the record to RecordStatus.pending and detaches
+    it from any batch (batch_id=None) — the same "raw, not yet indexed"
+    state a never-before-batched record is in. This deliberately reuses the
+    existing unbatched-pending pool cabinet_service.create_indexing_batch
+    already serves (surfaced today via the digitizing portal's Cabinet
+    Assignment screen: "Allocate pending records to indexers") rather than
+    inventing a bespoke rework batch/task — a record set to qa_failed in a
+    dedicated one-off batch had no assignment UI anywhere, since the
+    existing screens only know how to allocate *unbatched pending* records
+    (create_indexing_batch) or assign QA agents to *qa_review* batches
+    (assign_qa_agent). No new Task is created here; one gets created later,
+    when a supervisor actually allocates the record to an indexer via that
+    existing flow. Requires record.cabinet_id (a record with no cabinet can
+    never appear in that pool at all — 400 rather than silently orphaning
+    it).
+
+    target="qa" mirrors batch_service.auto_advance_to_qa (RecordStatus.
+    qa_pending, new pending qa Task) — but since there's no "unbatched
+    qa_pending pool" equivalent, this still creates a dedicated 1-record
+    rework Batch (same convention fail_task's QC-fail branch uses) so the
+    existing "Assign QA Agent" control (for qa_review batches) can find it.
+    Requires record.batch_id, to copy document_type_id/cabinet_id from.
+    """
     record = await db.get(Record, record_id)
     if not record:
         raise HTTPException(status_code=404, detail="Record not found")
-    if record.batch_id is None:
+    if target == "indexing" and record.cabinet_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Record has no cabinet — cannot re-enter the indexing queue",
+        )
+    if target == "qa" and record.batch_id is None:
         raise HTTPException(
             status_code=400,
             detail="Record has no associated batch — nothing to copy a rework batch from",
         )
-    original_batch = await db.get(Batch, record.batch_id)
     old_status = record.status
 
     # Force-unlock unconditionally — same escape hatch as POST
@@ -163,44 +184,42 @@ async def requeue_record(
             old_value={"status": prior}, new_value={"status": "failed", "reason": "supervisor_requeue"},
         )
 
-    rework_batch = Batch(
-        project_id=original_batch.project_id,
-        cabinet_id=original_batch.cabinet_id,
-        document_type_id=original_batch.document_type_id,
-        name="",
-        batch_type=BatchType.indexing,
-        status=BatchStatus.indexing if target == "indexing" else BatchStatus.qa_review,
-    )
-    db.add(rework_batch)
-    await db.flush()
-    label = "Reindex" if target == "indexing" else "QA Recheck"
-    rework_batch.name = f"Supervisor {label} {rework_batch.id} — Record {record.id}"
-    record.batch_id = rework_batch.id
-
     if target == "indexing":
         await create_version(
             db, record=record, reason=VersionReason.supervisor_requeue,
             user_id=supervisor_id, tenant_id=tenant_id,
         )
-        record.status = RecordStatus.qa_failed
-        db.add(Task(
-            record_id=record.id, batch_id=rework_batch.id, task_type=TaskType.indexing,
-            assigned_to=None, assigned_by=supervisor_id, status=TaskStatus.pending,
-        ))
+        record.status = RecordStatus.pending
+        record.batch_id = None
         action = AuditAction.requeued_for_indexing
+        new_value = {"status": record.status.value}
     else:
+        original_batch = await db.get(Batch, record.batch_id)
+        rework_batch = Batch(
+            project_id=original_batch.project_id,
+            cabinet_id=original_batch.cabinet_id,
+            document_type_id=original_batch.document_type_id,
+            name="",
+            batch_type=BatchType.indexing,
+            status=BatchStatus.qa_review,
+        )
+        db.add(rework_batch)
+        await db.flush()
+        rework_batch.name = f"Supervisor QA Recheck {rework_batch.id} — Record {record.id}"
+        record.batch_id = rework_batch.id
         record.status = RecordStatus.qa_pending
         db.add(Task(
             record_id=record.id, batch_id=rework_batch.id, task_type=TaskType.qa,
             assigned_to=None, assigned_by=supervisor_id, status=TaskStatus.pending,
         ))
         action = AuditAction.requeued_for_qa
+        new_value = {"status": record.status.value, "batch_id": rework_batch.id}
 
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,
         action=action, performed_by=supervisor_id,
         old_value={"status": old_status.value},
-        new_value={"status": record.status.value, "batch_id": rework_batch.id},
+        new_value=new_value,
         metadata={"note": note} if note else None,
     )
     await db.flush()
@@ -217,7 +236,7 @@ async def bulk_requeue_records(
     note: str | None = None,
 ) -> list[Record]:
     """Same shape as task_service.bulk_reassign — loops the single-record op
-    per id, one rework Batch per record (see requeue_record docstring)."""
+    per id (see requeue_record docstring for per-target behavior)."""
     return [
         await requeue_record(
             db, record_id=rid, target=target, supervisor_id=supervisor_id,
