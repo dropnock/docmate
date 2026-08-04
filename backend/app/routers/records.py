@@ -1,4 +1,8 @@
+import io
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -8,8 +12,10 @@ from app.core.database import get_db
 from app.core.security import check_project_access, get_current_user, require_roles
 from app.models.record import Record
 from app.models.record_version import RecordVersion
-from app.schemas.batch import AuditEventOut, RecordOut, RecordVersionOut
-from app.services import audit_service, s3_service
+from app.schemas.batch import (
+    AuditEventOut, ExportRecordsRequest, RecordOut, RecordVersionOut, RequeueRecordsRequest,
+)
+from app.services import audit_service, record_service, s3_service
 from app.services.lock_service import release_lock
 
 
@@ -37,7 +43,47 @@ async def get_record(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    return await _get_authorized_record(record_id, db, current_user)
+    record = await _get_authorized_record(record_id, db, current_user)
+    await record_service.attach_task_attribution(db, [record])
+    return record
+
+
+@router.post("/requeue", response_model=list[RecordOut])
+async def requeue_records(
+    body: RequeueRecordsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    """Supervisor sends one or more records back for re-indexing or a fresh
+    internal QA pass, outside the normal per-task workflow. See
+    record_service.requeue_record for the state-transition rules."""
+    for rid in body.record_ids:
+        await _get_authorized_record(rid, db, current_user)
+    records = await record_service.bulk_requeue_records(
+        db, record_ids=body.record_ids, target=body.target,
+        supervisor_id=current_user.id, tenant_id=current_user._tenant_id, note=body.note,
+    )
+    await record_service.attach_task_attribution(db, records)
+    return records
+
+
+@router.post("/export")
+async def export_records(
+    body: ExportRecordsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    """Bulk-downloads selected records' current indexed_data as a ZIP of
+    one JSON file per record."""
+    for rid in body.record_ids:
+        await _get_authorized_record(rid, db, current_user)
+    zip_bytes = await record_service.export_records_zip(db, record_ids=body.record_ids)
+    filename = f"records_export_{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.zip"
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.patch("/{record_id}/draft", response_model=RecordOut)

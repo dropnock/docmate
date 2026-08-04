@@ -15,6 +15,7 @@ import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
 import type {
   AuditEvent, Batch, DocRecord, RecordsDashboard, RecordVersion, Shift,
 } from "@shared/types";
+import RecordsManagementReviewTab from "./RecordsManagementReviewTab";
 
 const { RangePicker } = DatePicker;
 
@@ -431,6 +432,11 @@ export default function RecordsManagement({ projectId }: Props) {
               key: "history",
               label: "History",
               children: <HistoryTab projectId={projectId} />,
+            },
+            {
+              key: "review",
+              label: "Review & Requeue",
+              children: <RecordsManagementReviewTab projectId={projectId} />,
             },
           ]}
         />

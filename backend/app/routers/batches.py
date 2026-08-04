@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,14 +11,15 @@ from app.core.security import check_project_access, get_current_user, require_ro
 from app.models.batch import Batch, BatchStatus
 from app.models.document_type import DocumentType
 from app.models.project import Project
-from app.models.record import Record
+from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskType
 from app.models.user import User
 from app.schemas.batch import (
-    BatchOut, BatchReassignRequest, DocumentTypeCreate, DocumentTypeOut, RecordOut,
+    BatchOut, BatchReassignRequest, DocumentTypeCreate, DocumentTypeOut, RecordListResponse,
+    RecordOut,
 )
 from app.schemas.task import TaskOut
-from app.services import batch_service, image_service, s3_service
+from app.services import batch_service, image_service, record_service, s3_service
 
 router = APIRouter(prefix="/api", tags=["batches"])
 
@@ -128,6 +129,28 @@ async def list_batches(
     batches = list(result.scalars().all())
     batches = await _attach_indexer_names(db, batches)
     return await _attach_record_counts(db, batches)
+
+
+@router.get("/projects/{project_id}/records", response_model=RecordListResponse)
+async def list_records_for_project(
+    project_id: int,
+    status: list[RecordStatus] | None = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    """Project-wide, status-filterable record list for supervisor review —
+    unlike list_batches/get_batch_records above, this isn't scoped to a
+    single batch. See record_service.list_project_records for the
+    cabinet-then-batch project resolution."""
+    project = await db.get(Project, project_id)
+    check_project_access(project, current_user)
+    records, total = await record_service.list_project_records(
+        db, project_id=project_id, statuses=status, limit=limit, offset=offset,
+    )
+    await record_service.attach_task_attribution(db, records)
+    return {"items": records, "total": total}
 
 
 @router.post("/batches/{batch_id}/reassign", response_model=list[TaskOut])

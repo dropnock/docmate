@@ -110,6 +110,16 @@ export interface DocRecord {
   locked_by: number | null;
   locked_at: string | null;
   status: string;
+  updated_at?: string;
+  indexed_by_id: number | null;
+  indexed_by_name: string | null;
+  qa_by_id: number | null;
+  qa_by_name: string | null;
+}
+
+export interface RecordListResponse {
+  items: DocRecord[];
+  total: number;
 }
 
 export interface Task {

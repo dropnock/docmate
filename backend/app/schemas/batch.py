@@ -50,6 +50,31 @@ class RecordOut(BaseModel):
     locked_by: int | None
     locked_at: datetime | None = None
     status: str
+    indexed_by_id: int | None = None
+    indexed_by_name: str | None = None
+    qa_by_id: int | None = None
+    qa_by_name: str | None = None
+
+
+class RecordListOut(RecordOut):
+    cabinet_id: int | None = None
+    source_identifier: str | None = None
+    updated_at: datetime | None = None
+
+
+class RecordListResponse(BaseModel):
+    items: list[RecordListOut]
+    total: int
+
+
+class RequeueRecordsRequest(BaseModel):
+    record_ids: list[int]
+    target: Literal["indexing", "qa"]
+    note: str | None = None
+
+
+class ExportRecordsRequest(BaseModel):
+    record_ids: list[int]
 
 
 class IndexDataRequest(BaseModel):

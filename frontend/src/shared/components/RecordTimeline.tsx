@@ -18,6 +18,8 @@ const ACTION_COLOR: Record<string, string> = {
   batch_escalated: "warning",
   status_changed: "default",
   sampled: "lime",
+  requeued_for_indexing: "warning",
+  requeued_for_qa: "warning",
 };
 
 function EventDetail({ event }: { event: AuditEvent }) {

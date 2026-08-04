@@ -33,6 +33,8 @@ class AuditAction(str, enum.Enum):
     deactivated = "deactivated"
     shift_role_changed = "shift_role_changed"
     disqualified = "disqualified"
+    requeued_for_indexing = "requeued_for_indexing"
+    requeued_for_qa = "requeued_for_qa"
 
 
 class AuditLog(Base):
