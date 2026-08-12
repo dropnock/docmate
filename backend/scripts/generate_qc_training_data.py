@@ -8,11 +8,14 @@ same task_service.complete_task() code path a QA agent's own "Done" click
 would run — same lock acquire/release, same RecordVersion snapshot, same
 qa_passed audit event, same batch auto-completion check — just with
 indexed_data resubmitted unchanged (nothing is actually re-checked for
-defects). --performed-by-user-id must be a real, existing user in the
-project's tenant; every event this script writes (reassignment, task
-start/complete, and the extra note below) is attributed to them, not to a
-generic "admin" label, because that is who is actually taking the action by
-running this script.
+defects). --performed-by-user-id must be a real, existing, active user in
+the project's tenant who is currently rostered onto this project with
+shift_role=qa (task_service.reassign_task enforces that below, same as it
+would for a genuine QA assignment) — in practice a de_staff QA agent, not
+an admin/supervisor account. Every event this script writes (reassignment,
+task start/complete, and the extra note below) is attributed to them, not
+to a generic "admin" label, because that is who is actually taking the
+action by running this script.
 
 Because the QA step is genuinely being skipped rather than genuinely
 performed, an additional audit_logs entry is written for each record right
@@ -57,7 +60,7 @@ from app.models.batch import Batch
 from app.models.project import Project
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.services import audit_service, task_service
 
 MAX_IDS_TO_PRINT = 50
@@ -75,6 +78,13 @@ async def _resolve_project(db: AsyncSession, project_id: int) -> Project:
 
 
 async def _resolve_performer(db: AsyncSession, user_id: int, tenant_id: int) -> User:
+    """No UserRole restriction here on purpose: task_service.reassign_task()
+    (called per-record below) already enforces the real constraint — the
+    performer must hold an active shift_role=qa UserProjectAssignment on
+    this project, same as any QA agent would need to be assignable a QA
+    task in the app. That's normally a de_staff user, not an admin/
+    supervisor, so gating on role here would fight the roster check
+    instead of matching it."""
     user = await db.get(User, user_id)
     if not user:
         sys.exit(f"ERROR: no user with id={user_id}")
@@ -82,11 +92,6 @@ async def _resolve_performer(db: AsyncSession, user_id: int, tenant_id: int) -> 
         sys.exit(f"ERROR: user {user_id} is not in tenant {tenant_id}")
     if not user.is_active:
         sys.exit(f"ERROR: user {user_id} ({user.email}) is not active")
-    if user.role not in (UserRole.admin, UserRole.de_supervisor):
-        sys.exit(
-            f"ERROR: user {user_id} ({user.email}) has role {user.role.value!r} — "
-            f"must be admin or de_supervisor to own these QA tasks"
-        )
     return user
 
 
@@ -151,8 +156,9 @@ async def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--project-id", required=True, type=int)
     parser.add_argument(
         "--performed-by-user-id", required=True, type=int,
-        help="Real user id (admin or de_supervisor) to attribute every event to — this must be "
-             "whoever is actually running the script.",
+        help="Real user id to attribute every event to. Must have an active shift_role=qa "
+             "UserProjectAssignment on --project-id, same as any user assignable a QA task "
+             "in the app — task_service.reassign_task enforces this and will 400 otherwise.",
     )
     parser.add_argument("--limit", type=int, default=None, help="Max number of records to advance.")
     parser.add_argument(
