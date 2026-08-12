@@ -1,0 +1,17 @@
+# Template for --source-env / --target-env used by migrate_records_to_training.py.
+# Copy twice (e.g. source.env, target.env) and point each at the externally-
+# reachable Postgres + S3/MinIO address for that environment. Not read by the
+# app itself — only by this script, via the --source-env/--target-env flags.
+
+POSTGRES_USER=docmate
+POSTGRES_PASSWORD=docmate
+POSTGRES_DB=docmate
+POSTGRES_HOST=
+POSTGRES_PORT=5432
+
+# ── Object storage (MinIO/S3) ────────────────────────────────────────────────
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+# Leave unset for real AWS S3. Set for MinIO or any S3-compatible endpoint.
+AWS_ENDPOINT_URL=
+AWS_REGION=us-east-1

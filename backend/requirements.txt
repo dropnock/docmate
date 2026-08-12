@@ -6,6 +6,7 @@ alembic==1.14.0
 pydantic==2.10.3
 pydantic-settings==2.6.1
 pydantic[email]
+python-dotenv==1.0.1
 python-jose[cryptography]==3.4.0
 python-keycloak==3.7.0
 aioboto3>=13.0
