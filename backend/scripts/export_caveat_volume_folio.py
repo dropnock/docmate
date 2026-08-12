@@ -1,8 +1,8 @@
 """
-Exports a CSV of caveat_number / volume_number / folio_number from
-qa_passed records in one project — one row per (volume_number, folio_number)
-grouping, so a record with N groupings produces N rows all sharing the same
-caveat_number.
+Exports a CSV of caveat_number / volume_number / folio_number / image_filename
+from qa_passed records in one project — one row per (volume_number,
+folio_number) grouping, so a record with N groupings produces N rows all
+sharing the same caveat_number and image_filename.
 
 indexed_data is free-form JSON driven by the project's DocumentType.json_schema
 (see app/models/document_type.py), so this doesn't assume a fixed key name for
@@ -14,6 +14,12 @@ array the schema defines them under. Concretely, for each record:
     list of dicts where at least one item has a "volume_number" or
     "folio_number" key. If a record's schema puts groupings under a
     different shape than that, it's reported as skipped rather than guessed at.
+  - image_filename is Record.file_reference — the S3 key of the image
+    currently associated with the record, i.e. the file that's actually
+    findable in the project's bucket right now. (Not original_filename,
+    the uploader's original name — file_reference is what a TIFF-to-PDF
+    conversion repoints at the derived .pdf, so it's the one that matches
+    what's really in storage. Left blank if the record has no image.)
 
 A record missing caveat_number, with no such array, or with an empty array
 is skipped and reported to stderr — it contributes 0 rows rather than a row
@@ -40,7 +46,7 @@ from app.models.project import Project
 from app.models.record import Record, RecordStatus
 
 PAGE_SIZE = 2000
-FIELDNAMES = ["caveat_number", "volume_number", "folio_number"]
+FIELDNAMES = ["caveat_number", "volume_number", "folio_number", "image_filename"]
 
 
 def _find_groupings(indexed_data: dict) -> list | None:
@@ -77,6 +83,7 @@ def _rows_for_record(record: Record) -> tuple[list[dict], str | None]:
             "caveat_number": caveat_number,
             "volume_number": item.get("volume_number"),
             "folio_number": item.get("folio_number"),
+            "image_filename": record.file_reference,
         }
         for item in groupings
     ]
