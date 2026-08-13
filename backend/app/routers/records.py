@@ -136,7 +136,7 @@ async def get_versions(
 async def get_record_history(
     record_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
     events = await audit_service.get_record_history(
         db, tenant_id=current_user._tenant_id, record_id=record_id

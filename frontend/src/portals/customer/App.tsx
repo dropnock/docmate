@@ -13,6 +13,7 @@ import {
 } from "react-router";
 import { initKeycloak, logout, startSessionKeepAlive } from "@shared/api/keycloak";
 import ProjectScopedRoute from "@shared/routing/ProjectScopedRoute";
+import RequireRole from "@shared/routing/RequireRole";
 import PageSkeleton from "@shared/components/PageSkeleton";
 import AppHeader from "@shared/components/AppHeader";
 import api from "@shared/api/client";
@@ -26,12 +27,18 @@ const CustomerLotManager = lazy(() => import("./pages/CustomerLotManager"));
 const { Sider, Content } = Layout;
 const queryClient = createQueryClient();
 
-const NAV_ITEMS = [
+// Lots, Project KPIs, and Record History are supervisor-only — a QC agent's
+// job is working the QC Workspace queue, not managing lots or reviewing
+// project-wide history. The backend enforces the same restriction on the
+// underlying endpoints (see routers/lots.py, records.py) — this is UI
+// convenience, not the actual access boundary.
+const SUPERVISOR_ITEMS = [
   { key: "/lots", label: "Lots", icon: <List size={16} /> },
-  { key: "/qc", label: "QC Workspace", icon: <CheckCircle2 size={16} /> },
   { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
   { key: "/history", label: "Record History", icon: <History size={16} /> },
 ];
+
+const QC_ITEMS = [{ key: "/qc", label: "QC Workspace", icon: <CheckCircle2 size={16} /> }];
 
 const FULL_BLEED_ROUTES = new Set(["/qc"]);
 
@@ -46,10 +53,15 @@ function AppInner() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { data: user } = useQuery<UserRecord>({
+  const { data: user, isLoading: userLoading } = useQuery<UserRecord>({
     queryKey: ["me"],
     queryFn: () => api.get("/users/me").then((r) => r.data),
   });
+
+  if (userLoading || !user) return <Spin fullscreen tip="Loading profile..." />;
+
+  const isSupervisor = user.role === "customer_supervisor";
+  const navItems = [...QC_ITEMS, ...(isSupervisor ? SUPERVISOR_ITEMS : [])];
 
   const isWorkspacePage = FULL_BLEED_ROUTES.has(location.pathname);
 
@@ -57,7 +69,7 @@ function AppInner() {
     <Layout style={{ minHeight: "100vh" }}>
       <AppHeader
         portalLabel="Customer Portal"
-        userName={user?.full_name}
+        userName={user.full_name}
         onSignOut={logout}
         mobileNavOpen={mobileNavOpen}
         onToggleMobileNav={() => setMobileNavOpen((v) => !v)}
@@ -75,7 +87,7 @@ function AppInner() {
           <Menu
             mode="inline"
             selectedKeys={[location.pathname]}
-            items={NAV_ITEMS}
+            items={navItems}
             onClick={({ key }) => navigate(`${key}${location.search}`)}
             style={{ paddingTop: 8 }}
           />
@@ -92,7 +104,7 @@ function AppInner() {
           <Menu
             mode="inline"
             selectedKeys={[location.pathname]}
-            items={NAV_ITEMS}
+            items={navItems}
             onClick={({ key }) => {
               navigate(`${key}${location.search}`);
               setMobileNavOpen(false);
@@ -111,28 +123,34 @@ function AppInner() {
               <Route
                 path="/lots"
                 element={
-                  <ProjectScopedRoute>
-                    {(projectId) => (
-                      <CustomerLotManager projectId={projectId} role={user?.role ?? ""} />
-                    )}
-                  </ProjectScopedRoute>
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => (
+                        <CustomerLotManager projectId={projectId} role={user.role} />
+                      )}
+                    </ProjectScopedRoute>
+                  </RequireRole>
                 }
               />
               <Route path="/qc" element={<QCWorkspace />} />
               <Route
                 path="/kpis"
                 element={
-                  <ProjectScopedRoute>
-                    {(projectId) => <ProjectKPIDashboard projectId={projectId} />}
-                  </ProjectScopedRoute>
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <ProjectKPIDashboard projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
                 }
               />
               <Route
                 path="/history"
                 element={
-                  <ProjectScopedRoute>
-                    {(projectId) => <RecordHistory projectId={projectId} />}
-                  </ProjectScopedRoute>
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <RecordHistory projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
                 }
               />
               <Route path="*" element={<Navigate to="/" replace />} />

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import get_current_user, require_roles
+from app.core.security import require_roles
 from app.schemas.lot import (
     ApplySampleRequest,
     CreateQcBatchesRequest,
@@ -37,7 +37,7 @@ async def create_lot(
 async def list_lots(
     project_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
     lots = await lot_service.list_lots(
         db, project_id=project_id, tenant_id=current_user._tenant_id
@@ -49,7 +49,7 @@ async def list_lots(
 async def get_lot(
     lot_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
     from sqlalchemy import select
     from app.models.lot import Lot, LotRecord
