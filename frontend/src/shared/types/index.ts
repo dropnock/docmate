@@ -57,9 +57,21 @@ export interface Lot {
   sample_size: number | null;
   acceptance_number: number | null;
   accuracy_rate: number | null;
+  aql_status_snapshot: "normal" | "tightened" | "reduced" | null;
+  qc_completed_at: string | null;
+  critical_defect_count: number | null;
+  minor_defect_count: number | null;
   released_at: string | null;
   released_by: number | null;
   created_by: number | null;
+}
+
+export interface QcProjectSummary {
+  project_id: number;
+  lots_quality_checked: number;
+  lots_rejected: number;
+  records_passed: number;
+  qc_daily_throughput: number;
 }
 
 export interface AQLConfig {

@@ -213,6 +213,61 @@ async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
     }
 
 
+async def qc_project_summary(db: AsyncSession, *, project_id: int) -> dict:
+    """Customer-supervisor QC reporting summary — lots quality-checked/
+    rejected, records passed, and the QC team's daily throughput. Deliberately
+    separate from project_kpis's error_rate/records_inspected/defects_found,
+    which are computed from the dead BatchQCResult path (written only by the
+    unreachable aql_service.evaluate_batch) and are silently 0 for any
+    project using the live Lot/QcFieldResult flow."""
+    from app.models.lot import Lot, LotRecord, LotStatus
+
+    def _lot_count(*conds):
+        return select(func.count(Lot.id)).where(Lot.project_id == project_id, *conds)
+
+    lots_quality_checked = (await db.execute(
+        _lot_count(Lot.qc_completed_at.is_not(None))
+    )).scalar() or 0
+
+    lots_rejected = (await db.execute(
+        _lot_count(Lot.status.in_([LotStatus.failed, LotStatus.remediation]))
+    )).scalar() or 0
+
+    # Lifetime snapshot — sampled records currently qc_passed across every
+    # lot in the project, regardless of that lot's own status — same
+    # all-time-snapshot convention project_kpis's own counts already use.
+    records_passed = (await db.execute(
+        select(func.count(Record.id))
+        .join(LotRecord, LotRecord.record_id == Record.id)
+        .join(Lot, Lot.id == LotRecord.lot_id)
+        .where(
+            Lot.project_id == project_id,
+            LotRecord.is_sampled == True,  # noqa: E712
+            Record.status == RecordStatus.qc_passed,
+        )
+    )).scalar() or 0
+
+    # Same 7-day-rate shape as project_kpis's daily_throughput_rate, scoped
+    # to QC tasks instead of QA.
+    week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+    qc_week_throughput = (await db.execute(
+        select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
+            Batch.project_id == project_id,
+            Task.task_type == TaskType.qc,
+            Task.status == TaskStatus.completed,
+            Task.completed_at >= week_ago,
+        )
+    )).scalar() or 0
+
+    return {
+        "project_id": project_id,
+        "lots_quality_checked": lots_quality_checked,
+        "lots_rejected": lots_rejected,
+        "records_passed": records_passed,
+        "qc_daily_throughput": round(qc_week_throughput / 7.0, 1),
+    }
+
+
 async def burnup_chart_data(db: AsyncSession, *, project_id: int) -> list[dict]:
     """Daily cumulative completed records for the last 30 days + projection."""
     from app.models.cabinet import Cabinet

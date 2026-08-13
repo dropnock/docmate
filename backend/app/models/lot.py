@@ -1,9 +1,10 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.models.aql import AQLStatus
 from app.models.base import Base, TimestampMixin
 
 
@@ -32,6 +33,19 @@ class Lot(Base, TimestampMixin):
     # same field name/meaning as BatchQCResult.acceptance_number.
     acceptance_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     accuracy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Snapshot of AQLConfig.current_status (normal/tightened/reduced) at the
+    # moment this lot was sampled (see apply_sample) — the real ISO 2859-1
+    # inspection-level concept for reporting, frozen so it can't drift if the
+    # project's live status later changes. Set for both iso and manual mode.
+    aql_status_snapshot: Mapped[AQLStatus | None] = mapped_column(Enum(AQLStatus), nullable=True)
+    # Set by calculate_accuracy the moment it finalizes lot.status to
+    # passed/failed — NOT derivable from updated_at, which bumps on every
+    # later write (e.g. send_for_remediation) and would silently drift.
+    qc_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Only populated for iso-mode lots (calculate_accuracy) — no per-field
+    # QcFieldResult data exists for manual-mode lots to derive these from.
+    critical_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    minor_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     released_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)

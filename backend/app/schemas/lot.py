@@ -21,6 +21,10 @@ class LotOut(BaseModel):
     sample_size: int | None
     acceptance_number: int | None
     accuracy_rate: float | None
+    aql_status_snapshot: str | None = None
+    qc_completed_at: datetime | None = None
+    critical_defect_count: int | None = None
+    minor_defect_count: int | None = None
     released_at: datetime | None = None
     released_by: int | None
     created_by: int | None

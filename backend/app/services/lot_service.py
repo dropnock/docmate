@@ -167,6 +167,7 @@ async def apply_sample(
     lot.sample_rate = derived_rate
     lot.sample_size = sample_size
     lot.acceptance_number = acceptance_number
+    lot.aql_status_snapshot = config.current_status if config else None
     lot.status = LotStatus.qc_in_progress
 
     await audit_service.write_event(
@@ -309,6 +310,7 @@ async def calculate_accuracy(
     total = len(statuses)
     accuracy = passed / total if total else 0.0
     lot.accuracy_rate = accuracy
+    lot.qc_completed_at = datetime.now(timezone.utc)
 
     # acceptance_number is only ever set (by apply_sample) for lots sampled
     # under AQLConfig.sampling_mode="iso" — a reliable proxy for which rule
@@ -328,6 +330,8 @@ async def calculate_accuracy(
         )).scalars().all()
         any_critical_defect = any(defective_rows)
         non_critical_defect_total = sum(1 for is_critical in defective_rows if not is_critical)
+        lot.critical_defect_count = sum(1 for is_critical in defective_rows if is_critical)
+        lot.minor_defect_count = non_critical_defect_total
 
         # A single critical-field defect fails the lot outright, independent
         # of the acceptance number — real ISO 2859-1 practice treats critical

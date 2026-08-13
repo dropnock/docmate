@@ -19,7 +19,7 @@ import AppHeader from "@shared/components/AppHeader";
 import api from "@shared/api/client";
 import type { UserRecord } from "@shared/types";
 
-const ProjectKPIDashboard = lazy(() => import("../digitizing/pages/ProjectKPIDashboard"));
+const CustomerProjectKPIDashboard = lazy(() => import("./pages/CustomerProjectKPIDashboard"));
 const RecordHistory = lazy(() => import("../digitizing/pages/RecordHistory"));
 const QCWorkspace = lazy(() => import("./pages/QCWorkspace"));
 const CustomerLotManager = lazy(() => import("./pages/CustomerLotManager"));
@@ -138,7 +138,7 @@ function AppInner() {
                 element={
                   <RequireRole allow={isSupervisor}>
                     <ProjectScopedRoute>
-                      {(projectId) => <ProjectKPIDashboard projectId={projectId} />}
+                      {(projectId) => <CustomerProjectKPIDashboard projectId={projectId} />}
                     </ProjectScopedRoute>
                   </RequireRole>
                 }

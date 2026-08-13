@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import require_roles
 from app.services.analytics_service import (
-    burnup_chart_data, project_kpis, records_dashboard, staff_productivity,
+    burnup_chart_data, project_kpis, qc_project_summary, records_dashboard, staff_productivity,
 )
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
@@ -39,6 +39,15 @@ async def get_burnup(
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
     return await burnup_chart_data(db, project_id=project_id)
+
+
+@router.get("/project-kpis/{project_id}/qc-summary")
+async def get_qc_summary(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
+):
+    return await qc_project_summary(db, project_id=project_id)
 
 
 @router.get("/records-dashboard")
