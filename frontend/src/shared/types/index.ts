@@ -75,6 +75,35 @@ export interface AQLConfig {
   sampling_mode: "iso" | "manual";
 }
 
+export type QcFieldStatus = "accepted" | "defective";
+
+export interface FieldResult {
+  field_key: string;
+  status: QcFieldStatus;
+  note?: string;
+}
+
+export interface ContributingAgent {
+  id: number;
+  full_name: string;
+}
+
+export interface FieldResultSummary {
+  field_key: string;
+  is_critical: boolean;
+  defective_count: number;
+  accepted_count: number;
+  contributing_agents: ContributingAgent[];
+}
+
+export interface QcFieldResultsOut {
+  lot_id: number;
+  any_critical_defect: boolean;
+  non_critical_defect_total: number;
+  acceptance_number: number | null;
+  fields: FieldResultSummary[];
+}
+
 export interface LotDetail extends Lot {
   records: {
     record_id: number;

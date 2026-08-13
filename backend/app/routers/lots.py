@@ -8,6 +8,7 @@ from app.schemas.lot import (
     CreateQcBatchesRequest,
     LotCreate,
     LotOut,
+    QcFieldResultsOut,
 )
 from app.services import lot_service
 
@@ -125,6 +126,18 @@ async def create_qc_batches(
     )
     await db.commit()
     return [{"id": b.id, "name": b.name} for b in batches]
+
+
+@router.get("/{lot_id}/qc-field-results", response_model=QcFieldResultsOut)
+async def get_qc_field_results(
+    lot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
+):
+    tabulation = await lot_service.get_field_result_tabulation(
+        db, lot_id=lot_id, tenant_id=current_user._tenant_id
+    )
+    return QcFieldResultsOut(**tabulation)
 
 
 @router.post("/{lot_id}/send-for-remediation")

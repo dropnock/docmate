@@ -1,5 +1,5 @@
 import api from "@shared/api/client";
-import type { AvailableStaff, Lot, LotDetail } from "@shared/types";
+import type { AvailableStaff, Lot, LotDetail, QcFieldResultsOut } from "@shared/types";
 
 /** Shared across CustomerLotManager, LotSettingsDrawer, and LotAssignQcDrawer
  * — all three need the same lot-detail query, so the key must be the same
@@ -30,4 +30,8 @@ export function createQcBatches(
 
 export function sendForRemediation(lotId: number) {
   return api.post<Lot>(`/lots/${lotId}/send-for-remediation`);
+}
+
+export function getQcFieldResults(lotId: number) {
+  return api.get<QcFieldResultsOut>(`/lots/${lotId}/qc-field-results`).then((r) => r.data);
 }

@@ -46,3 +46,24 @@ class CreateQcBatchesRequest(BaseModel):
 
 class RemediationRequest(BaseModel):
     pass
+
+
+class ContributingAgent(BaseModel):
+    id: int
+    full_name: str
+
+
+class FieldResultSummary(BaseModel):
+    field_key: str
+    is_critical: bool
+    defective_count: int
+    accepted_count: int
+    contributing_agents: list[ContributingAgent]
+
+
+class QcFieldResultsOut(BaseModel):
+    lot_id: int
+    any_critical_defect: bool
+    non_critical_defect_total: int
+    acceptance_number: int | None
+    fields: list[FieldResultSummary]

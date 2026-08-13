@@ -308,9 +308,38 @@ async def calculate_accuracy(
     passed = sum(1 for s in statuses if s == RecordStatus.qc_passed)
     total = len(statuses)
     accuracy = passed / total if total else 0.0
-
     lot.accuracy_rate = accuracy
-    lot.status = LotStatus.passed if accuracy >= 0.9 else LotStatus.failed
+
+    # acceptance_number is only ever set (by apply_sample) for lots sampled
+    # under AQLConfig.sampling_mode="iso" — a reliable proxy for which rule
+    # this lot should be evaluated under, without a second config lookup.
+    any_critical_defect = None
+    non_critical_defect_total = None
+    if lot.acceptance_number is not None:
+        from app.models.qc_field_result import QcFieldResult, QcFieldStatus
+
+        record_ids = [lr.record_id for lr in sampled]
+        defective_rows = (await db.execute(
+            select(QcFieldResult.is_critical).where(
+                QcFieldResult.lot_id == lot_id,
+                QcFieldResult.record_id.in_(record_ids),
+                QcFieldResult.status == QcFieldStatus.defective,
+            )
+        )).scalars().all()
+        any_critical_defect = any(defective_rows)
+        non_critical_defect_total = sum(1 for is_critical in defective_rows if not is_critical)
+
+        # A single critical-field defect fails the lot outright, independent
+        # of the acceptance number — real ISO 2859-1 practice treats critical
+        # defects as zero-tolerance, separate from the major/minor AQL table.
+        if any_critical_defect:
+            lot.status = LotStatus.failed
+        else:
+            lot.status = (
+                LotStatus.passed if non_critical_defect_total <= lot.acceptance_number else LotStatus.failed
+            )
+    else:
+        lot.status = LotStatus.passed if accuracy >= 0.9 else LotStatus.failed
 
     await audit_service.write_event(
         db,
@@ -319,9 +348,97 @@ async def calculate_accuracy(
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=None,
-        new_value={"status": lot.status, "accuracy_rate": accuracy, "passed": passed, "total": total},
+        new_value={
+            "status": lot.status,
+            "accuracy_rate": accuracy,
+            "passed": passed,
+            "total": total,
+            "acceptance_number": lot.acceptance_number,
+            "any_critical_defect": any_critical_defect,
+            "non_critical_defect_total": non_critical_defect_total,
+        },
     )
     return lot
+
+
+async def get_field_result_tabulation(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    tenant_id: int,
+) -> dict:
+    """Supervisor-facing aggregate of every QC agent's per-field marks on
+    this lot — which fields were found defective, how often, by whom, and
+    whether any critical-field defect makes the lot defective outright
+    regardless of the non-critical tally against acceptance_number. Mirrors
+    the same critical/non-critical split calculate_accuracy uses to decide
+    the lot's actual pass/fail, so this view explains that decision."""
+    from app.models.qc_field_result import QcFieldResult, QcFieldStatus
+    from app.models.user import User
+
+    lot = await _get_lot(db, lot_id, tenant_id)
+
+    rows = (await db.execute(
+        select(QcFieldResult, Task.assigned_to)
+        .join(Task, Task.id == QcFieldResult.task_id)
+        .where(QcFieldResult.lot_id == lot_id)
+    )).all()
+
+    agent_ids = {assigned_to for _, assigned_to in rows if assigned_to is not None}
+    agents_by_id = {}
+    if agent_ids:
+        agents_result = await db.execute(select(User).where(User.id.in_(agent_ids)))
+        agents_by_id = {u.id: u for u in agents_result.scalars().all()}
+
+    fields: dict[str, dict] = {}
+    for qfr, assigned_to in rows:
+        # is_critical is snapshotted per-row (see QcFieldResult's docstring)
+        # and could in theory differ across rows for the same field_key if
+        # the schema's x-critical flag was edited mid-lot — first-seen value
+        # wins here for a single per-field display flag; the pass/fail math
+        # in calculate_accuracy always checks each row's own snapshot, not
+        # this aggregate, so that decision is unaffected by this simplification.
+        entry = fields.setdefault(qfr.field_key, {
+            "field_key": qfr.field_key,
+            "is_critical": qfr.is_critical,
+            "defective_count": 0,
+            "accepted_count": 0,
+            "agent_ids": set(),
+        })
+        if qfr.status == QcFieldStatus.defective:
+            entry["defective_count"] += 1
+        else:
+            entry["accepted_count"] += 1
+        if assigned_to is not None:
+            entry["agent_ids"].add(assigned_to)
+
+    field_summaries = []
+    any_critical_defect = False
+    non_critical_defect_total = 0
+    for entry in fields.values():
+        if entry["is_critical"] and entry["defective_count"] > 0:
+            any_critical_defect = True
+        if not entry["is_critical"]:
+            non_critical_defect_total += entry["defective_count"]
+        field_summaries.append({
+            "field_key": entry["field_key"],
+            "is_critical": entry["is_critical"],
+            "defective_count": entry["defective_count"],
+            "accepted_count": entry["accepted_count"],
+            "contributing_agents": [
+                {"id": aid, "full_name": agents_by_id[aid].full_name}
+                for aid in sorted(entry["agent_ids"]) if aid in agents_by_id
+            ],
+        })
+    field_summaries.sort(key=lambda f: f["field_key"])
+
+    return {
+        "lot_id": lot_id,
+        "any_critical_defect": any_critical_defect,
+        "non_critical_defect_total": non_critical_defect_total,
+        "acceptance_number": lot.acceptance_number,
+        "fields": field_summaries,
+    }
 
 
 async def send_for_remediation(

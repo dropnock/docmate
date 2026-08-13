@@ -195,3 +195,22 @@ class TestApplySampleManualMode:
                 user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
             )
         assert exc_info.value.status_code == 422
+
+
+class TestCalculateAccuracyManualModeFallback:
+    """acceptance_number is only ever set by apply_sample's iso branch — a
+    manually-sampled lot (acceptance_number stays None) must keep using the
+    flat 90% rule untouched by the new ISO critical/acceptance-number
+    branch. See test_qc_field_results.py for the ISO-mode branch coverage."""
+
+    async def test_all_passed_is_accepted(self, db: AsyncSession, seed):
+        lot, _ = await _make_lot_with_record(db, seed, record_status=RecordStatus.qc_passed)
+        result = await lot_service.calculate_accuracy(db, lot_id=lot.id, tenant_id=seed["tenant"].id)
+        assert result.accuracy_rate == 1.0
+        assert result.status == LotStatus.passed
+
+    async def test_all_failed_is_rejected(self, db: AsyncSession, seed):
+        lot, _ = await _make_lot_with_record(db, seed, record_status=RecordStatus.qc_failed)
+        result = await lot_service.calculate_accuracy(db, lot_id=lot.id, tenant_id=seed["tenant"].id)
+        assert result.accuracy_rate == 0.0
+        assert result.status == LotStatus.failed

@@ -6,7 +6,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@shared/api/errors";
 import { aqlConfigKey, getAqlConfig, getSampleSizePreview, updateAqlConfig } from "@shared/api/aql";
-import { applySample, lotDetailKey, getLot, sendForRemediation } from "@shared/api/lots";
+import { applySample, getQcFieldResults, lotDetailKey, getLot, sendForRemediation } from "@shared/api/lots";
 import StatusDot from "@shared/components/StatusDot";
 import type { AQLConfig } from "@shared/types";
 
@@ -58,6 +58,13 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
     queryKey: ["sample-size-preview", totalRecords, aqlConfig?.current_aql_level],
     queryFn: () => getSampleSizePreview(totalRecords, aqlConfig!.current_aql_level),
     enabled: !!lotDetail && notYetSampled && isIso && totalRecords > 0,
+  });
+
+  const { data: fieldResults } = useQuery({
+    queryKey: ["qc-field-results", lotId],
+    queryFn: () => getQcFieldResults(lotId as number),
+    enabled: !!lotId && isIso && !notYetSampled,
+    refetchInterval: 10_000,
   });
 
   const saveConfigMutation = useMutation({
@@ -118,11 +125,19 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
             )}
           </Row>
 
-          {lotDetail.accuracy_rate !== null && lotDetail.accuracy_rate < 0.9 && (
+          {lotDetail.status === "failed" && (
             <Alert
               type="error"
               style={{ marginBottom: 16 }}
-              message={`Lot failed QC (${(lotDetail.accuracy_rate * 100).toFixed(1)}% accuracy — threshold 90%)`}
+              message={
+                isIso && fieldResults
+                  ? fieldResults.any_critical_defect
+                    ? "Lot failed QC — a critical field defect was found."
+                    : `Lot failed QC — ${fieldResults.non_critical_defect_total} defect(s) found, exceeding the acceptance number (${fieldResults.acceptance_number}).`
+                  : lotDetail.accuracy_rate !== null
+                    ? `Lot failed QC (${(lotDetail.accuracy_rate * 100).toFixed(1)}% accuracy — threshold 90%)`
+                    : "Lot failed QC."
+              }
               action={
                 <Button
                   danger
@@ -281,6 +296,53 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
               </Descriptions>
             )}
           </Card>
+
+          {isIso && !notYetSampled && (
+            <Card title="QC Field Defect Tabulation" style={{ marginBottom: 16 }}>
+              {!fieldResults ? (
+                <Spin size="small" />
+              ) : fieldResults.fields.length === 0 ? (
+                <Typography.Text type="secondary">No field marks recorded yet.</Typography.Text>
+              ) : (
+                <>
+                  {fieldResults.any_critical_defect && (
+                    <Alert
+                      type="error"
+                      style={{ marginBottom: 12 }}
+                      message="A critical field was marked defective — this fails the lot outright, regardless of the acceptance number."
+                    />
+                  )}
+                  <Typography.Text type="secondary">
+                    Non-critical defects: {fieldResults.non_critical_defect_total} / acceptance number{" "}
+                    {fieldResults.acceptance_number ?? "—"}
+                  </Typography.Text>
+                  <Table
+                    style={{ marginTop: 12 }}
+                    rowKey="field_key"
+                    size="small"
+                    dataSource={fieldResults.fields}
+                    pagination={false}
+                    columns={[
+                      { title: "Field", dataIndex: "field_key" },
+                      {
+                        title: "Critical",
+                        dataIndex: "is_critical",
+                        render: (v: boolean) => (v ? <Tag color="red">Critical</Tag> : "—"),
+                      },
+                      { title: "Defective", dataIndex: "defective_count" },
+                      { title: "Accepted", dataIndex: "accepted_count" },
+                      {
+                        title: "QC Agents",
+                        dataIndex: "contributing_agents",
+                        render: (agents: { id: number; full_name: string }[]) =>
+                          agents.map((a) => a.full_name).join(", ") || "—",
+                      },
+                    ]}
+                  />
+                </>
+              )}
+            </Card>
+          )}
 
           <Card title="Records — which were chosen">
             <Table

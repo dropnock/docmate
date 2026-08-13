@@ -1,4 +1,6 @@
 from datetime import datetime
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -36,5 +38,20 @@ class StartTaskRequest(BaseModel):
     pass
 
 
+class FieldResultIn(BaseModel):
+    field_key: str
+    status: Literal["accepted", "defective"]
+    note: str | None = None
+
+
 class CompleteTaskRequest(BaseModel):
     indexed_data: dict | None = None
+    # Only meaningful for task_type=qc on a project in AQLConfig.
+    # sampling_mode="iso" — see task_service.complete_task. Ignored
+    # otherwise (manual mode, or non-QC tasks).
+    field_results: list[FieldResultIn] | None = None
+
+
+class FailTaskRequest(BaseModel):
+    reason: str
+    field_results: list[FieldResultIn] | None = None

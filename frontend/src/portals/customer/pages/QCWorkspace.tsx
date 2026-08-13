@@ -8,17 +8,22 @@ import {
   Input,
   List,
   Modal,
+  Segmented,
+  Space,
   Spin,
+  Tag,
   Typography,
   message,
 } from "antd";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
+import { aqlConfigKey, getAqlConfig } from "@shared/api/aql";
+import { completeTask, failTask } from "@shared/api/tasks";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
-import type { DocRecord, DocumentType, Task, UserRecord } from "@shared/types";
+import type { Batch, DocRecord, DocumentType, FieldResult, QcFieldStatus, Task, UserRecord } from "@shared/types";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
@@ -29,6 +34,7 @@ export default function QCWorkspace() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectForm] = Form.useForm<{ reason: string }>();
+  const [fieldMarks, setFieldMarks] = useState<Record<string, { status: QcFieldStatus; note?: string }>>({});
 
   // Fetch tasks assigned to me
   const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
@@ -61,7 +67,7 @@ export default function QCWorkspace() {
   // screen uses — a plain Object.entries dump can't render array/object
   // fields (parcels, registered owners, caveators, ...) at all, it just
   // stringifies them to "[object Object]".
-  const { data: batchData } = useQuery({
+  const { data: batchData } = useQuery<Batch>({
     queryKey: ["batch", activeTask?.batch_id],
     queryFn: () => api.get(`/batches/${activeTask!.batch_id}`).then((r) => r.data),
     enabled: !!activeTask,
@@ -69,9 +75,36 @@ export default function QCWorkspace() {
 
   const { data: docType } = useQuery<DocumentType>({
     queryKey: ["doctype", batchData?.document_type_id],
-    queryFn: () => api.get(`/document-types/${batchData.document_type_id}`).then((r) => r.data),
+    queryFn: () => api.get(`/document-types/${batchData!.document_type_id}`).then((r) => r.data),
     enabled: !!batchData?.document_type_id,
   });
+
+  // Per-field defect marking (ISO 2859-1) is only offered on projects that
+  // opted into ISO sampling — see LotSettingsDrawer.tsx for the same
+  // sampling_mode gating pattern. Defaults to today's plain Pass/Reject flow
+  // while this is loading/absent, never flashing the field-review UI
+  // incorrectly for a manual-mode project.
+  const { data: aqlConfig } = useQuery({
+    queryKey: aqlConfigKey(batchData?.project_id),
+    queryFn: () => getAqlConfig(batchData!.project_id),
+    enabled: !!batchData?.project_id,
+  });
+  const isIso = aqlConfig?.sampling_mode === "iso";
+
+  const schemaProperties = (docType?.json_schema?.properties as Record<string, { title?: string; "x-critical"?: boolean }>) ?? {};
+
+  // Every top-level field defaults to Accepted — the QC agent only has to
+  // flip the ones they find defective, rather than affirmatively clicking
+  // "accept" on every field of every record.
+  useEffect(() => {
+    if (!isIso || !docType) return;
+    const initial: Record<string, { status: QcFieldStatus; note?: string }> = {};
+    for (const key of Object.keys(schemaProperties)) {
+      initial[key] = { status: "accepted" };
+    }
+    setFieldMarks(initial);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTask?.id, isIso, docType]);
 
   // Cached at the app root (App.tsx queries the same ["me"] key on load) —
   // needed to tell "locked by me" from "locked by someone else": comparing
@@ -123,6 +156,34 @@ export default function QCWorkspace() {
     if (!activeTask) return;
     rejectMutation.mutate({ taskId: activeTask.id, reason: values.reason });
   };
+
+  // ISO-mode submit: routes through fail_task (reusing its existing
+  // rework-batch creation) whenever any field is marked defective, and
+  // complete_task only when every field is accepted — keeps all
+  // rework-routing logic in the one place it already lives, rather than
+  // teaching complete_task to sometimes behave like fail_task.
+  const submitReviewMutation = useMutation({
+    mutationFn: () => {
+      if (!activeTask) throw new Error("No active task");
+      const fieldResults: FieldResult[] = Object.entries(fieldMarks).map(([field_key, mark]) => ({
+        field_key,
+        status: mark.status,
+        note: mark.note,
+      }));
+      const defective = fieldResults.filter((f) => f.status === "defective");
+      if (defective.length > 0) {
+        const reason = `${defective.length} field(s) marked defective: ${defective.map((f) => f.field_key).join(", ")}`;
+        return failTask(activeTask.id, { reason, field_results: fieldResults });
+      }
+      return completeTask(activeTask.id, { field_results: fieldResults });
+    },
+    onSuccess: () => {
+      message.success("QC review submitted");
+      setActiveTask(null);
+      qc.invalidateQueries({ queryKey: ["my-tasks"] });
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to submit review")),
+  });
 
   // Task list panel
   if (!activeTask) {
@@ -232,7 +293,17 @@ export default function QCWorkspace() {
             Start QC
           </Button>
         )}
-        {activeTask.status === "in_progress" && (
+        {activeTask.status === "in_progress" && isIso && (
+          <Button
+            type="primary"
+            loading={submitReviewMutation.isPending}
+            disabled={!docType}
+            onClick={() => submitReviewMutation.mutate()}
+          >
+            Submit Review
+          </Button>
+        )}
+        {activeTask.status === "in_progress" && !isIso && (
           <>
             <Button
               type="primary"
@@ -299,6 +370,57 @@ export default function QCWorkspace() {
                 </Card>
               ) : (
                 <Typography.Text type="secondary">No indexed data yet.</Typography.Text>
+              )}
+
+              {isIso && (
+                <Card size="small" title="Field Review" style={{ marginTop: 16 }}>
+                  {!docType ? (
+                    <Spin style={{ margin: 16 }} />
+                  ) : Object.keys(schemaProperties).length === 0 ? (
+                    <Typography.Text type="secondary">This document type has no fields to review.</Typography.Text>
+                  ) : (
+                    <Space direction="vertical" style={{ width: "100%" }} size={16}>
+                      {Object.entries(schemaProperties).map(([key, field]) => {
+                        const mark = fieldMarks[key] ?? { status: "accepted" as QcFieldStatus };
+                        return (
+                          <div key={key}>
+                            <Space align="center" style={{ marginBottom: 6 }}>
+                              <Typography.Text strong>{field.title || key}</Typography.Text>
+                              {field["x-critical"] && <Tag color="red">Critical</Tag>}
+                            </Space>
+                            <br />
+                            <Segmented
+                              value={mark.status}
+                              onChange={(status) =>
+                                setFieldMarks((prev) => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], status: status as QcFieldStatus },
+                                }))
+                              }
+                              options={[
+                                { label: "Accepted", value: "accepted" },
+                                { label: "Defective", value: "defective" },
+                              ]}
+                            />
+                            {mark.status === "defective" && (
+                              <Input
+                                placeholder="Note (optional)"
+                                style={{ marginTop: 8 }}
+                                value={mark.note ?? ""}
+                                onChange={(e) =>
+                                  setFieldMarks((prev) => ({
+                                    ...prev,
+                                    [key]: { ...prev[key], note: e.target.value },
+                                  }))
+                                }
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </Space>
+                  )}
+                </Card>
               )}
             </div>
           }

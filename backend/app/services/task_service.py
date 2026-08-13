@@ -4,11 +4,15 @@ from fastapi import HTTPException, status
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.aql import SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch, BatchStatus, BatchType
+from app.models.document_type import DocumentType
+from app.models.qc_field_result import QcFieldResult, QcFieldStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service, staff_assignment_service
+from app.schemas.task import FieldResultIn
+from app.services import aql_service, audit_service, staff_assignment_service
 from app.services.lock_service import acquire_lock, release_lock
 
 
@@ -93,6 +97,7 @@ async def complete_task(
     user_id: int,
     tenant_id: int,
     indexed_data: dict | None = None,
+    field_results: list[FieldResultIn] | None = None,
 ) -> Task:
     from app.models.record_version import VersionReason
     from app.services.version_service import create_version
@@ -133,6 +138,19 @@ async def complete_task(
                 else AuditAction.qa_passed
             ),
             performed_by=user_id,
+        )
+    elif task.task_type == TaskType.qc:
+        # No-ops on manual-mode/no-config projects; on ISO-mode projects,
+        # requires every field marked and none defective (a defective mark
+        # here means the caller should have called fail_task instead — see
+        # its own require_defective=True call below).
+        await _persist_qc_field_results(
+            db, task=task, record=record, tenant_id=tenant_id,
+            field_results=field_results, require_defective=False,
+        )
+        await audit_service.write_event(
+            db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,
+            action=AuditAction.qc_passed, performed_by=user_id,
         )
 
     await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
@@ -190,14 +208,85 @@ async def _maybe_complete_batch(db: AsyncSession, *, batch_id: int, tenant_id: i
         await mark_complete(db, batch_id=batch_id, tenant_id=tenant_id)
 
 
-async def _maybe_finalise_lot(db: AsyncSession, *, record: Record, tenant_id: int) -> None:
+async def _find_sampled_lot_record(db: AsyncSession, *, record_id: int):
     from app.models.lot import LotRecord
-    lr = (await db.execute(
-        select(LotRecord).where(LotRecord.record_id == record.id, LotRecord.is_sampled == True)  # noqa: E712
+    return (await db.execute(
+        select(LotRecord).where(LotRecord.record_id == record_id, LotRecord.is_sampled == True)  # noqa: E712
     )).scalar_one_or_none()
+
+
+async def _maybe_finalise_lot(db: AsyncSession, *, record: Record, tenant_id: int) -> None:
+    lr = await _find_sampled_lot_record(db, record_id=record.id)
     if lr:
         from app.services.lot_service import calculate_accuracy
         await calculate_accuracy(db, lot_id=lr.lot_id, tenant_id=tenant_id)
+
+
+async def _persist_qc_field_results(
+    db: AsyncSession,
+    *,
+    task: Task,
+    record: Record,
+    tenant_id: int,
+    field_results: list[FieldResultIn] | None,
+    require_defective: bool,
+) -> None:
+    """Validates and stores per-field QC marks for a QC task, used by both
+    complete_task and fail_task. No-ops entirely — field_results is ignored,
+    nothing is persisted — unless the task's project is in AQLConfig.
+    sampling_mode="iso"; manual-mode/no-config projects are unaffected
+    regardless of what the client sends, same tolerance the app already
+    applies to indexed_data elsewhere.
+
+    require_defective pins which of the two QC endpoints is allowed to
+    receive which shape: complete_task passes False (a defective mark here
+    means the client should have called fail_task instead — see design
+    decision #2 in the ISO field-marking plan: all rework-routing logic
+    stays in fail_task, complete_task never creates a rework batch).
+    fail_task passes True (calling fail_task with nothing marked defective
+    is equally a client error).
+    """
+    batch = await db.get(Batch, task.batch_id)
+    config = await aql_service.get_config(db, batch.project_id)
+    if config is None or config.sampling_mode != SamplingMode.iso:
+        return
+
+    doc_type = await db.get(DocumentType, batch.document_type_id)
+    properties = (doc_type.json_schema or {}).get("properties", {})
+    schema_fields = set(properties.keys())
+    field_results = field_results or []
+    submitted_fields = {fr.field_key for fr in field_results}
+    if submitted_fields != schema_fields:
+        missing = sorted(schema_fields - submitted_fields)
+        extra = sorted(submitted_fields - schema_fields)
+        raise HTTPException(
+            status_code=422,
+            detail=f"field_results must cover exactly the document type's fields — missing {missing}, unexpected {extra}",
+        )
+
+    if not field_results:
+        # Document type has no top-level schema properties to review (e.g.
+        # a schema with no "properties" key) — nothing to validate, nothing
+        # to persist, no lot association needed.
+        return
+
+    any_defective = any(fr.status == "defective" for fr in field_results)
+    if require_defective and not any_defective:
+        raise HTTPException(status_code=422, detail="No field marked defective — use complete_task instead")
+    if not require_defective and any_defective:
+        raise HTTPException(status_code=422, detail="A field is marked defective — use fail_task instead")
+
+    lot_record = await _find_sampled_lot_record(db, record_id=record.id)
+    if lot_record is None:
+        raise HTTPException(status_code=409, detail="Record is not part of a sampled lot")
+
+    for fr in field_results:
+        is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))
+        db.add(QcFieldResult(
+            task_id=task.id, record_id=record.id, lot_id=lot_record.lot_id, tenant_id=tenant_id,
+            field_key=fr.field_key, status=QcFieldStatus(fr.status), is_critical=is_critical, note=fr.note,
+        ))
+    await db.flush()
 
 
 async def reassign_task(
@@ -268,6 +357,7 @@ async def fail_task(
     user_id: int,
     reason: str,
     tenant_id: int,
+    field_results: list[FieldResultIn] | None = None,
 ) -> Task:
     """Fail a QA or QC task. QA fail re-queues the record for rework; QC fail logs and checks lot."""
     from app.models.record_version import VersionReason
@@ -282,6 +372,15 @@ async def fail_task(
         raise HTTPException(status_code=409, detail="Task is not in progress")
 
     record = await db.get(Record, task.record_id)
+
+    if task.task_type == TaskType.qc:
+        # Validated before anything else in this function mutates state, so
+        # a rejected (422) submission never leaves the task/record half-updated.
+        await _persist_qc_field_results(
+            db, task=task, record=record, tenant_id=tenant_id,
+            field_results=field_results, require_defective=True,
+        )
+
     await release_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
 
     now = datetime.now(timezone.utc)

@@ -1,6 +1,7 @@
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +10,7 @@ from app.core.security import check_project_access, get_current_user, require_ro
 from app.models.batch import Batch
 from app.models.project import Project
 from app.models.task import Task, TaskType
-from app.schemas.task import AssignTaskRequest, BulkReassignRequest, CompleteTaskRequest, TaskOut
+from app.schemas.task import AssignTaskRequest, BulkReassignRequest, CompleteTaskRequest, FailTaskRequest, TaskOut
 from app.services import task_service
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
@@ -69,6 +70,7 @@ async def complete_task(
         user_id=current_user.id,
         tenant_id=current_user._tenant_id,
         indexed_data=body.indexed_data,
+        field_results=body.field_results,
     )
 
 
@@ -148,12 +150,6 @@ async def my_tasks(
     return tasks
 
 
-from pydantic import BaseModel
-
-class FailTaskRequest(BaseModel):
-    reason: str
-
-
 @router.post("/{task_id}/fail", response_model=TaskOut)
 async def fail_task(
     task_id: int,
@@ -167,6 +163,7 @@ async def fail_task(
         user_id=current_user.id,
         reason=body.reason,
         tenant_id=current_user._tenant_id,
+        field_results=body.field_results,
     )
 
 

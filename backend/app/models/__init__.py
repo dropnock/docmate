@@ -7,6 +7,7 @@ from app.models.document_type import DocumentType
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.organization import Organization, OrgType
 from app.models.project import Project, S3BucketStatus
+from app.models.qc_field_result import QcFieldResult, QcFieldStatus
 from app.models.record import Record, RecordStatus
 from app.models.record_version import RecordVersion, VersionReason
 from app.models.shift import ProjectShift, Shift, ShiftRole, UserProjectAssignment
@@ -27,6 +28,7 @@ __all__ = [
     "Record", "RecordStatus",
     "RecordVersion", "VersionReason",
     "Lot", "LotRecord", "LotStatus",
+    "QcFieldResult", "QcFieldStatus",
     "AuditLog", "AuditAction", "AuditEntityType",
     "Task", "TaskType", "TaskStatus",
     "AQLConfig", "AQLStatus", "SamplingMode",
