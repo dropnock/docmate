@@ -207,6 +207,13 @@ export interface StaffMetric {
   qa: TaskTypeMetrics;
 }
 
+export interface QcStaffMetric {
+  user_id: number;
+  full_name: string;
+  email: string;
+  qc: TaskTypeMetrics;
+}
+
 export interface ProjectKPIs {
   project_id: number;
   total_records: number;

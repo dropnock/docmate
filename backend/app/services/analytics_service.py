@@ -10,6 +10,86 @@ from app.models.task import Task, TaskStatus, TaskType
 from app.models.user import User
 
 
+async def _task_type_metrics(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    user_id: int,
+    task_type: TaskType,
+    day_start: datetime,
+    day_end: datetime,
+) -> dict:
+    # Total completed tasks on this project
+    total = await db.execute(
+        select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
+            Batch.project_id == project_id,
+            Task.assigned_to == user_id,
+            Task.task_type == task_type,
+            Task.status == TaskStatus.completed,
+        )
+    )
+    total_count = total.scalar() or 0
+
+    # Completed today
+    today_q = await db.execute(
+        select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
+            Batch.project_id == project_id,
+            Task.assigned_to == user_id,
+            Task.task_type == task_type,
+            Task.status == TaskStatus.completed,
+            Task.completed_at >= day_start,
+            Task.completed_at < day_end,
+        )
+    )
+    today_count = today_q.scalar() or 0
+
+    # Average processing time
+    avg_q = await db.execute(
+        select(func.avg(Task.processing_time_seconds))
+        .join(Batch, Task.batch_id == Batch.id)
+        .where(
+            Batch.project_id == project_id,
+            Task.assigned_to == user_id,
+            Task.task_type == task_type,
+            Task.status == TaskStatus.completed,
+            Task.processing_time_seconds.is_not(None),
+        )
+    )
+    avg_time = avg_q.scalar() or 0
+
+    # Error rate (failed / total attempted)
+    failed_q = await db.execute(
+        select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
+            Batch.project_id == project_id,
+            Task.assigned_to == user_id,
+            Task.task_type == task_type,
+            Task.status == TaskStatus.failed,
+        )
+    )
+    failed_count = failed_q.scalar() or 0
+    total_attempted = total_count + failed_count
+    error_rate = round(failed_count / total_attempted, 4) if total_attempted else 0.0
+
+    # In-progress tasks
+    inprogress_q = await db.execute(
+        select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
+            Batch.project_id == project_id,
+            Task.assigned_to == user_id,
+            Task.task_type == task_type,
+            Task.status == TaskStatus.in_progress,
+        )
+    )
+    inprogress_count = inprogress_q.scalar() or 0
+
+    return {
+        "total_records_processed": total_count,
+        "records_today": today_count,
+        "avg_processing_time_seconds": round(float(avg_time)),
+        "error_rate": error_rate,
+        "tasks_in_progress": inprogress_count,
+    }
+
+
 async def staff_productivity(
     db: AsyncSession,
     *,
@@ -36,76 +116,52 @@ async def staff_productivity(
     staff_result = await db.execute(staff_query)
     staff = list(staff_result.scalars().all())
 
-    async def _metrics_for(user_id: int, task_type: TaskType) -> dict:
-        # Total completed tasks on this project
-        total = await db.execute(
-            select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
-                Batch.project_id == project_id,
-                Task.assigned_to == user_id,
-                Task.task_type == task_type,
-                Task.status == TaskStatus.completed,
-            )
-        )
-        total_count = total.scalar() or 0
+    rows = []
+    for user in staff:
+        rows.append({
+            "user_id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "indexing": await _task_type_metrics(
+                db, project_id=project_id, user_id=user.id, task_type=TaskType.indexing,
+                day_start=day_start, day_end=day_end,
+            ),
+            "qa": await _task_type_metrics(
+                db, project_id=project_id, user_id=user.id, task_type=TaskType.qa,
+                day_start=day_start, day_end=day_end,
+            ),
+        })
+    return rows
 
-        # Completed today
-        today_q = await db.execute(
-            select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
-                Batch.project_id == project_id,
-                Task.assigned_to == user_id,
-                Task.task_type == task_type,
-                Task.status == TaskStatus.completed,
-                Task.completed_at >= day_start,
-                Task.completed_at < day_end,
-            )
-        )
-        today_count = today_q.scalar() or 0
 
-        # Average processing time
-        avg_q = await db.execute(
-            select(func.avg(Task.processing_time_seconds))
-            .join(Batch, Task.batch_id == Batch.id)
-            .where(
-                Batch.project_id == project_id,
-                Task.assigned_to == user_id,
-                Task.task_type == task_type,
-                Task.status == TaskStatus.completed,
-                Task.processing_time_seconds.is_not(None),
-            )
-        )
-        avg_time = avg_q.scalar() or 0
+async def qc_staff_productivity(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    date_filter: date | None = None,
+) -> list[dict]:
+    """Per-agent QC productivity for the customer portal. Customer QC agents
+    aren't assigned via shifts (ShiftRole only covers indexer/qa) — work
+    assignment happens per-lot through lot_service.create_qc_batches(), which
+    creates Task(task_type=qc, assigned_to=agent_id) rows directly. So the
+    staff pool here is the same tenant+customer_org_id+role query used by
+    GET /projects/{project_id}/qc-agents, not a shift join."""
+    from app.models.user import UserRole
 
-        # Error rate (failed / total attempted)
-        failed_q = await db.execute(
-            select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
-                Batch.project_id == project_id,
-                Task.assigned_to == user_id,
-                Task.task_type == task_type,
-                Task.status == TaskStatus.failed,
-            )
-        )
-        failed_count = failed_q.scalar() or 0
-        total_attempted = total_count + failed_count
-        error_rate = round(failed_count / total_attempted, 4) if total_attempted else 0.0
+    project = await db.get(Project, project_id)
+    today = date_filter or date.today()
+    day_start = datetime.combine(today, datetime.min.time())
+    day_end = day_start + timedelta(days=1)
 
-        # In-progress tasks
-        inprogress_q = await db.execute(
-            select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(
-                Batch.project_id == project_id,
-                Task.assigned_to == user_id,
-                Task.task_type == task_type,
-                Task.status == TaskStatus.in_progress,
-            )
-        )
-        inprogress_count = inprogress_q.scalar() or 0
-
-        return {
-            "total_records_processed": total_count,
-            "records_today": today_count,
-            "avg_processing_time_seconds": round(float(avg_time)),
-            "error_rate": error_rate,
-            "tasks_in_progress": inprogress_count,
-        }
+    staff_result = await db.execute(
+        select(User).where(
+            User.tenant_id == project.tenant_id,
+            User.organization_id == project.customer_org_id,
+            User.role == UserRole.customer_qc_agent,
+            User.is_active == True,  # noqa: E712
+        ).order_by(User.full_name)
+    )
+    staff = list(staff_result.scalars().all())
 
     rows = []
     for user in staff:
@@ -113,8 +169,10 @@ async def staff_productivity(
             "user_id": user.id,
             "full_name": user.full_name,
             "email": user.email,
-            "indexing": await _metrics_for(user.id, TaskType.indexing),
-            "qa": await _metrics_for(user.id, TaskType.qa),
+            "qc": await _task_type_metrics(
+                db, project_id=project_id, user_id=user.id, task_type=TaskType.qc,
+                day_start=day_start, day_end=day_end,
+            ),
         })
     return rows
 

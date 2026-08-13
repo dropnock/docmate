@@ -1,6 +1,6 @@
 import { Table, Tag } from "antd";
 import type { ColumnType } from "antd/es/table";
-import type { StaffMetric, TaskTypeMetrics } from "@shared/types";
+import type { TaskTypeMetrics } from "@shared/types";
 
 function fmtTime(secs: number) {
   if (!secs) return "—";
@@ -9,10 +9,10 @@ function fmtTime(secs: number) {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-interface Props {
-  data: StaffMetric[];
+interface Props<T extends string> {
+  data: Array<{ user_id: number; full_name: string; email: string } & Record<T, TaskTypeMetrics>>;
   loading: boolean;
-  taskType: "indexing" | "qa";
+  taskType: T;
 }
 
 type Row = { user_id: number; full_name: string; email: string } & TaskTypeMetrics;
@@ -44,7 +44,7 @@ const columns: ColumnType<Row>[] = [
   },
 ];
 
-export default function ProductivityTable({ data, loading, taskType }: Props) {
+export default function ProductivityTable<T extends string>({ data, loading, taskType }: Props<T>) {
   const rows: Row[] = data.map((d) => ({
     user_id: d.user_id,
     full_name: d.full_name,
