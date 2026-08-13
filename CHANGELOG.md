@@ -7,6 +7,55 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-13
+
+### Added
+- **Customer portal: Lot Settings / Assign to QC split** — replaces the
+  single "Manage" lot screen with dedicated Settings (ISO 2859-1 sampling
+  configuration, editable AQL config, computed sample size, which records
+  were chosen) and Assign to QC screens. Lot sampling now has a per-project
+  `sampling_mode`: ISO-computed (default) or manual rate.
+- **Per-field QC defect marking** (ISO 2859-1) — customer QC agents on
+  ISO-sampling projects can mark individual record fields accepted/defective
+  instead of only passing/rejecting the whole record. Fields can be flagged
+  critical (`"x-critical": true` in a document type's schema); a critical
+  defect fails the lot outright, other defects are tabulated against the
+  lot's ISO 2859-1 acceptance number. New supervisor-facing defect
+  tabulation view on the lot's Settings screen.
+- **Customer Supervisor QC reporting dashboard** — dedicated Project KPIs
+  page: lots quality-checked, lots rejected, records passed, QC team daily
+  throughput, and a Lots Processed table (release date, AQL inspection
+  level at time of sampling, QC completion date, pass/fail, critical/minor
+  defect counts).
+- Records: search by filename on the Review & Requeue tab.
+- `scripts/migrate_records_to_training.py` — copies a sample of records
+  from one environment into a cabinet in another (e.g. a training
+  environment).
+- `scripts/export_caveat_volume_folio.py` — CSV export of caveat/volume/
+  folio for `qa_passed` records, including each record's image filename.
+- `scripts/generate_qc_training_data.py` — bulk-advances `qa_pending`
+  records to `qa_passed` through the real QA-completion path, to generate
+  customer QC training data without fabricating audit history.
+- `scripts/rollback_lot.py` — rolls back a draft/released lot's creation.
+- `scripts/requeue_qa_passed_records.py` — bulk-sends `qa_passed` records
+  back through QA.
+
+### Fixed
+- Customer QC agents could reach Lots, Project KPIs, and Record History by
+  direct URL despite the tabs being hidden — now role-gated on the
+  underlying `GET /lots/...` and `GET /records/{id}/history` endpoints too,
+  not just in the UI.
+- `AQLConfig` was looked up by primary key instead of its `project_id`
+  column, silently returning the wrong config (or none) outside of
+  coincidentally-aligned seed data — affected the AQL escalation logic
+  already live in production.
+- The ISO 2859-1 code-letter table's bucket boundaries were shifted one row
+  off from the real standard, producing the wrong sample size/acceptance
+  number for every AQL evaluation.
+- Lot pass/fail (`calculate_accuracy`) ignored `Lot.acceptance_number` and
+  always applied a flat 90%-pass-rate rule, even for ISO-sampled lots where
+  a real acceptance number had already been computed.
+
 ## [0.5.1] - 2026-08-04
 
 ### Added
