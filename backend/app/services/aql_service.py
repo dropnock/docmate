@@ -3,18 +3,23 @@ ISO 2859-1 Acceptance Sampling — Inspection Level II
 Sample size code letters and acceptance/rejection numbers.
 """
 from datetime import datetime, timezone
+from typing import Any
 
+from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.aql import AQLConfig, AQLStatus
+from app.models.aql import AQLConfig, AQLStatus, SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.services import audit_service
 
-# ISO 2859-1 Level II: batch_size_range -> code_letter
+# ISO 2859-1 Level II: batch_size_range -> code_letter. Upper bound of each
+# range maps to that letter (e.g. lot size 51-90 -> E, 91-150 -> F); anything
+# beyond the last entry falls through to "Q" in _code_letter below.
 _CODE_LETTER_TABLE = [
-    (2, "A"), (8, "B"), (13, "C"), (32, "D"), (50, "E"), (90, "F"),
-    (150, "G"), (280, "H"), (500, "J"), (1200, "K"), (3200, "L"),
-    (10000, "M"), (35000, "N"), (150000, "P"), (500000, "Q"),
+    (8, "A"), (15, "B"), (25, "C"), (50, "D"), (90, "E"), (150, "F"),
+    (280, "G"), (500, "H"), (1200, "J"), (3200, "K"), (10000, "L"),
+    (35000, "M"), (150000, "N"), (500000, "P"),
 ]
 
 # code_letter -> {aql_level -> (sample_size, acceptance_number)}
@@ -57,8 +62,17 @@ def compute_sample_size(batch_size: int, aql_level: float) -> tuple[int, int]:
     return row[actual_aql]
 
 
+async def get_config(db: AsyncSession, project_id: int) -> AQLConfig | None:
+    """AQLConfig's primary key is `id`; `project_id` is a separate unique
+    column — db.get(AQLConfig, project_id) would look up by PK, not this
+    column, and only return the right row by coincidence. Every lookup by
+    project should go through this."""
+    result = await db.execute(select(AQLConfig).where(AQLConfig.project_id == project_id))
+    return result.scalar_one_or_none()
+
+
 async def get_current_aql_level(db: AsyncSession, project_id: int) -> float:
-    config = await db.get(AQLConfig, project_id)
+    config = await get_config(db, project_id)
     if config is None:
         return 1.5
     mapping = {
@@ -67,6 +81,47 @@ async def get_current_aql_level(db: AsyncSession, project_id: int) -> float:
         AQLStatus.reduced: config.reduced_aql,
     }
     return mapping[config.current_status]
+
+
+async def update_config(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    updates: dict[str, Any],
+    user_id: int,
+    tenant_id: int,
+) -> AQLConfig:
+    """Apply a partial update to a project's AQLConfig, writing one audit
+    event with the diff of only the fields that actually changed."""
+    config = await get_config(db, project_id)
+    if config is None:
+        raise HTTPException(status_code=404, detail="No AQL config for project")
+
+    old_value: dict[str, Any] = {}
+    new_value: dict[str, Any] = {}
+    for field, value in updates.items():
+        if field == "sampling_mode":
+            value = SamplingMode(value)
+        current = getattr(config, field)
+        current_comparable = current.value if hasattr(current, "value") else current
+        if current_comparable == (value.value if hasattr(value, "value") else value):
+            continue
+        old_value[field] = current_comparable
+        new_value[field] = value.value if hasattr(value, "value") else value
+        setattr(config, field, value)
+
+    if new_value:
+        await audit_service.write_event(
+            db,
+            tenant_id=tenant_id,
+            entity_type=AuditEntityType.project,
+            entity_id=project_id,
+            action=AuditAction.status_changed,
+            performed_by=user_id,
+            old_value=old_value,
+            new_value=new_value,
+        )
+    return config
 
 
 async def evaluate_batch(
@@ -82,7 +137,7 @@ async def evaluate_batch(
     """Evaluate QC result, update AQL state, return outcome."""
     from app.models.batch import Batch, BatchQCResult, BatchStatus
 
-    config = await db.get(AQLConfig, project_id)
+    config = await get_config(db, project_id)
     if config is None:
         raise ValueError("No AQL config for project")
 

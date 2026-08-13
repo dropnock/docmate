@@ -43,7 +43,7 @@ class TestAgentErrorRate:
 
 class TestProjectErrorRate:
     async def test_project_kpis_reports_defect_rate_from_qc_results(self, db: AsyncSession, seed):
-        # 20-record batch -> code letter D -> sample 8, accept 0 at AQL 1.5
+        # 20-record batch -> code letter C (16-25) -> sample 5, accept 0 at AQL 1.5
         await aql_service.evaluate_batch(
             db,
             project_id=seed["project"].id,
@@ -56,9 +56,9 @@ class TestProjectErrorRate:
         await db.flush()
 
         kpis = await analytics_service.project_kpis(db, project_id=seed["project"].id)
-        assert kpis["records_inspected"] == 8
+        assert kpis["records_inspected"] == 5
         assert kpis["defects_found"] == 2
-        assert kpis["error_rate"] == 0.25
+        assert kpis["error_rate"] == 0.4
 
     async def test_project_kpis_error_rate_zero_with_no_qc_results(self, db: AsyncSession, seed):
         kpis = await analytics_service.project_kpis(db, project_id=seed["project"].id)

@@ -6,12 +6,13 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.aql import SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service
+from app.services import audit_service, aql_service
 
 
 async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
@@ -114,22 +115,47 @@ async def apply_sample(
     db: AsyncSession,
     *,
     lot_id: int,
-    sample_rate: float,
+    sample_rate: float | None,
     user_id: int,
     tenant_id: int,
 ) -> Lot:
-    if not 0 < sample_rate <= 1:
-        raise HTTPException(status_code=422, detail="sample_rate must be between 0 and 1")
     lot = await _get_lot(db, lot_id, tenant_id)
     if lot.status != LotStatus.released:
         raise HTTPException(status_code=409, detail="Lot must be released before sampling")
+
+    config = await aql_service.get_config(db, lot.project_id)
+    # No AQLConfig row for the project (shouldn't happen in practice —
+    # create_project always provisions one — but degrade the same way
+    # get_current_aql_level does rather than erroring) -> today's only
+    # behavior, manual rate.
+    mode = config.sampling_mode if config else SamplingMode.manual
 
     lot_records_result = await db.execute(
         select(LotRecord).where(LotRecord.lot_id == lot_id)
     )
     all_lot_records = list(lot_records_result.scalars().all())
     total = len(all_lot_records)
-    sample_size = max(1, math.ceil(sample_rate * total))
+
+    acceptance_number: int | None = None
+    if mode == SamplingMode.iso:
+        if sample_rate is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="sample_rate must not be supplied when sampling_mode is 'iso' — the sample size is computed from the ISO 2859-1 table",
+            )
+        aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
+        computed_size, acceptance_number = aql_service.compute_sample_size(total, aql_level)
+        sample_size = min(computed_size, total) if total else 0
+        derived_rate = sample_size / total if total else 0.0
+    else:
+        if sample_rate is None or not 0 < sample_rate <= 1:
+            raise HTTPException(
+                status_code=422,
+                detail="sample_rate is required and must be between 0 and 1 when sampling_mode is 'manual'",
+            )
+        sample_size = max(1, math.ceil(sample_rate * total))
+        derived_rate = sample_rate
+
     sampled = random.sample(all_lot_records, min(sample_size, total))
 
     for lr in sampled:
@@ -138,8 +164,9 @@ async def apply_sample(
         if record:
             record.status = RecordStatus.qc_pending
 
-    lot.sample_rate = sample_rate
+    lot.sample_rate = derived_rate
     lot.sample_size = sample_size
+    lot.acceptance_number = acceptance_number
     lot.status = LotStatus.qc_in_progress
 
     await audit_service.write_event(
@@ -149,7 +176,13 @@ async def apply_sample(
         entity_id=lot.id,
         action=AuditAction.sampled,
         performed_by=user_id,
-        new_value={"sample_rate": sample_rate, "sample_size": sample_size, "total": total},
+        new_value={
+            "sampling_mode": mode.value,
+            "sample_rate": derived_rate,
+            "sample_size": sample_size,
+            "acceptance_number": acceptance_number,
+            "total": total,
+        },
     )
     return lot
 

@@ -1,8 +1,11 @@
-"""Eligibility/empty-batch guards for lot_service.create_qc_batches."""
+"""Eligibility/empty-batch guards for lot_service.create_qc_batches, plus
+apply_sample's ISO 2859-1 / manual sampling_mode branches."""
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.aql import SamplingMode
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
@@ -113,3 +116,82 @@ class TestCreateQcBatches:
         tasks = result.scalars().all()
         assert len(tasks) == 1
         assert tasks[0].record_id == record.id
+
+
+async def _make_released_lot(db, seed, *, num_records=5):
+    lot = Lot(
+        tenant_id=seed["tenant"].id, project_id=seed["project"].id,
+        name="Sample Lot", status=LotStatus.released,
+    )
+    db.add(lot)
+    await db.flush()
+    records = [Record(status=RecordStatus.qa_passed, current_version=1) for _ in range(num_records)]
+    db.add_all(records)
+    await db.flush()
+    db.add_all(LotRecord(lot_id=lot.id, record_id=r.id, is_sampled=False) for r in records)
+    await db.flush()
+    return lot, records
+
+
+class TestApplySampleIsoMode:
+    """seed's AQLConfig defaults to sampling_mode=iso."""
+
+    async def test_computes_sample_size_via_iso_table(self, db: AsyncSession, seed):
+        lot, _ = await _make_released_lot(db, seed, num_records=5)
+        result = await lot_service.apply_sample(
+            db, lot_id=lot.id, sample_rate=None,
+            user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        assert result.status == LotStatus.qc_in_progress
+        # 5 items -> code letter A (2-8) -> AQL 1.5 -> sample 2, accept 0 (see test_aql_service.py)
+        assert result.sample_size == 2
+        assert result.acceptance_number == 0
+
+        lot_records = (await db.execute(select(LotRecord).where(LotRecord.lot_id == lot.id))).scalars().all()
+        assert sum(1 for lr in lot_records if lr.is_sampled) == 2
+
+    async def test_rejects_client_supplied_sample_rate(self, db: AsyncSession, seed):
+        lot, _ = await _make_released_lot(db, seed)
+        with pytest.raises(HTTPException) as exc_info:
+            await lot_service.apply_sample(
+                db, lot_id=lot.id, sample_rate=0.5,
+                user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 422
+
+
+class TestApplySampleManualMode:
+    async def test_uses_supplied_rate_no_acceptance_number(self, db: AsyncSession, seed):
+        seed["aql_config"].sampling_mode = SamplingMode.manual
+        await db.flush()
+        lot, _ = await _make_released_lot(db, seed, num_records=10)
+
+        result = await lot_service.apply_sample(
+            db, lot_id=lot.id, sample_rate=0.5,
+            user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        assert result.sample_size == 5
+        assert result.sample_rate == 0.5
+        assert result.acceptance_number is None
+
+    async def test_requires_sample_rate(self, db: AsyncSession, seed):
+        seed["aql_config"].sampling_mode = SamplingMode.manual
+        await db.flush()
+        lot, _ = await _make_released_lot(db, seed)
+        with pytest.raises(HTTPException) as exc_info:
+            await lot_service.apply_sample(
+                db, lot_id=lot.id, sample_rate=None,
+                user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 422
+
+    async def test_rejects_out_of_range_rate(self, db: AsyncSession, seed):
+        seed["aql_config"].sampling_mode = SamplingMode.manual
+        await db.flush()
+        lot, _ = await _make_released_lot(db, seed)
+        with pytest.raises(HTTPException) as exc_info:
+            await lot_service.apply_sample(
+                db, lot_id=lot.id, sample_rate=1.5,
+                user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+            )
+        assert exc_info.value.status_code == 422

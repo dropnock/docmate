@@ -55,10 +55,24 @@ export interface Lot {
   status: string;
   sample_rate: number | null;
   sample_size: number | null;
+  acceptance_number: number | null;
   accuracy_rate: number | null;
   released_at: string | null;
   released_by: number | null;
   created_by: number | null;
+}
+
+export interface AQLConfig {
+  current_status: string;
+  current_aql_level: number;
+  consecutive_passes: number;
+  consecutive_failures: number;
+  normal_aql: number;
+  tightened_aql: number;
+  reduced_aql: number;
+  passes_to_reduce: number;
+  failures_to_tighten: number;
+  sampling_mode: "iso" | "manual";
 }
 
 export interface LotDetail extends Lot {

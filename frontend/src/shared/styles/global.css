@@ -26,6 +26,10 @@ code,
   letter-spacing: 0.05em;
 }
 
+.docmate-sampled-row {
+  background: #eff6ff;
+}
+
 .docmate-desktop-sider {
   border-right: 1px solid #e2e8f0;
 }

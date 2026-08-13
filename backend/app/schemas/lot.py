@@ -19,6 +19,7 @@ class LotOut(BaseModel):
     status: str
     sample_rate: float | None
     sample_size: int | None
+    acceptance_number: int | None
     accuracy_rate: float | None
     released_at: datetime | None = None
     released_by: int | None
@@ -26,7 +27,10 @@ class LotOut(BaseModel):
 
 
 class ApplySampleRequest(BaseModel):
-    sample_rate: float
+    # Required when the project's AQLConfig.sampling_mode is "manual", must
+    # be omitted when "iso" (the sample size is computed instead) — see
+    # lot_service.apply_sample for the validation rule.
+    sample_rate: float | None = None
 
 
 class QcBatchAssignment(BaseModel):

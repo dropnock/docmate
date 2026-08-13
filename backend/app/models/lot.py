@@ -27,6 +27,10 @@ class Lot(Base, TimestampMixin):
     status: Mapped[LotStatus] = mapped_column(default=LotStatus.draft, nullable=False)
     sample_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Only populated when the lot was sampled under AQLConfig.sampling_mode
+    # == "iso" — the ISO 2859-1 acceptance number that goes with sample_size,
+    # same field name/meaning as BatchQCResult.acceptance_number.
+    acceptance_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     accuracy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     released_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)

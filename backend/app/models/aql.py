@@ -12,6 +12,11 @@ class AQLStatus(str, enum.Enum):
     reduced = "reduced"
 
 
+class SamplingMode(str, enum.Enum):
+    iso = "iso"
+    manual = "manual"
+
+
 class AQLConfig(Base, TimestampMixin):
     __tablename__ = "aql_configs"
 
@@ -27,5 +32,12 @@ class AQLConfig(Base, TimestampMixin):
     reduced_aql: Mapped[float] = mapped_column(Float, default=2.5, nullable=False)
     passes_to_reduce: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     failures_to_tighten: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # Default "iso": the lot's sample size is computed from the ISO 2859-1
+    # table (aql_service.compute_sample_size), matching the standard exactly.
+    # A customer can opt out to "manual" to keep the old supervisor-chosen
+    # percentage behavior instead — see lot_service.apply_sample.
+    sampling_mode: Mapped[SamplingMode] = mapped_column(
+        Enum(SamplingMode), default=SamplingMode.iso, nullable=False
+    )
 
     project: Mapped["Project"] = relationship(back_populates="aql_config")
