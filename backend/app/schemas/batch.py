@@ -29,6 +29,7 @@ class BatchOut(BaseModel):
     aql_level_snapshot: float | None
     aql_sample_size: int | None
     indexer_name: str | None = None
+    qa_agent_name: str | None = None
     record_count: int | None = None
     created_at: datetime
     completed_at: datetime | None = None

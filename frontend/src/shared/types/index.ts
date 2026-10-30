@@ -137,6 +137,7 @@ export interface Batch {
   aql_level_snapshot: number | null;
   aql_sample_size: number | null;
   indexer_name: string | null;
+  qa_agent_name: string | null;
   record_count: number | null;
   created_at: string;
   completed_at: string | null;

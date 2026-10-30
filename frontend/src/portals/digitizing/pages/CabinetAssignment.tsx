@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
+import { formatApiError } from "@shared/api/errors";
 import { useCabinets } from "@shared/hooks/useCabinets";
 import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
 import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
@@ -114,12 +115,15 @@ export default function CabinetAssignment({ projectId }: Props) {
 
   const assignQaMutation = useMutation({
     mutationFn: ({ batchId, agentId }: { batchId: number; agentId: number }) =>
-      api.patch(`/cabinets/batches/${batchId}/assign-qa`, { agent_id: agentId }),
-    onSuccess: () => {
-      message.success("QA agent assigned");
+      api
+        .patch<{ assigned_count: number }>(`/cabinets/batches/${batchId}/assign-qa`, { agent_id: agentId })
+        .then((r) => r.data),
+    onSuccess: (data, { batchId }) => {
+      message.success(`${data.assigned_count} QA task${data.assigned_count === 1 ? "" : "s"} assigned`);
+      setQaAssign(({ [batchId]: _, ...rest }) => rest);
       qc.invalidateQueries({ queryKey: ["project-batches", projectId] });
     },
-    onError: () => message.error("Failed to assign QA agent"),
+    onError: (e) => message.error(formatApiError(e, "Failed to assign QA agent")),
   });
 
   const pendingCount = records.filter((r) => r.status === "pending").length;
@@ -139,6 +143,14 @@ export default function CabinetAssignment({ projectId }: Props) {
       title: "Indexer",
       dataIndex: "indexer_name",
       render: (v: string | null) => v ?? <Typography.Text type="secondary">Unassigned</Typography.Text>,
+    },
+    {
+      title: "QA Agent",
+      dataIndex: "qa_agent_name",
+      render: (v: string | null, batch: Batch) =>
+        v ?? (batch.status === "qa_review"
+          ? <Typography.Text type="secondary">Unassigned</Typography.Text>
+          : null),
     },
     {
       title: "Status",
@@ -173,7 +185,7 @@ export default function CabinetAssignment({ projectId }: Props) {
                   assignQaMutation.mutate({ batchId: batch.id, agentId: qaAssign[batch.id] })
                 }
               >
-                Assign
+                {batch.qa_agent_name ? "Reassign" : "Assign"}
               </Button>
             </Col>
           </Row>

@@ -260,7 +260,7 @@ class TestShiftRoleEnforcement:
         db.add(task)
         seed["batch"].status = BatchStatus.qa_review
         await db.flush()
-        batch = await batch_service.assign_qa_agent(
+        batch, _ = await batch_service.assign_qa_agent(
             db, batch_id=seed["batch"].id, agent_id=seed["qa_staff"].id,
             supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
         )

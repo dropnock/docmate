@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.batch import Batch, BatchStatus
@@ -268,8 +268,14 @@ async def assign_qa_agent(
     agent_id: int,
     supervisor_id: int,
     tenant_id: int,
-) -> Batch:
-    """Assign all unassigned QA tasks in the batch to a single QA agent."""
+) -> tuple[Batch, int]:
+    """Give every pending QA task in the batch to a single QA agent —
+    unassigned ones and ones still waiting with another agent alike, so
+    picking a different agent actually moves the work. In-progress tasks
+    stay put (that agent holds the record lock; use reassign_batch to move
+    those too) and finished ones are history. Raises 409 when nothing is
+    left to assign rather than reporting a success that changed nothing.
+    Returns (batch, number of tasks assigned)."""
     batch = await db.get(Batch, batch_id)
     if not batch or batch.status != BatchStatus.qa_review:
         raise HTTPException(status_code=400, detail="Batch must be in qa_review to assign QA agent")
@@ -282,19 +288,30 @@ async def assign_qa_agent(
         select(Task).where(
             Task.batch_id == batch_id,
             Task.task_type == TaskType.qa,
-            Task.assigned_to == None,  # noqa: E711
+            Task.status == TaskStatus.pending,
+            or_(Task.assigned_to.is_(None), Task.assigned_to != agent_id),
         )
     )
-    for task in tasks_result.scalars().all():
+    tasks = list(tasks_result.scalars().all())
+    if not tasks:
+        raise HTTPException(
+            status_code=409,
+            detail="No pending QA tasks in this batch to assign to this agent — they are "
+                   "already assigned to them, in progress, or completed",
+        )
+
+    previous_agents = sorted({t.assigned_to for t in tasks if t.assigned_to is not None})
+    for task in tasks:
         task.assigned_to = agent_id
         task.assigned_by = supervisor_id
 
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.task, entity_id=batch_id,
         action=AuditAction.assigned, performed_by=supervisor_id,
-        new_value={"agent_id": agent_id, "task_type": "qa"},
+        old_value={"agent_ids": previous_agents} if previous_agents else None,
+        new_value={"agent_id": agent_id, "task_type": "qa", "task_count": len(tasks)},
     )
-    return batch
+    return batch, len(tasks)
 
 
 async def mark_complete(

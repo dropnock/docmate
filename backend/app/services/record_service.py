@@ -23,7 +23,7 @@ from app.services.version_service import create_version
 async def attach_task_attribution(db: AsyncSession, records: list[Record]) -> None:
     """Sets transient .indexed_by_id/.indexed_by_name/.qa_by_id/.qa_by_name
     attributes on each Record in place — same non-column-attribute pattern
-    as batches.py's _attach_indexer_names setting .indexer_name on Batch.
+    as batches.py's _attach_assignee_names setting .indexer_name on Batch.
 
     "Who indexed / who QA'd" = the assignee of the most recently *completed*
     indexing/qa Task for that record — no indexed_by/qa_by column exists on

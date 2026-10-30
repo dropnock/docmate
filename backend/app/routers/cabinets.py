@@ -190,7 +190,7 @@ async def assign_qa_agent(
     project = await db.get(Project, existing_batch.project_id)
     check_project_access(project, current_user)
 
-    batch = await batch_service.assign_qa_agent(
+    batch, assigned_count = await batch_service.assign_qa_agent(
         db,
         batch_id=batch_id,
         agent_id=body.agent_id,
@@ -198,4 +198,4 @@ async def assign_qa_agent(
         tenant_id=current_user._tenant_id,
     )
     await db.commit()
-    return {"id": batch.id, "status": batch.status}
+    return {"id": batch.id, "status": batch.status, "assigned_count": assigned_count}

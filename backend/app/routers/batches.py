@@ -51,39 +51,41 @@ async def list_document_types(
     return list(result.scalars().all())
 
 
-async def _attach_indexer_names(db: AsyncSession, batches: list[Batch]) -> list[Batch]:
-    """Batches have no first-class assignee — the indexer is whoever holds
-    the most indexing tasks in the batch (in practice a single agent, since
-    create_indexing_batch assigns every task to one agent_id at creation
-    time, but tasks can drift to other agents via reassignment)."""
+async def _attach_assignee_names(db: AsyncSession, batches: list[Batch]) -> list[Batch]:
+    """Batches have no first-class assignee — the indexer (QA agent) is
+    whoever holds the most indexing (QA) tasks in the batch. In practice a
+    single agent, since create_indexing_batch and assign_qa_agent give every
+    task to one agent, but tasks can drift to other agents via reassignment."""
     batch_ids = [b.id for b in batches]
     if not batch_ids:
         return batches
 
     counts = await db.execute(
-        select(Task.batch_id, Task.assigned_to, func.count())
+        select(Task.batch_id, Task.task_type, Task.assigned_to, func.count())
         .where(
             Task.batch_id.in_(batch_ids),
-            Task.task_type == TaskType.indexing,
+            Task.task_type.in_([TaskType.indexing, TaskType.qa]),
             Task.assigned_to.is_not(None),
         )
-        .group_by(Task.batch_id, Task.assigned_to)
+        .group_by(Task.batch_id, Task.task_type, Task.assigned_to)
     )
-    indexer_by_batch: dict[int, int] = {}
-    best_count: dict[int, int] = {}
-    for batch_id, assigned_to, count in counts.all():
-        if count > best_count.get(batch_id, 0):
-            best_count[batch_id] = count
-            indexer_by_batch[batch_id] = assigned_to
+    agent_by_key: dict[tuple[int, TaskType], int] = {}
+    best_count: dict[tuple[int, TaskType], int] = {}
+    for batch_id, task_type, assigned_to, count in counts.all():
+        key = (batch_id, task_type)
+        if count > best_count.get(key, 0):
+            best_count[key] = count
+            agent_by_key[key] = assigned_to
 
-    user_ids = set(indexer_by_batch.values())
+    user_ids = set(agent_by_key.values())
     names: dict[int, str] = {}
     if user_ids:
         users_result = await db.execute(select(User).where(User.id.in_(user_ids)))
         names = {u.id: u.full_name for u in users_result.scalars().all()}
 
     for b in batches:
-        b.indexer_name = names.get(indexer_by_batch.get(b.id))
+        b.indexer_name = names.get(agent_by_key.get((b.id, TaskType.indexing)))
+        b.qa_agent_name = names.get(agent_by_key.get((b.id, TaskType.qa)))
     return batches
 
 
@@ -127,7 +129,7 @@ async def list_batches(
         query = query.where(Batch.created_at <= date_to)
     result = await db.execute(query)
     batches = list(result.scalars().all())
-    batches = await _attach_indexer_names(db, batches)
+    batches = await _attach_assignee_names(db, batches)
     return await _attach_record_counts(db, batches)
 
 
