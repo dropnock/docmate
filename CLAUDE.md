@@ -63,6 +63,9 @@ Each transition is an explicit method (`submit_batch`, `advance_to_indexing`, et
 ### AQL engine (`services/aql_service.py`)
 Full ISO 2859-1 Inspection Level II lookup table. `compute_sample_size(batch_size, aql_level)` returns `(sample_size, acceptance_number)`. `evaluate_batch()` compares defects to the acceptance number, updates `AQLConfig.current_status` (normal → tightened → reduced), and emits a `batch_escalated` audit event on escalation.
 
+### Outgoing lot inspection (`services/lot_inspection_service.py`)
+Digitizing supervisor's ISO 2859-1 inspection of a **draft** lot before handover (separate from the customer's own post-release sampling in `lot_service.apply_sample`). The supervisor picks an AQL; `aql_service.sampling_plan()` gives code letter / n / Ac / Re, and the sample is drawn with `random.Random(random_seed)` (seed stored, so the draw is reproducible). The supervisor marks every field of each sampled record; `complete_inspection()` fails the lot on any critical-field defect or when non-critical defects exceed Ac, and requeues every defective record to indexing either way. `lot_service.release_lot` calls `assert_releasable()`: the latest non-cancelled attempt must have passed and all lot records must be `qa_passed` again. A failed lot is re-inspected with a fresh sample once its rework is back. The report (`GET /api/lots/{id}/inspection-report`) is visible to the customer supervisor only after release. Audit events use `AuditEntityType.lot`.
+
 ### Record locking (`services/lock_service.py`)
 Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises `409` with `{locked_by, locked_at}` if another user holds it. `release_lock()` is called on task complete, fail, or reassign.
 

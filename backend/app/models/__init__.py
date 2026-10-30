@@ -5,6 +5,13 @@ from app.models.batch import Batch, BatchQCResult, BatchStatus, BatchType
 from app.models.cabinet import Cabinet
 from app.models.document_type import DocumentType
 from app.models.lot import Lot, LotRecord, LotStatus
+from app.models.lot_inspection import (
+    InspectionItemStatus,
+    LotInspection,
+    LotInspectionFieldResult,
+    LotInspectionItem,
+    LotInspectionStatus,
+)
 from app.models.organization import Organization, OrgType
 from app.models.project import Project, S3BucketStatus
 from app.models.qc_field_result import QcFieldResult, QcFieldStatus
@@ -30,6 +37,8 @@ __all__ = [
     "RecordFlag", "FlagStatus",
     "RecordVersion", "VersionReason",
     "Lot", "LotRecord", "LotStatus",
+    "LotInspection", "LotInspectionItem", "LotInspectionFieldResult",
+    "LotInspectionStatus", "InspectionItemStatus",
     "QcFieldResult", "QcFieldStatus",
     "AuditLog", "AuditAction", "AuditEntityType",
     "Task", "TaskType", "TaskStatus",

@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.schemas.task import FieldResultIn
+
 
 class LotCreate(BaseModel):
     project_id: int
@@ -71,3 +73,16 @@ class QcFieldResultsOut(BaseModel):
     non_critical_defect_total: int
     acceptance_number: int | None
     fields: list[FieldResultSummary]
+
+
+class StartInspectionRequest(BaseModel):
+    # Must be one of aql_service.AVAILABLE_AQLS — validated there.
+    aql_level: float
+
+
+class ReviewInspectionItemRequest(BaseModel):
+    field_results: list[FieldResultIn]
+
+
+class CompleteInspectionRequest(BaseModel):
+    summary_note: str | None = Field(default=None, max_length=2048)

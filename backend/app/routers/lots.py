@@ -1,16 +1,20 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import require_roles
+from app.core.security import check_project_access, require_roles
+from app.models.lot import LotStatus
 from app.schemas.lot import (
     ApplySampleRequest,
+    CompleteInspectionRequest,
     CreateQcBatchesRequest,
     LotCreate,
     LotOut,
     QcFieldResultsOut,
+    ReviewInspectionItemRequest,
+    StartInspectionRequest,
 )
-from app.services import lot_service
+from app.services import aql_service, lot_inspection_service, lot_service
 
 router = APIRouter(prefix="/api/lots", tags=["lots"])
 
@@ -151,3 +155,123 @@ async def send_for_remediation(
     )
     await db.commit()
     return LotOut.model_validate(lot)
+
+
+# ── Outgoing inspection (digitizing supervisor, before release) ─────────────
+# See lot_inspection_service for the lifecycle.
+
+
+@router.get("/{lot_id}/inspections")
+async def list_inspections(
+    lot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
+    return {
+        "available_aql_levels": list(aql_service.AVAILABLE_AQLS),
+        # Pre-selects the customer's current AQL; the supervisor may pick
+        # any tabulated level for the internal inspection.
+        "default_aql_level": await aql_service.get_current_aql_level(db, lot.project_id),
+        "inspections": await lot_inspection_service.list_inspections(
+            db, lot_id=lot_id, tenant_id=current_user._tenant_id
+        ),
+    }
+
+
+@router.post("/{lot_id}/inspections", status_code=201)
+async def start_inspection(
+    lot_id: int,
+    body: StartInspectionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    inspection = await lot_inspection_service.start_inspection(
+        db, lot_id=lot_id, aql_level=body.aql_level,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return await lot_inspection_service.get_inspection_detail(
+        db, lot_id=lot_id, inspection_id=inspection.id, tenant_id=current_user._tenant_id
+    )
+
+
+@router.get("/{lot_id}/inspections/{inspection_id}")
+async def get_inspection(
+    lot_id: int,
+    inspection_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    return await lot_inspection_service.get_inspection_detail(
+        db, lot_id=lot_id, inspection_id=inspection_id, tenant_id=current_user._tenant_id
+    )
+
+
+@router.put("/{lot_id}/inspections/{inspection_id}/items/{record_id}")
+async def review_inspection_item(
+    lot_id: int,
+    inspection_id: int,
+    record_id: int,
+    body: ReviewInspectionItemRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    item = await lot_inspection_service.review_item(
+        db, lot_id=lot_id, inspection_id=inspection_id, record_id=record_id,
+        field_results=body.field_results, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return {"record_id": item.record_id, "status": item.status.value}
+
+
+@router.post("/{lot_id}/inspections/{inspection_id}/complete")
+async def complete_inspection(
+    lot_id: int,
+    inspection_id: int,
+    body: CompleteInspectionRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    await lot_inspection_service.complete_inspection(
+        db, lot_id=lot_id, inspection_id=inspection_id, summary_note=body.summary_note,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return await lot_inspection_service.get_inspection_detail(
+        db, lot_id=lot_id, inspection_id=inspection_id, tenant_id=current_user._tenant_id
+    )
+
+
+@router.post("/{lot_id}/inspections/{inspection_id}/cancel")
+async def cancel_inspection(
+    lot_id: int,
+    inspection_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    await lot_inspection_service.cancel_inspection(
+        db, lot_id=lot_id, inspection_id=inspection_id,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return {"id": inspection_id, "status": "cancelled"}
+
+
+@router.get("/{lot_id}/inspection-report")
+async def get_inspection_report(
+    lot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
+):
+    """Shared with the customer alongside the released lot. Customers only
+    see it once the lot has been handed over (not while it's still a draft
+    being inspected), and only for their own organisation's projects."""
+    from app.models.project import Project
+    from app.models.user import Portal
+
+    lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
+    check_project_access(await db.get(Project, lot.project_id), current_user)
+    if current_user.portal == Portal.customer and lot.status == LotStatus.draft:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    return await lot_inspection_service.build_report(db, lot=lot)

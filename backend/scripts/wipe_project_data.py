@@ -40,6 +40,7 @@ from app.models.audit_log import AuditEntityType, AuditLog
 from app.models.batch import Batch, BatchQCResult
 from app.models.cabinet import Cabinet
 from app.models.lot import Lot, LotRecord
+from app.models.lot_inspection import LotInspection, LotInspectionFieldResult, LotInspectionItem
 from app.models.project import Project
 from app.models.record import Record
 from app.models.record_version import RecordVersion
@@ -219,8 +220,27 @@ async def _delete_db_rows(db: AsyncSession, scope: dict) -> None:
         audit_conditions.append(
             (AuditLog.entity_type == AuditEntityType.batch) & (AuditLog.entity_id.in_(batch_ids))
         )
+    if lot_ids:
+        audit_conditions.append(
+            (AuditLog.entity_type == AuditEntityType.lot) & (AuditLog.entity_id.in_(lot_ids))
+        )
     if audit_conditions:
         await db.execute(delete(AuditLog).where(or_(*audit_conditions)))
+
+    # Outgoing inspections reference both lots and records — leaf rows first.
+    item_conditions = []
+    if lot_ids:
+        item_conditions.append(
+            LotInspectionItem.inspection_id.in_(select(LotInspection.id).where(LotInspection.lot_id.in_(lot_ids)))
+        )
+    if record_ids:
+        item_conditions.append(LotInspectionItem.record_id.in_(record_ids))
+    if item_conditions:
+        item_ids = select(LotInspectionItem.id).where(or_(*item_conditions))
+        await db.execute(delete(LotInspectionFieldResult).where(LotInspectionFieldResult.item_id.in_(item_ids)))
+        await db.execute(delete(LotInspectionItem).where(or_(*item_conditions)))
+    if lot_ids:
+        await db.execute(delete(LotInspection).where(LotInspection.lot_id.in_(lot_ids)))
 
     lot_record_conditions = []
     if lot_ids:

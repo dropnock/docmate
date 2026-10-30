@@ -1,5 +1,8 @@
 import api from "@shared/api/client";
-import type { AvailableStaff, Lot, LotDetail, QcFieldResultsOut } from "@shared/types";
+import type {
+  AvailableStaff, FieldResult, Lot, LotDetail, LotInspectionDetail, LotInspectionList,
+  LotInspectionReport, QcFieldResultsOut,
+} from "@shared/types";
 
 /** Shared across CustomerLotManager, LotSettingsDrawer, and LotAssignQcDrawer
  * — all three need the same lot-detail query, so the key must be the same
@@ -34,4 +37,49 @@ export function sendForRemediation(lotId: number) {
 
 export function getQcFieldResults(lotId: number) {
   return api.get<QcFieldResultsOut>(`/lots/${lotId}/qc-field-results`).then((r) => r.data);
+}
+
+// ── Outgoing inspection (digitizing supervisor) ─────────────────────────────
+
+export const lotInspectionsKey = (lotId?: number) => ["lot-inspections", lotId] as const;
+export const lotInspectionKey = (lotId?: number, inspectionId?: number) =>
+  ["lot-inspection", lotId, inspectionId] as const;
+export const lotInspectionReportKey = (lotId?: number) => ["lot-inspection-report", lotId] as const;
+
+export function listInspections(lotId: number) {
+  return api.get<LotInspectionList>(`/lots/${lotId}/inspections`).then((r) => r.data);
+}
+
+export function startInspection(lotId: number, aqlLevel: number) {
+  return api
+    .post<LotInspectionDetail>(`/lots/${lotId}/inspections`, { aql_level: aqlLevel })
+    .then((r) => r.data);
+}
+
+export function getInspection(lotId: number, inspectionId: number) {
+  return api.get<LotInspectionDetail>(`/lots/${lotId}/inspections/${inspectionId}`).then((r) => r.data);
+}
+
+export function reviewInspectionItem(
+  lotId: number, inspectionId: number, recordId: number, fieldResults: FieldResult[],
+) {
+  return api.put(`/lots/${lotId}/inspections/${inspectionId}/items/${recordId}`, {
+    field_results: fieldResults,
+  });
+}
+
+export function completeInspection(lotId: number, inspectionId: number, summaryNote?: string) {
+  return api
+    .post<LotInspectionDetail>(`/lots/${lotId}/inspections/${inspectionId}/complete`, {
+      summary_note: summaryNote || null,
+    })
+    .then((r) => r.data);
+}
+
+export function cancelInspection(lotId: number, inspectionId: number) {
+  return api.post(`/lots/${lotId}/inspections/${inspectionId}/cancel`);
+}
+
+export function getInspectionReport(lotId: number) {
+  return api.get<LotInspectionReport>(`/lots/${lotId}/inspection-report`).then((r) => r.data);
 }

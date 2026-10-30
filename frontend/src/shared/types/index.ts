@@ -328,3 +328,81 @@ export interface DocumentType {
   name: string;
   json_schema: { [key: string]: unknown };
 }
+
+// ── Outgoing lot inspection (digitizing supervisor, before release) ─────────
+// See backend/app/services/lot_inspection_service.py.
+
+export type LotInspectionStatus = "in_progress" | "passed" | "failed" | "cancelled";
+export type InspectionItemStatus = "pending" | "accepted" | "defective";
+
+export interface InspectionFieldResult {
+  field_key: string;
+  title: string;
+  status: QcFieldStatus;
+  is_critical: boolean;
+  note: string | null;
+}
+
+export interface InspectionItem {
+  record_id: number;
+  source_identifier: string | null;
+  original_filename: string | null;
+  document_type_id: number | null;
+  record_version: number;
+  status: InspectionItemStatus;
+  reviewed_at: string | null;
+  field_results: InspectionFieldResult[];
+}
+
+export interface InspectionFieldTally {
+  field_key: string;
+  title: string;
+  is_critical: boolean;
+  defective_count: number;
+}
+
+export interface LotInspectionSummary {
+  id: number;
+  lot_id: number;
+  attempt_number: number;
+  status: LotInspectionStatus;
+  aql_level: number;
+  lot_size: number;
+  code_letter: string;
+  sample_size: number;
+  acceptance_number: number;
+  rejection_number: number;
+  random_seed: string;
+  critical_defect_count: number | null;
+  minor_defect_count: number | null;
+  defective_record_count: number | null;
+  summary_note: string | null;
+  inspected_by: number;
+  inspector_name: string | null;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface LotInspectionDetail extends LotInspectionSummary {
+  reviewed_count: number;
+  items: InspectionItem[];
+  field_tally: InspectionFieldTally[];
+}
+
+export interface LotInspectionList {
+  available_aql_levels: number[];
+  default_aql_level: number;
+  inspections: LotInspectionSummary[];
+}
+
+export interface LotInspectionReport {
+  lot_id: number;
+  lot_name: string;
+  lot_status: string;
+  project_name: string | null;
+  lot_size: number;
+  released_at: string | null;
+  standard: string;
+  final_status: LotInspectionStatus | null;
+  inspections: LotInspectionDetail[];
+}
