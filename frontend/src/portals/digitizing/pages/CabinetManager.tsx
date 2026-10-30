@@ -521,7 +521,10 @@ export default function CabinetManager({ projectId }: Props) {
                 Add a top-level <code>"required": [...]</code> array to mark fields mandatory — enforced
                 on Submit &amp; Complete only, not Save Progress. Set <code>"x-hidden": true</code> on a
                 property to remove it from the form entirely, or <code>"x-disabled": true</code> to show
-                it read-only. Set <code>"x-critical": true</code> on a property to flag it as an ISO
+                it read-only. Set <code>"x-multiline": true</code> on a string property for a multi-line
+                textbox (or a number, e.g. <code>"x-multiline": 6</code>, for that many rows), or{" "}
+                <code>"x-multiline": false</code> to keep a field like <code>land_description</code>{" "}
+                single-line. Set <code>"x-critical": true</code> on a property to flag it as an ISO
                 2859-1 critical field — for projects using ISO sampling, a single critical-field defect
                 found during customer QC review fails the whole lot outright, independent of the
                 acceptance number.

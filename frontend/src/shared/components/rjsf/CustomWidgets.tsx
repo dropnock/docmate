@@ -418,10 +418,21 @@ export function CountryWidget({ value, onChange, id, required, disabled, rawErro
 const TEXTAREA_KEYS = ["description", "notes", "note", "comment", "comments",
   "remarks", "details", "reason", "summary", "narrative", "text"];
 
-function isTextarea(key: string, field: RJSFSchema): boolean {
-  if (field.type !== "string" || field.enum || field.format) return false;
+const DEFAULT_TEXTAREA_ROWS = 3;
+
+// Rows for a multi-line textbox, or null for a single-line input. An
+// admin-authored "x-multiline" on the property wins over the key-name
+// heuristic: true → default rows, a positive integer → that many rows,
+// false → force single-line even for a key like "land_description".
+function textareaRows(key: string, field: RJSFSchema): number | null {
+  if (field.type !== "string" || field.enum || field.format) return null;
+  const flag = (field as unknown as Record<string, unknown>)["x-multiline"];
+  if (flag === false) return null;
+  if (flag === true) return DEFAULT_TEXTAREA_ROWS;
+  if (typeof flag === "number" && Number.isInteger(flag) && flag > 0) return flag;
   const lower = key.toLowerCase();
-  return TEXTAREA_KEYS.some((k) => lower === k || lower.endsWith(`_${k}`) || lower.startsWith(`${k}_`));
+  const byName = TEXTAREA_KEYS.some((k) => lower === k || lower.endsWith(`_${k}`) || lower.startsWith(`${k}_`));
+  return byName ? DEFAULT_TEXTAREA_ROWS : null;
 }
 
 function isCountry(key: string, field: RJSFSchema): boolean {
@@ -441,6 +452,7 @@ function buildUiForProperties(props: Record<string, unknown>): Record<string, un
   for (const [key, rawField] of Object.entries(props)) {
     if (!rawField || typeof rawField !== "object" || Array.isArray(rawField)) continue;
     const field = rawField as RJSFSchema;
+    const rows = textareaRows(key, field);
     let fieldUi: Record<string, unknown> = {};
 
     if (
@@ -464,8 +476,8 @@ function buildUiForProperties(props: Record<string, unknown>): Record<string, un
       fieldUi = { "ui:widget": "DateText" };
     } else if (isCountry(key, field)) {
       fieldUi = { "ui:widget": "Country" };
-    } else if (isTextarea(key, field)) {
-      fieldUi = { "ui:widget": "textarea", "ui:options": { rows: 3 } };
+    } else if (rows !== null) {
+      fieldUi = { "ui:widget": "textarea", "ui:options": { rows } };
     } else if (field.type === "object" && field.properties) {
       const nested = buildUiForProperties(field.properties as Record<string, unknown>);
       if (Object.keys(nested).length > 0) fieldUi = nested;
