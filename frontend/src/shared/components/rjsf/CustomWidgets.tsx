@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { AutoComplete, Button, Input, Typography } from "antd";
 import type { FieldProps, WidgetProps, RJSFSchema } from "@rjsf/utils";
+import HelpTip from "@shared/components/HelpTip";
 
 // ─── Range Array Field ───────────────────────────────────────────────────────
 // Replaces the default multi-item add/remove UI for primitive arrays.
@@ -106,8 +107,8 @@ export function RangeArrayField({
         ))
       ) : (
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          {count > 0 ? `${count} value${count !== 1 ? "s" : ""} · ` : ""}
-          {isStr ? "Comma-separated." : "Comma-separated or ranges (e.g. 700-750)."}
+          {count > 0 ? `${count} value${count !== 1 ? "s" : ""}` : ""}
+          <HelpTip size={12}>{isStr ? "Separate values with commas." : "Separate values with commas, or enter ranges (e.g. 700-750)."}</HelpTip>
         </Typography.Text>
       )}
     </div>
@@ -199,7 +200,7 @@ export function ParcelArrayField({
       </label>
 
       {/* Input row */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         <Input
           placeholder="Volume"
           value={volumeInput}
@@ -223,10 +224,12 @@ export function ParcelArrayField({
         >
           Add
         </Button>
+        <span style={{ alignSelf: "center" }}>
+          <HelpTip>
+            A range like <code>400-450</code> creates one entry per folio. Comma-separated values work too.
+          </HelpTip>
+        </span>
       </div>
-      <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginBottom: 6 }}>
-        Range notation: <code>400-450</code> creates one entry per folio. Comma-separated values also supported.
-      </Typography.Text>
 
       {/* Current items */}
       {currentItems.length > 0 && (

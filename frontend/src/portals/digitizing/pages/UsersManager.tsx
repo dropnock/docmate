@@ -9,6 +9,7 @@ import type { ColumnsType } from "antd/es/table";
 import api from "@shared/api/client";
 import PageHeader from "@shared/components/PageHeader";
 import StatusDot from "@shared/components/StatusDot";
+import { helpTooltip } from "@shared/components/HelpTip";
 import type { Organization, UserRecord } from "@shared/types";
 
 const ROLES = [
@@ -210,7 +211,7 @@ export default function UsersManager() {
             name="temp_password"
             label="Temporary Password"
             rules={[{ required: true, min: 6 }]}
-            extra="User will be prompted to change this on first login."
+            tooltip={helpTooltip("The user will be asked to change this on first login.")}
           >
             <Input.Password />
           </Form.Item>

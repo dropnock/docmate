@@ -10,6 +10,7 @@ import api from "@shared/api/client";
 import { useCabinets } from "@shared/hooks/useCabinets";
 import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
 import StatusDot from "@shared/components/StatusDot";
+import HelpTip, { helpTooltip } from "@shared/components/HelpTip";
 import type { CabinetRecord, DocumentType } from "@shared/types";
 
 interface Props {
@@ -344,8 +345,10 @@ export default function CabinetManager({ projectId }: Props) {
                       </p>
                       <p className="ant-upload-text">Drag images here or click to upload</p>
                       <p className="ant-upload-hint">
-                        Supported: TIFF, JPG, PNG, PDF. The original filename is retained
-                        and used to auto-link to JSON-ingested records by identifier.
+                        TIFF, JPG, PNG or PDF
+                        <HelpTip>
+                          The original filename is kept and used to link each image to its JSON-ingested record by identifier.
+                        </HelpTip>
                       </p>
                     </Upload.Dragger>
 
@@ -515,7 +518,7 @@ export default function CabinetManager({ projectId }: Props) {
           </Form.Item>
           <Form.Item
             label="JSON Schema"
-            extra={
+            tooltip={helpTooltip(
               <>
                 Standard JSON Schema object. Use properties to define the fields agents will fill in.
                 Add a top-level <code>"required": [...]</code> array to mark fields mandatory — enforced
@@ -529,7 +532,7 @@ export default function CabinetManager({ projectId }: Props) {
                 found during customer QC review fails the whole lot outright, independent of the
                 acceptance number.
               </>
-            }
+            )}
             required
           >
             <Input.TextArea
@@ -552,19 +555,18 @@ export default function CabinetManager({ projectId }: Props) {
         confirmLoading={ingestJsonMutation.isPending}
         width={640}
       >
-        <Typography.Paragraph type="secondary">
-          Paste a JSON array (or single object). Each item becomes one record.
-          Specify the field that contains the unique identifier so images can be auto-linked.
-        </Typography.Paragraph>
         <Form layout="vertical">
-          <Form.Item label="Identifier field name">
+          <Form.Item
+            label="Identifier field name"
+            tooltip={helpTooltip("The field that holds each record's unique identifier, so uploaded images can be linked to it by filename.")}
+          >
             <Input
               value={idField}
               onChange={(e) => setIdField(e.target.value)}
               placeholder='e.g. "id" or "record_number"'
             />
           </Form.Item>
-          <Form.Item label="JSON">
+          <Form.Item label="JSON" tooltip={helpTooltip("A JSON array, or a single object. Each item becomes one record.")}>
             <Input.TextArea
               rows={12}
               value={jsonText}

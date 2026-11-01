@@ -15,6 +15,7 @@ import LotHistory from "@shared/components/LotHistory";
 import LotInspectionReport from "@shared/components/LotInspectionReport";
 import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
+import HelpTip from "@shared/components/HelpTip";
 import LotInspectionWorkspace from "../components/LotInspectionWorkspace";
 import type { CabinetRecord, Lot, LotDetail, LotInspectionStatus } from "@shared/types";
 
@@ -426,7 +427,13 @@ export default function LotManager({ projectId }: Props) {
             )}
             <LotQcRounds rounds={lotDetail.qc_rounds ?? []} currentRound={lotDetail.qc_round} />
 
-            <Divider orientation="left" style={{ marginTop: 0 }}>Outgoing inspection (ISO 2859-1)</Divider>
+            <Divider orientation="left" style={{ marginTop: 0 }}>
+              Outgoing inspection (ISO 2859-1)
+              <HelpTip>
+                Starting an inspection draws a random ISO 2859-1 sample of the lot for you to review. The lot can only
+                be released once an inspection passes.
+              </HelpTip>
+            </Divider>
             {lotDetail.status === "draft" && !activeInspection && !inspectionPassed && (
               recordsInRework > 0 ? (
                 <Alert
@@ -463,7 +470,7 @@ export default function LotManager({ projectId }: Props) {
             )}
             {inspections.length === 0 ? (
               <Typography.Paragraph type="secondary">
-                No inspection yet. Starting one draws a random ISO 2859-1 sample for you to review.
+                No inspection yet.
               </Typography.Paragraph>
             ) : (
               <Table

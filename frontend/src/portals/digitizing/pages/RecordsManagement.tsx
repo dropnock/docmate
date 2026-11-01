@@ -10,6 +10,7 @@ import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import PageHeader from "@shared/components/PageHeader";
 import PageSkeleton from "@shared/components/PageSkeleton";
+import HelpTip from "@shared/components/HelpTip";
 import RecordTimeline from "@shared/components/RecordTimeline";
 import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
 import type {
@@ -112,12 +113,14 @@ function DashboardTab({ projectId }: { projectId: number }) {
       ) : (
         <>
           <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
-            Batches created in the selected range
+            Batches
+            <HelpTip>Batches created in the selected date range.</HelpTip>
           </Typography.Text>
           {renderTiles(batchTiles)}
 
           <Typography.Text type="secondary" style={{ display: "block", margin: "20px 0 8px" }}>
-            Records — current totals, not affected by the date range
+            Records
+            <HelpTip>Current totals — not affected by the date range.</HelpTip>
           </Typography.Text>
           {renderTiles(recordTiles)}
         </>
