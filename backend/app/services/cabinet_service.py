@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.cabinet import Cabinet
+from app.models.document_type import DocumentType
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.services import audit_service, image_service, s3_service, staff_assignment_service
@@ -248,6 +249,13 @@ async def create_indexing_batch(
         raise HTTPException(status_code=400, detail="record_ids must not be empty")
 
     cabinet = await get_cabinet(db, cabinet_id=cabinet_id, tenant_id=tenant_id)
+    # A batch must stay inside its cabinet's project: its records, document
+    # type and the project it's reported and exported under are all the same one.
+    if cabinet.project_id != project_id:
+        raise HTTPException(status_code=400, detail="This cabinet belongs to another project")
+    document_type = await db.get(DocumentType, document_type_id)
+    if not document_type or document_type.project_id != project_id:
+        raise HTTPException(status_code=400, detail="This document type belongs to another project")
 
     await staff_assignment_service.require_shift_role_for_task_type(
         db, user_id=agent_id, project_id=project_id, task_type=TaskType.indexing,
