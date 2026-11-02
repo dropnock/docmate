@@ -20,9 +20,14 @@ that isn't in a batch (so has no document type). If two
 records would get the same name, the later one gets _r<record id> appended
 rather than overwriting the first.
 
+The output folder must be new or empty, so one export's files can never mix
+with another's (say, an earlier export of a different project to the same
+folder). --replace deletes the .json files already in it first.
+
 Run inside the backend container/environment (needs direct DB access):
     docker compose exec backend python -m scripts.export_caveat_record_files --project-id 1 --count 100
     docker compose exec backend python -m scripts.export_caveat_record_files --project-id 1 --count 25 --random --status qa_passed --output-dir /tmp/caveats
+    docker compose exec backend python -m scripts.export_caveat_record_files --project-id 3 --count 100 --output-dir /tmp/caveats --replace
 Copy the files out of the container with:
     docker compose cp backend:/tmp/caveats ./caveats
 """
@@ -124,11 +129,35 @@ async def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--random", action="store_true", help="A random sample instead of the first N by id.")
     parser.add_argument(
         "--output-dir", type=Path, default=None,
-        help="Folder for the files (created if needed). Defaults to caveat_records_<project_id>_<timestamp>.",
+        help="Folder for the files (created if needed; must be empty). Defaults to caveat_records_<project_id>_<timestamp>.",
+    )
+    parser.add_argument(
+        "--replace", action="store_true",
+        help="Delete the .json files already in --output-dir before exporting, instead of refusing to run.",
     )
     args = parser.parse_args(argv)
     if args.count < 1:
         parser.error("--count must be at least 1")
+
+    out_dir = args.output_dir or Path(
+        f"caveat_records_{args.project_id}_{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}"
+    )
+    if out_dir.exists():
+        if not out_dir.is_dir():
+            print(f"{out_dir} exists and isn't a folder", file=sys.stderr)
+            return 1
+        existing = list(out_dir.glob("*.json"))
+        if existing and not args.replace:
+            print(
+                f"{out_dir} already holds {len(existing)} .json file(s) from an earlier export — "
+                "use a new folder, or pass --replace to delete them first",
+                file=sys.stderr,
+            )
+            return 1
+        for path in existing:
+            path.unlink()
+        if existing:
+            print(f"Deleted {len(existing)} earlier file(s) from {out_dir}/", file=sys.stderr)
 
     async with AsyncSessionLocal() as db:
         if await db.get(Project, args.project_id) is None:
@@ -144,9 +173,6 @@ async def main(argv: list[str] | None = None) -> int:
         )
         schemas = await _schemas_by_batch(db, {r["batch_id"] for r in records if r["batch_id"]})
 
-    out_dir = args.output_dir or Path(
-        f"caveat_records_{args.project_id}_{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}"
-    )
     out_dir.mkdir(parents=True, exist_ok=True)
 
     used: set[str] = set()
