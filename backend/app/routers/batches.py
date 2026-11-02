@@ -269,6 +269,7 @@ async def _resolve_record_bucket(
     check_project_access(project, current_user)
     if not project.s3_bucket_name:
         raise HTTPException(status_code=503, detail="S3 bucket not ready")
+    s3_service.ensure_record_image_belongs(record, project)
 
     return record, project.s3_bucket_name
 

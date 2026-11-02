@@ -114,7 +114,7 @@ async def upload_image(
     safe_filename = Path(file.filename or "").name
     if not safe_filename or safe_filename in (".", ".."):
         raise HTTPException(status_code=400, detail="Invalid filename")
-    key = f"cabinets/{cabinet_id}/{safe_filename}"
+    key = s3_service.record_image_key(project.id, cabinet.id, safe_filename)
     data = await file.read()
     await s3_service.put_object_bytes(
         project.s3_bucket_name, key, data, file.content_type or "application/octet-stream"
@@ -152,6 +152,7 @@ async def get_image_view_url(
     project = await db.get(Project, cabinet.project_id)
     if not project or not project.s3_bucket_name:
         raise HTTPException(status_code=400, detail="Project has no S3 bucket")
+    s3_service.ensure_record_image_belongs(record, project)
     url = await s3_service.get_presigned_view_url(project.s3_bucket_name, record.file_reference)
     return {"url": url}
 

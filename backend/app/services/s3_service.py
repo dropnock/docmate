@@ -1,9 +1,12 @@
+import logging
 import re
+import uuid
 from typing import TYPE_CHECKING
 
 import aioboto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -12,6 +15,8 @@ if TYPE_CHECKING:
     from app.models.organization import Organization
     from app.models.project import Project
     from app.models.record import Record
+
+logger = logging.getLogger(__name__)
 
 _session = aioboto3.Session()
 
@@ -153,6 +158,42 @@ async def delete_object(bucket: str, key: str) -> None:
     so callers don't need to check existence first."""
     async with _session.client("s3", **_client_kwargs()) as client:
         await client.delete_object(Bucket=bucket, Key=key)
+
+
+def record_image_key(project_id: int, cabinet_id: int, filename: str) -> str:
+    """Where an uploaded image is stored. Every project of an organization
+    shares its bucket, and ids restart when a database is rebuilt while the
+    bucket lives on, so the key carries the project and cabinet *and* a
+    random part unique to this upload — a record can only ever point at the
+    object it uploaded, never at one left by another project or an earlier
+    deployment that happened to use the same ids and filename. Files derived
+    from it (a TIFF's PDF) sit beside it under the same prefix."""
+    return f"projects/{project_id}/cabinets/{cabinet_id}/{uuid.uuid4().hex}/{filename}"
+
+
+def key_belongs_to(key: str, project_id: int, cabinet_id: int) -> bool:
+    """Whether an image key is filed under this project and cabinet — the
+    current layout, or the legacy cabinets/<id>/ one (which has no project
+    in it, so only the cabinet can be checked)."""
+    return key.startswith(f"projects/{project_id}/cabinets/{cabinet_id}/") or key.startswith(f"cabinets/{cabinet_id}/")
+
+
+def ensure_record_image_belongs(record: "Record", project: "Project") -> None:
+    """Refuses to serve a record's image when its key is filed under another
+    cabinet or project — it would be someone else's image (see
+    scripts/check_project_separation.py to find and fix such records).
+    Records with no cabinet (batch-only) have nothing to check against."""
+    if record.cabinet_id and record.file_reference and not key_belongs_to(
+        record.file_reference, project.id, record.cabinet_id
+    ):
+        logger.error(
+            "Record %s (cabinet %s, project %s) points at another cabinet's image %s",
+            record.id, record.cabinet_id, project.id, record.file_reference,
+        )
+        raise HTTPException(
+            status_code=409,
+            detail="This record's image is filed under another cabinet, so it isn't shown — ask an admin to check the project's images",
+        )
 
 
 def derived_pdf_key(file_reference: str) -> str:

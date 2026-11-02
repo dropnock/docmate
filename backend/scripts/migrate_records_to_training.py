@@ -15,8 +15,14 @@ left NULL — they don't belong to a target batch, so nothing tries to route
 them through indexing/QA/QC state transitions.
 
 Idempotent: a source record already present in the target cabinet (matched
-by file_reference) is skipped on re-run, so an interrupted --confirm run can
-just be re-run to pick up where it left off.
+by source_identifier and original filename) is skipped on re-run, so an
+interrupted --confirm run can just be re-run to pick up where it left off.
+
+Each copied image is written under the *target* project and cabinet with a
+fresh key (s3_service.record_image_key), never at the source's key — the
+source's cabinets/<id>/ path could be another cabinet's folder in the target
+bucket, and writing there would put the image in (or over) that cabinet's
+images.
 
 Connection info for each side is supplied as a dotenv file using the same
 keys as backend/.env:
@@ -63,7 +69,7 @@ from app.models.batch import Batch
 from app.models.cabinet import Cabinet
 from app.models.project import Project
 from app.models.record import Record, RecordStatus
-from app.services.s3_service import resolve_record_project
+from app.services.s3_service import record_image_key, resolve_record_project
 
 
 @dataclass
@@ -201,13 +207,17 @@ async def _resolve_target_cabinet(db: AsyncSession, cabinet_id: int) -> tuple[Ca
     return cabinet, project
 
 
-async def _already_migrated_file_refs(db: AsyncSession, cabinet_id: int) -> set[str]:
+def _identity(record: Record) -> tuple[str | None, str | None]:
+    return (record.source_identifier, record.original_filename)
+
+
+async def _already_migrated(db: AsyncSession, cabinet_id: int) -> set[tuple[str | None, str | None]]:
     result = await db.execute(
-        select(Record.file_reference).where(
+        select(Record.source_identifier, Record.original_filename).where(
             Record.cabinet_id == cabinet_id, Record.file_reference.is_not(None)
         )
     )
-    return {row[0] for row in result.all()}
+    return {tuple(row) for row in result.all()}
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -271,8 +281,8 @@ async def main(argv: list[str] | None = None) -> int:
         candidates = await _select_source_records(
             source_db, project=project, status=status, limit=args.limit, order=args.order
         )
-        already = await _already_migrated_file_refs(target_db, cabinet.id)
-        to_copy = [r for r in candidates if r.file_reference not in already]
+        already = await _already_migrated(target_db, cabinet.id)
+        to_copy = [r for r in candidates if _identity(r) not in already]
         skipped_existing = len(candidates) - len(to_copy)
 
         print(f"Source project: {project.name!r} (id={project.id}, tenant_id={project.tenant_id})")
@@ -305,12 +315,15 @@ async def main(argv: list[str] | None = None) -> int:
                 data, content_type = await _get_object(
                     source_env, source_project.s3_bucket_name, record.file_reference
                 )
-                await _put_object(target_env, target_project.s3_bucket_name, record.file_reference, data, content_type)
+                target_key = record_image_key(
+                    target_project.id, cabinet.id, record.file_reference.rsplit("/", 1)[-1]
+                )
+                await _put_object(target_env, target_project.s3_bucket_name, target_key, data, content_type)
 
                 new_record = Record(
                     cabinet_id=cabinet.id,
                     batch_id=None,
-                    file_reference=record.file_reference,
+                    file_reference=target_key,
                     original_filename=record.original_filename,
                     source_identifier=record.source_identifier,
                     indexed_data=record.indexed_data,
