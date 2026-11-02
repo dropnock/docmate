@@ -2,15 +2,21 @@
 Exports up to N indexed records from one project as individual JSON files,
 one per record, named <caveat_number>_<volume>_<folio>.json.
 
-Each file holds the same JSON as export_project_records_json produces for a
-record (identifiers, status, cabinet/batch and indexed_data).
+Each file holds just the record's indexed data, in the shape of the JSON
+Schema of the document type it was indexed as (its batch's type): fields in
+the schema's order, nested objects and arrays the same way ($ref definitions
+resolved), and only fields that were entered — a field left blank is left
+out, as the form leaves it out. Keys the schema doesn't define (e.g. fields
+removed from the schema after the record was indexed) are dropped and listed
+on stderr. No administrative details (record id, cabinet, status…).
 
 The volume and folio in the name come from the record's first volume/folio
 grouping — found the same way export_caveat_volume_folio finds it, as the
 first top-level array of objects with a volume_number or folio_number key.
 A record with several registered titles still gets one file, named after
 its first; the rest are in the file. A record missing caveat_number, volume
-or folio can't be named, so it's skipped and listed on stderr. If two
+or folio can't be named, so it's skipped and listed on stderr, as is one
+that isn't in a batch (so has no document type). If two
 records would get the same name, the later one gets _r<record id> appended
 rather than overwriting the first.
 
@@ -28,7 +34,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from sqlalchemy import select
+
 from app.core.database import AsyncSessionLocal
+from app.models.batch import Batch
+from app.models.document_type import DocumentType
 from app.models.project import Project
 from app.models.record import RecordStatus
 from scripts.export_caveat_volume_folio import _find_groupings
@@ -58,6 +68,47 @@ def file_stem(indexed_data: dict | None) -> tuple[str | None, str | None]:
     if not volume or not folio:
         return None, "first registered title is missing its volume or folio"
     return f"{caveat}_{volume}_{folio}", None
+
+
+def _resolve(schema: dict, root: dict) -> dict:
+    """Follows a local $ref ("#/definitions/address", "#/$defs/…")."""
+    while isinstance(schema, dict) and isinstance(schema.get("$ref"), str) and schema["$ref"].startswith("#/"):
+        target = root
+        for part in schema["$ref"][2:].split("/"):
+            target = target.get(part, {}) if isinstance(target, dict) else {}
+        schema = target
+    return schema if isinstance(schema, dict) else {}
+
+
+def shape(value, schema: dict, root: dict, path: str, dropped: list[str]):
+    """value laid out as the schema describes it: object keys in the
+    schema's property order (keys it doesn't define go to `dropped`),
+    array items shaped by `items`. Values with no further structure in the
+    schema are kept as entered."""
+    schema = _resolve(schema, root)
+    properties = schema.get("properties")
+    if isinstance(value, dict) and isinstance(properties, dict):
+        dropped.extend(f"{path}{k}" for k in value if k not in properties)
+        return {
+            key: shape(value[key], sub, root, f"{path}{key}.", dropped)
+            for key, sub in properties.items()
+            if key in value
+        }
+    items = schema.get("items")
+    if isinstance(value, list) and isinstance(items, dict):
+        return [shape(v, items, root, f"{path.rstrip('.')}[{i}].", dropped) for i, v in enumerate(value)]
+    return value
+
+
+async def _schemas_by_batch(db, batch_ids: set[int]) -> dict[int, dict]:
+    if not batch_ids:
+        return {}
+    rows = (await db.execute(
+        select(Batch.id, DocumentType.json_schema)
+        .join(DocumentType, DocumentType.id == Batch.document_type_id)
+        .where(Batch.id.in_(batch_ids))
+    )).all()
+    return {batch_id: schema for batch_id, schema in rows}
 
 
 async def main(argv: list[str] | None = None) -> int:
@@ -91,6 +142,7 @@ async def main(argv: list[str] | None = None) -> int:
             indexed_only=True,
             random=args.random,
         )
+        schemas = await _schemas_by_batch(db, {r["batch_id"] for r in records if r["batch_id"]})
 
     out_dir = args.output_dir or Path(
         f"caveat_records_{args.project_id}_{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}"
@@ -100,16 +152,22 @@ async def main(argv: list[str] | None = None) -> int:
     used: set[str] = set()
     written = 0
     skipped: list[tuple[int, str]] = []
+    dropped_keys: list[tuple[str, list[str]]] = []
     for record in records:
         stem, reason = file_stem(record["indexed_data"])
-        if stem is None:
-            skipped.append((record["record_id"], reason))
+        schema = schemas.get(record["batch_id"])
+        if stem is None or schema is None:
+            skipped.append((record["record_id"], reason or "not in a batch, so no document type"))
             continue
         if stem in used:
             stem = f"{stem}_r{record['record_id']}"
         used.add(stem)
+        dropped: list[str] = []
+        data = shape(record["indexed_data"], schema, schema, "", dropped)
+        if dropped:
+            dropped_keys.append((f"{stem}.json", dropped))
         (out_dir / f"{stem}.json").write_text(
-            json.dumps(record, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
         )
         written += 1
 
@@ -118,6 +176,10 @@ async def main(argv: list[str] | None = None) -> int:
         print(f"{len(skipped)} record(s) skipped — couldn't be named:", file=sys.stderr)
         for record_id, reason in skipped:
             print(f"  - record {record_id}: {reason}", file=sys.stderr)
+    if dropped_keys:
+        print(f"{len(dropped_keys)} file(s) had fields the schema doesn't define, left out:", file=sys.stderr)
+        for name, keys in dropped_keys:
+            print(f"  - {name}: {', '.join(keys)}", file=sys.stderr)
     return 0
 
 
