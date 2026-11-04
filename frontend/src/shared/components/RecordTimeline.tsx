@@ -20,6 +20,9 @@ const ACTION_COLOR: Record<string, string> = {
   sampled: "lime",
   requeued_for_indexing: "warning",
   requeued_for_qa: "warning",
+  record_flagged: "warning",
+  flag_withdrawn: "default",
+  flag_resolved: "success",
 };
 
 function EventDetail({ event }: { event: AuditEvent }) {

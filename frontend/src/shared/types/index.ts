@@ -171,6 +171,8 @@ export interface DocRecord {
   indexed_by_name: string | null;
   qa_by_id: number | null;
   qa_by_name: string | null;
+  // Open flag for a supervisor — set by GET /batches/{id}/records.
+  flagged?: boolean;
 }
 
 export interface RecordListResponse {
@@ -190,6 +192,8 @@ export interface Task {
   processing_time_seconds: number | null;
   // Only populated by GET /tasks/mine — see that endpoint. Null everywhere else.
   batch_status: string | null;
+  // Open flag for a supervisor on the task's record — also only from /tasks/mine.
+  flagged?: boolean;
 }
 
 export interface TaskTypeMetrics {

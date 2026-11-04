@@ -32,6 +32,9 @@ class TaskOut(BaseModel):
     # else without a second request. Absent (null) elsewhere, same pattern
     # as BatchOut.indexer_name.
     batch_status: str | None = None
+    # Whether the record has an open flag for a supervisor (flag_service) —
+    # also only populated by GET /tasks/mine.
+    flagged: bool = False
 
 
 class StartTaskRequest(BaseModel):

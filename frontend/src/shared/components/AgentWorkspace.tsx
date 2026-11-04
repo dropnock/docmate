@@ -7,6 +7,7 @@ import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
 import type { DocumentType, Task, UserRecord } from "@shared/types";
 import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
+import { RecordFlagBanner, RecordFlagButton } from "./RecordFlag";
 import SchemaForm, { type SchemaFormHandle } from "./SchemaForm";
 import SplitWorkspace from "./SplitWorkspace";
 
@@ -199,6 +200,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       {isMyTask && !isLockedByOther && (
         <Alert type="info" message="Record locked by you — submit to release." banner />
       )}
+      {task.task_type === "indexing" && <RecordFlagBanner recordId={task.record_id} />}
       {record?.current_version > 1 && (
         <Alert
           type="warning"
@@ -310,9 +312,12 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                 )}
                 <div style={{ display: "flex", gap: 8 }}>
                   {task.task_type === "indexing" && (
-                    <Button danger onClick={() => setSkipModalOpen(true)}>
-                      Skip
-                    </Button>
+                    <>
+                      <RecordFlagButton recordId={task.record_id} />
+                      <Button danger onClick={() => setSkipModalOpen(true)}>
+                        Skip
+                      </Button>
+                    </>
                   )}
                   <Space.Compact block style={{ flex: 1 }}>
                     <Button

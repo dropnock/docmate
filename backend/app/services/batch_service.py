@@ -209,6 +209,18 @@ async def complete_indexing_batch(
                    f"ineligible, excluded, lapsed, or illegible before the batch can be completed",
         )
 
+    # A flagged record waits for its supervisor here rather than going on to
+    # QA with the issue unanswered (see flag_service).
+    from app.services import flag_service
+
+    flagged = await flag_service.open_flag_count_in_batch(db, batch_id)
+    if flagged:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{flagged} record(s) are flagged for a supervisor — the batch can be completed "
+                   f"once the flags are resolved or withdrawn",
+        )
+
     return await auto_advance_to_qa(
         db, batch_id=batch_id, tenant_id=tenant_id, performed_by=user_id,
     )

@@ -143,10 +143,15 @@ async def my_tasks(
             ),
         )
     )
+    from app.services import flag_service
+
     tasks = []
     for task, batch_status in result.all():
         task.batch_status = batch_status.value
         tasks.append(task)
+    flagged = await flag_service.flagged_record_ids(db, [t.record_id for t in tasks])
+    for task in tasks:
+        task.flagged = task.record_id in flagged
     return tasks
 
 
