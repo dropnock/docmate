@@ -7,6 +7,15 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-11-04
+
+### Security
+- Patched the Dependabot / `npm audit` vulnerabilities: axios ^1.20.0,
+  vite ^6.4.5, python-dotenv 1.2.2, and pinned patched versions of
+  transitive frontend dependencies (baseline-browser-mapping, browserslist,
+  fast-uri, follow-redirects, nanoid, postcss, source-map-js) via
+  `overrides`. `npm audit` reports 0 vulnerabilities.
+
 ## [0.7.0] - 2026-11-04
 
 ### Added
