@@ -52,12 +52,20 @@ code,
 .docmate-list-pad {
   padding-top: 16px;
   padding-right: 16px;
+  padding-bottom: 16px;
+  /* Content doesn't scroll on a full-bleed route (it's overflow: hidden so
+     the workspace fits the window), so a list longer than the screen has to
+     scroll itself. */
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 @media (min-width: 1024px) {
   .docmate-list-pad {
     padding-top: 40px;
     padding-right: 40px;
+    padding-bottom: 40px;
   }
 }
 

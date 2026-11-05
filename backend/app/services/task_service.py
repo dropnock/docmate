@@ -66,6 +66,19 @@ async def start_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if task.assigned_to != user_id:
         raise HTTPException(status_code=403, detail="Not your task")
+    old_status = task.status
+    if task.status in (TaskStatus.completed, TaskStatus.failed):
+        # Reopening finished work is only for an indexer correcting their own
+        # record while its batch is still in indexing (My Tasks' Review /
+        # Correct and Previous record) — once the batch has moved on, QA or
+        # QC may be working the record and reopening would pull it back.
+        batch = await db.get(Batch, task.batch_id)
+        if not (task.task_type == TaskType.indexing and task.status == TaskStatus.completed
+                and batch and batch.status == BatchStatus.indexing):
+            raise HTTPException(
+                status_code=409,
+                detail="This task is finished and its batch has moved on, so it can't be reopened",
+            )
 
     record = await db.get(Record, task.record_id)
     await acquire_lock(db, record=record, user_id=user_id, tenant_id=tenant_id)
@@ -84,7 +97,7 @@ async def start_task(
         entity_id=task.id,
         action=AuditAction.status_changed,
         performed_by=user_id,
-        old_value={"status": "pending"},
+        old_value={"status": old_status.value},
         new_value={"status": "in_progress"},
     )
     return task

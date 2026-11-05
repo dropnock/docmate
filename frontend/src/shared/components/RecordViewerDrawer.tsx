@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Descriptions, Drawer, Spin, Tag, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import api from "@shared/api/client";
@@ -8,13 +9,15 @@ import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
 interface Props {
   recordId: number | null;
   onClose: () => void;
+  /** Shown above the image — e.g. the flag being reviewed and its resolve form. */
+  children?: ReactNode;
 }
 
 /** Read-only record viewer reused wherever a supervisor/agent needs to look
  * at a record's image and current data outside the indexing/QA workspace
  * itself — same image-fetch path AgentWorkspace.tsx uses (useRecordImage,
  * which proxies through the backend) and never the presigned-URL endpoint. */
-export default function RecordViewerDrawer({ recordId, onClose }: Props) {
+export default function RecordViewerDrawer({ recordId, onClose, children }: Props) {
   const {
     data: viewData,
     isLoading: viewLoading,
@@ -36,6 +39,7 @@ export default function RecordViewerDrawer({ recordId, onClose }: Props) {
       onClose={onClose}
       width={860}
     >
+      {children}
       <div style={{ height: 420, border: "1px solid #E2E8F0", marginBottom: 16 }}>
         {viewLoading ? (
           <Spin style={{ margin: 40 }} />

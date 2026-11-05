@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  List, Button, Typography, Spin, Empty, Badge, Tooltip, message,
+  List, Button, Typography, Spin, Empty, Badge, Space, Tag, Tooltip, message,
 } from "antd";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Flag, Undo2 } from "lucide-react";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import AgentWorkspace from "@shared/components/AgentWorkspace";
@@ -51,6 +51,14 @@ function isOpenIndexingTask(task: Task): boolean {
   return task.task_type === "indexing" && task.batch_status === "indexing";
 }
 
+function FlaggedTag() {
+  return (
+    <Tag color="warning" icon={<Flag size={11} style={{ marginRight: 4, verticalAlign: "-1px" }} />}>
+      Flagged
+    </Tag>
+  );
+}
+
 function BatchDetail({
   batchId,
   tasks,
@@ -72,6 +80,7 @@ function BatchDetail({
 
   const taskByRecordId = new Map(tasks.map((t) => [t.record_id, t]));
   const remaining = records.filter((r) => !RECORD_DONE_STATUSES.has(r.status)).length;
+  const flagged = records.filter((r) => r.flagged).length;
 
   const [completing, setCompleting] = useState(false);
   const completeBatch = async () => {
@@ -94,11 +103,19 @@ function BatchDetail({
         <Button icon={<ArrowLeft size={16} />} onClick={onBack}>
           Back to tasks
         </Button>
-        <Tooltip title={remaining > 0 ? `${remaining} record(s) still need to be indexed, withdrawn, ineligible, excluded, lapsed, or illegible` : undefined}>
+        <Tooltip
+          title={
+            remaining > 0
+              ? `${remaining} record(s) still need to be indexed, withdrawn, ineligible, excluded, lapsed, or illegible`
+              : flagged > 0
+                ? `${flagged} record(s) are flagged — the batch can be completed once your supervisor resolves them (or you remove the flags)`
+                : undefined
+          }
+        >
           <Button
             type="primary"
             icon={<CheckCircle2 size={16} />}
-            disabled={remaining > 0}
+            disabled={remaining > 0 || flagged > 0}
             loading={completing}
             onClick={completeBatch}
           >
@@ -134,10 +151,13 @@ function BatchDetail({
                     </Typography.Text>
                   }
                   description={
-                    <StatusDot
-                      filled={RECORD_DONE_STATUSES.has(record.status)}
-                      label={RECORD_STATUS_LABEL[record.status] ?? record.status}
-                    />
+                    <Space size={8}>
+                      <StatusDot
+                        filled={RECORD_DONE_STATUSES.has(record.status)}
+                        label={RECORD_STATUS_LABEL[record.status] ?? record.status}
+                      />
+                      {record.flagged && <FlaggedTag />}
+                    </Space>
                   }
                 />
               </List.Item>
@@ -153,6 +173,10 @@ export default function MyTasks() {
   const qc = useQueryClient();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+  // Records finished in this sitting, most recent last — what "Previous
+  // record" steps back through after auto-advance moved on (e.g. Done was
+  // pressed by mistake).
+  const [finished, setFinished] = useState<number[]>([]);
 
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
     queryKey: ["my-tasks"],
@@ -173,6 +197,16 @@ export default function MyTasks() {
   // ─── Level 3: the record workspace ──────────────────────────────────────
   if (activeTask) {
     const inBatchWorklist = isOpenIndexingTask(activeTask);
+    // Step back to the record finished just before this one in this sitting,
+    // or, failing that, the one before it in the batch's order. Only within
+    // an open indexing batch — the only place a finished record can be
+    // reopened (the backend refuses it once the batch has moved on).
+    const batchTasks = inBatchWorklist ? (batchGroups.get(activeTask.batch_id) ?? []) : [];
+    const byId = new Map(batchTasks.map((t) => [t.id, t]));
+    const fromHistory = [...finished].reverse().find((id) => id !== activeTask.id && byId.has(id));
+    const previous = fromHistory != null
+      ? byId.get(fromHistory)
+      : batchTasks.filter((t) => t.id < activeTask.id).sort((a, b) => b.id - a.id)[0];
     return (
       <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         <div
@@ -183,16 +217,31 @@ export default function MyTasks() {
             flexShrink: 0,
           }}
         >
-          <Button
-            icon={<ArrowLeft size={16} />}
-            onClick={async () => {
-              await qc.invalidateQueries({ queryKey: ["my-tasks"] });
-              setActiveTask(null);
-              if (!inBatchWorklist) setSelectedBatchId(null);
-            }}
-          >
-            {inBatchWorklist ? "Back to batch" : "Back to tasks"}
-          </Button>
+          <Space>
+            <Button
+              icon={<ArrowLeft size={16} />}
+              onClick={async () => {
+                await qc.invalidateQueries({ queryKey: ["my-tasks"] });
+                setActiveTask(null);
+                if (!inBatchWorklist) setSelectedBatchId(null);
+              }}
+            >
+              {inBatchWorklist ? "Back to batch" : "Back to tasks"}
+            </Button>
+            {previous && (
+              <Tooltip title="Reopen the record before this one to correct it">
+                <Button
+                  icon={<Undo2 size={16} />}
+                  onClick={() => {
+                    setFinished((ids) => ids.filter((id) => id !== previous.id));
+                    setActiveTask(previous);
+                  }}
+                >
+                  Previous record
+                </Button>
+              </Tooltip>
+            )}
+          </Space>
         </div>
         <div style={{ flex: 1, overflow: "hidden" }}>
           <AgentWorkspace
@@ -206,6 +255,9 @@ export default function MyTasks() {
               // never disappears out from under you (every record stays
               // listed until Complete Batch is pressed), so falling back
               // means returning to that batch's record list, not exiting.
+              if (inBatchWorklist) {
+                setFinished((ids) => [...ids.filter((id) => id !== activeTask.id), activeTask.id]);
+              }
               await qc.invalidateQueries({ queryKey: ["my-tasks"] });
               const freshTasks = qc.getQueryData<Task[]>(["my-tasks"]) ?? [];
               const next = freshTasks
@@ -266,6 +318,7 @@ export default function MyTasks() {
               style={{ marginBottom: otherTasks.length > 0 ? 24 : 0 }}
               renderItem={([batchId, batchTasks]) => {
                 const done = batchTasks.filter((t) => t.status === "completed").length;
+                const flaggedInBatch = batchTasks.filter((t) => t.flagged).length;
                 return (
                   <List.Item
                     actions={[
@@ -277,9 +330,14 @@ export default function MyTasks() {
                     <List.Item.Meta
                       title={<Typography.Text strong>Batch #{batchId}</Typography.Text>}
                       description={
-                        <Typography.Text type="secondary">
-                          {done} of {batchTasks.length} record{batchTasks.length === 1 ? "" : "s"} done
-                        </Typography.Text>
+                        <Space size={8}>
+                          <Typography.Text type="secondary">
+                            {done} of {batchTasks.length} record{batchTasks.length === 1 ? "" : "s"} done
+                          </Typography.Text>
+                          {flaggedInBatch > 0 && (
+                            <Tag color="warning">{flaggedInBatch} flagged</Tag>
+                          )}
+                        </Space>
                       }
                     />
                   </List.Item>
@@ -309,6 +367,7 @@ export default function MyTasks() {
                           count={TASK_TYPE_LABEL[task.task_type] ?? task.task_type}
                           style={{ background: "#1E40AF", marginLeft: 8 }}
                         />
+                        {task.flagged && <span style={{ marginLeft: 8 }}><FlaggedTag /></span>}
                       </Typography.Text>
                     }
                     description={

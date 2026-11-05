@@ -35,6 +35,9 @@ class AuditAction(str, enum.Enum):
     disqualified = "disqualified"
     requeued_for_indexing = "requeued_for_indexing"
     requeued_for_qa = "requeued_for_qa"
+    record_flagged = "record_flagged"
+    flag_withdrawn = "flag_withdrawn"
+    flag_resolved = "flag_resolved"
 
 
 class AuditLog(Base):

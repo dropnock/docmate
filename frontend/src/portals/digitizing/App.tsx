@@ -13,6 +13,7 @@ import {
   Clock,
   User,
   CheckSquare,
+  Flag,
 } from "lucide-react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@shared/query/queryClient";
@@ -44,6 +45,7 @@ const MyTasks = lazy(() => import("./pages/MyTasks"));
 const CabinetManager = lazy(() => import("./pages/CabinetManager"));
 const CabinetAssignment = lazy(() => import("./pages/CabinetAssignment"));
 const LotManager = lazy(() => import("./pages/LotManager"));
+const FlaggedRecords = lazy(() => import("./pages/FlaggedRecords"));
 
 const { Sider, Content } = Layout;
 const qc = createQueryClient();
@@ -55,6 +57,7 @@ const SUPERVISOR_PAGES = [
   { key: "/productivity", label: "Staff Productivity", icon: <Gauge size={16} /> },
   { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
   { key: "/records-management", label: "Records Management", icon: <History size={16} /> },
+  { key: "/flagged-records", label: "Flagged Records", icon: <Flag size={16} /> },
 ];
 
 const AGENT_PAGES = [
@@ -232,6 +235,16 @@ function AppInner() {
                   <RequireRole allow={isSupervisor}>
                     <ProjectScopedRoute>
                       {(projectId) => <RecordsManagement projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/flagged-records"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <FlaggedRecords projectId={projectId} />}
                     </ProjectScopedRoute>
                   </RequireRole>
                 }

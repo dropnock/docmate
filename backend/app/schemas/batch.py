@@ -55,6 +55,8 @@ class RecordOut(BaseModel):
     indexed_by_name: str | None = None
     qa_by_id: int | None = None
     qa_by_name: str | None = None
+    # Open flag for a supervisor (flag_service) — set by GET /batches/{id}/records.
+    flagged: bool = False
 
 
 class RecordListOut(RecordOut):

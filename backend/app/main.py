@@ -24,6 +24,7 @@ from app.routers import (
     batches,
     cabinets,
     client_errors,
+    flags,
     lots,
     records,
     shifts,
@@ -141,6 +142,7 @@ app.include_router(aql.router)
 app.include_router(analytics.router)
 app.include_router(users.router)
 app.include_router(client_errors.router)
+app.include_router(flags.router)
 
 
 @app.get("/health")

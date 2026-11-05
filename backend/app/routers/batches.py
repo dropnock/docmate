@@ -19,7 +19,7 @@ from app.schemas.batch import (
     RecordOut,
 )
 from app.schemas.task import TaskOut
-from app.services import batch_service, image_service, record_service, s3_service
+from app.services import batch_service, flag_service, image_service, record_service, s3_service
 
 router = APIRouter(prefix="/api", tags=["batches"])
 
@@ -205,7 +205,11 @@ async def list_records(
     project = await db.get(Project, batch.project_id)
     check_project_access(project, current_user)
     result = await db.execute(select(Record).where(Record.batch_id == batch_id))
-    return list(result.scalars().all())
+    records = list(result.scalars().all())
+    flagged = await flag_service.flagged_record_ids(db, [r.id for r in records])
+    for record in records:
+        record.flagged = record.id in flagged
+    return records
 
 
 @router.post("/batches/{batch_id}/complete-indexing", response_model=BatchOut)
