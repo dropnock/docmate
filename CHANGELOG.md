@@ -7,6 +7,43 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-04
+
+### Added
+- **Indexer flags** — an indexer can flag a record for a supervisor with a
+  note describing the issue, and edit or remove the flag. Flagged records are
+  tagged in My Tasks and the batch record list, with a banner on the record.
+  Supervisors get **Operations → Flagged Records** (open / resolved / removed
+  by indexer) to review each record and resolve it with a note, which removes
+  the flag and is shown to the indexer. The record stays in its batch either
+  way; a batch can't be completed for QA while any of its records has an open
+  flag. Every flag event is on the record's Audit Timeline. New
+  `record_flags` table (migration `8ecac36541a6`).
+- **Previous record** in the indexing workspace — reopens the record just
+  finished (or the one before it in the batch) to correct a premature Done,
+  while the batch is still in indexing.
+- **Customer QC staff productivity dashboard**, mirroring the digitizing
+  portal's staff productivity view for customer QC agents.
+- `scripts/export_project_records_json.py` — N records from a project as JSON.
+- `scripts/export_caveat_record_files.py` — one JSON file per record, named
+  `<caveat>_<volume>_<folio>.json`, holding only the schema-shaped indexed data.
+- `scripts/export_qa_passed_report.py` — CSV of every `qa_passed` record in a
+  project: record name, image filename, who indexed and who QA'd it.
+- `scripts/check_project_separation.py` — read-only report of records, images
+  or batches that cross project boundaries.
+
+### Fixed
+- My Tasks lists now scroll when they are longer than the screen.
+- Reopening a finished indexing task is refused once its batch has moved on
+  from indexing.
+- Projects sharing an organisation's bucket are kept apart: new uploads are
+  stored under `projects/<project_id>/…`, and image, preview and OCR endpoints
+  refuse an image key that belongs to another cabinet/project. Creating an
+  indexing batch checks the cabinet and document type belong to the project.
+- QA assignment now actually moves pending QA tasks to the chosen agent
+  (previously a silent no-op for already-assigned batches); the Cabinet
+  Assignment page shows the current QA agent.
+
 ## [0.6.0] - 2026-08-13
 
 ### Added
