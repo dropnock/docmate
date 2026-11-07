@@ -26,6 +26,7 @@ const ACTION_COLOR: Record<string, string> = {
   recalled: "warning",
   lot_records_removed: "warning",
   resubmitted: "processing",
+  data_imported: "blue",
 };
 
 function EventDetail({ event }: { event: AuditEvent }) {

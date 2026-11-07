@@ -69,13 +69,18 @@ export default function CabinetManager({ projectId }: Props) {
 
   const ingestJsonMutation = useMutation({
     mutationFn: async ({ records, idField }: { records: unknown[]; idField: string }) => {
-      await api.post(
+      const { data } = await api.post<{ created: number; linked: number }>(
         `/cabinets/${cabinet!.id}/ingest-json`,
         { id_field: idField, records }
       );
+      return data;
     },
-    onSuccess: () => {
-      message.success("Records ingested from JSON");
+    onSuccess: ({ created, linked }) => {
+      message.success(
+        linked
+          ? `${created} record(s) created; data added to ${linked} record(s) whose image was already uploaded`
+          : `${created} record(s) created from JSON`
+      );
       qc.invalidateQueries({ queryKey: ["cabinet-records", cabinet?.id] });
       setIngestJsonOpen(false);
       setJsonText("");
@@ -558,12 +563,12 @@ export default function CabinetManager({ projectId }: Props) {
         <Form layout="vertical">
           <Form.Item
             label="Identifier field name"
-            tooltip={helpTooltip("The field that holds each record's unique identifier, so uploaded images can be linked to it by filename.")}
+            tooltip={helpTooltip("The field that holds each record's unique identifier. It must match the record's image filename without its extension (e.g. 1200_340 for 1200_340.pdf), so the image and data become one record. Use a dotted path for a nested field, e.g. md.title_name. Every record must have it, or nothing is imported.")}
           >
             <Input
               value={idField}
               onChange={(e) => setIdField(e.target.value)}
-              placeholder='e.g. "id" or "record_number"'
+              placeholder='e.g. "id", "record_number" or "md.title_name"'
             />
           </Form.Item>
           <Form.Item label="JSON" tooltip={helpTooltip("A JSON array, or a single object. Each item becomes one record.")}>

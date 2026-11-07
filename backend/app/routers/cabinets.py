@@ -80,7 +80,7 @@ async def ingest_json(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("admin")),
 ):
-    records = await cabinet_service.ingest_json_records(
+    created, linked = await cabinet_service.ingest_json_records(
         db,
         cabinet_id=cabinet_id,
         records_payload=body.records,
@@ -89,7 +89,7 @@ async def ingest_json(
         tenant_id=current_user._tenant_id,
     )
     await db.commit()
-    return {"created": len(records)}
+    return {"created": len(created), "linked": len(linked)}
 
 
 @router.post("/{cabinet_id}/upload")

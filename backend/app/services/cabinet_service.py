@@ -106,6 +106,29 @@ async def get_cabinet_records(
     return list(result.scalars().all())
 
 
+MAX_LISTED_PROBLEMS = 10
+
+
+def _identifier(item: dict, id_field: str) -> str | None:
+    """The item's identifier at id_field, which may be a dotted path into
+    nested objects ("md.title_name"). None when it's missing or blank, or
+    isn't a plain string/number."""
+    value = item
+    for part in id_field.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        return None
+    return str(value).strip() or None
+
+
+def _problem_summary(problems: list[str]) -> str:
+    listed = "; ".join(problems[:MAX_LISTED_PROBLEMS])
+    more = len(problems) - MAX_LISTED_PROBLEMS
+    return listed + (f"; and {more} more" if more > 0 else "")
+
+
 async def ingest_json_records(
     db: AsyncSession,
     *,
@@ -114,16 +137,77 @@ async def ingest_json_records(
     id_field: str,
     user_id: int,
     tenant_id: int,
-) -> list[Record]:
-    """Create records from a JSON payload. Each item becomes one record."""
+) -> tuple[list[Record], list[Record]]:
+    """Create records from a JSON payload. Each item becomes one record —
+    or fills in the record an image was already uploaded for, when that
+    record has the same identifier and no data yet.
+
+    The identifier is what links an item to its image (the image's filename
+    without its extension), so every item must have one, unique within the
+    import and not already taken by a record that has data. Otherwise
+    nothing is imported (422): an item without one would become a record no
+    image can ever link to. Returns (created, linked)."""
+    id_field = id_field.strip()
+    if not id_field:
+        raise HTTPException(status_code=422, detail="Identifier field name is required")
+    if not records_payload:
+        raise HTTPException(status_code=422, detail="The JSON holds no records")
     cabinet = await get_cabinet(db, cabinet_id=cabinet_id, tenant_id=tenant_id)
+
+    identifiers = [_identifier(item, id_field) for item in records_payload]
+    missing = [i + 1 for i, ident in enumerate(identifiers) if ident is None]
+    if missing:
+        shown = ", ".join(str(n) for n in missing[:MAX_LISTED_PROBLEMS])
+        more = len(missing) - MAX_LISTED_PROBLEMS
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f'{len(missing)} of {len(records_payload)} record(s) have no "{id_field}" value '
+                f"(record {shown}{f' and {more} more' if more > 0 else ''}). "
+                "Each record needs the identifier its image is named after; "
+                'use a dotted path such as "md.title_name" for a nested field.'
+            ),
+        )
+
+    seen: dict[str, int] = {}
+    problems: list[str] = []
+    for n, ident in enumerate(identifiers, start=1):
+        if ident in seen:
+            problems.append(f'"{ident}" is in records {seen[ident]} and {n}')
+        else:
+            seen[ident] = n
+
+    existing = {
+        r.source_identifier: r
+        for r in (await db.execute(
+            select(Record).where(
+                Record.cabinet_id == cabinet.id,
+                Record.source_identifier.in_(list(seen)),
+            )
+        )).scalars()
+    }
+    problems.extend(
+        f'"{ident}" already has data (record {r.id})'
+        for ident, r in existing.items() if r.indexed_data
+    )
+    if problems:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Nothing imported — {_problem_summary(problems)}.",
+        )
+
     created: list[Record] = []
-    for item in records_payload:
-        source_id = str(item.get(id_field, "")) or None
+    linked: list[Record] = []
+    for item, ident in zip(records_payload, identifiers):
+        record = existing.get(ident)
+        if record is not None:
+            record.indexed_data = item
+            linked.append(record)
+            continue
         record = Record(
             cabinet_id=cabinet.id,
             indexed_data=item,
-            source_identifier=source_id,
+            source_identifier=ident,
             status=RecordStatus.pending,
         )
         db.add(record)
@@ -139,7 +223,17 @@ async def ingest_json_records(
             performed_by=user_id,
             new_value={"source": "json_ingest", "source_identifier": record.source_identifier},
         )
-    return created
+    for record in linked:
+        await audit_service.write_event(
+            db,
+            tenant_id=tenant_id,
+            entity_type=AuditEntityType.record,
+            entity_id=record.id,
+            action=AuditAction.data_imported,
+            performed_by=user_id,
+            new_value={"source": "json_ingest", "source_identifier": record.source_identifier},
+        )
+    return created, linked
 
 
 async def _convert_tiff_if_needed(db: AsyncSession, record: Record) -> None:

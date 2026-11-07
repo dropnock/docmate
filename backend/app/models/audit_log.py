@@ -43,6 +43,7 @@ class AuditAction(str, enum.Enum):
     recalled = "recalled"
     lot_records_removed = "lot_records_removed"
     resubmitted = "resubmitted"
+    data_imported = "data_imported"
 
 
 class AuditLog(Base):
