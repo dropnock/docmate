@@ -7,6 +7,28 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-09
+
+### Added
+- **Outgoing lot inspection by the digitizing supervisor** (ISO 2859-1,
+  Inspection Level II single sampling). Before a draft lot is released the
+  supervisor picks an AQL; the system draws a reproducible random sample
+  (seed stored) and the supervisor marks every field of each sampled record.
+  Any critical-field defect, or non-critical defects above Ac, fails the lot;
+  every defective record goes back to indexing either way, and a failed lot
+  is re-inspected with a fresh sample once its rework is back. The
+  inspection report (plan, verdict, per-field tally, per-record findings,
+  every attempt) is shown to the customer supervisor once the lot is
+  released, with print / save as PDF. New tables `lot_inspections`,
+  `lot_inspection_items`, `lot_inspection_field_results` (migration
+  `c6d7e8f9a0b1`) and audit entity type `lot`.
+
+### Changed
+- **Releasing a lot now requires a passed outgoing inspection.**
+  `POST /lots/{id}/release` returns 409 until the latest non-cancelled
+  inspection has passed and every record in the lot is `qa_passed` again.
+  This applies to draft lots that already exist when you upgrade.
+
 ## [0.7.1] - 2026-11-04
 
 ### Security
