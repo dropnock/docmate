@@ -12,7 +12,7 @@ from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service, aql_service
+from app.services import audit_service, aql_service, lot_inspection_service
 
 
 async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
@@ -95,6 +95,7 @@ async def release_lot(
     lot = await _get_lot(db, lot_id, tenant_id)
     if lot.status != LotStatus.draft:
         raise HTTPException(status_code=409, detail="Lot must be in draft to release")
+    await lot_inspection_service.assert_releasable(db, lot)
     lot.status = LotStatus.released
     lot.released_at = datetime.now(timezone.utc)
     lot.released_by = user_id

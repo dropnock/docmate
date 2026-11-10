@@ -46,12 +46,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.models.audit_log import AuditAction, AuditEntityType, AuditLog
 from app.models.lot import Lot, LotRecord, LotStatus
+from app.models.lot_inspection import LotInspection
 
 SAFE_STATUSES = (LotStatus.draft, LotStatus.released)
 
@@ -65,6 +66,15 @@ async def _resolve_lot(db: AsyncSession, lot_id: int) -> Lot:
             f"ERROR: lot {lot_id} has status={lot.status.value!r} — this script only rolls back "
             f"draft/released lots (no sampling or QC batches yet). Sampled/qc_in_progress/passed/"
             f"failed/remediation lots need manual review since real QC work may already exist."
+        )
+    inspection_count = (await db.execute(
+        select(func.count()).select_from(LotInspection).where(LotInspection.lot_id == lot_id)
+    )).scalar_one()
+    if inspection_count:
+        sys.exit(
+            f"ERROR: lot {lot_id} has {inspection_count} outgoing inspection(s) — completing one "
+            f"requeues defective records for rework, so the lot is no longer side-effect free. "
+            f"Needs manual review."
         )
     return lot
 

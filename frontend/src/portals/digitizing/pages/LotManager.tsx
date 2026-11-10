@@ -1,14 +1,18 @@
 import {
-  Button, Card, Col, Checkbox, Drawer, Empty, Form, Input, Row,
-  Space, Spin, Table, Tag, Typography, message,
+  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Row,
+  Select, Space, Spin, Table, Tag, Tooltip, Typography, message,
 } from "antd";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
+import { formatApiError } from "@shared/api/errors";
+import { listInspections, lotInspectionsKey, startInspection } from "@shared/api/lots";
 import { useCabinets } from "@shared/hooks/useCabinets";
+import LotInspectionReport from "@shared/components/LotInspectionReport";
 import StatusDot from "@shared/components/StatusDot";
-import type { CabinetRecord, Lot, LotDetail } from "@shared/types";
+import LotInspectionWorkspace from "../components/LotInspectionWorkspace";
+import type { CabinetRecord, Lot, LotDetail, LotInspectionStatus } from "@shared/types";
 
 interface Props {
   projectId: number;
@@ -25,6 +29,13 @@ const LOT_STATUS_LABEL: Record<string, string> = {
 
 const LOT_STATUS_FILLED = new Set(["passed"]);
 
+const INSPECTION_TAG: Record<LotInspectionStatus, { color: string; label: string }> = {
+  in_progress: { color: "blue", label: "In progress" },
+  passed: { color: "green", label: "Passed" },
+  failed: { color: "red", label: "Failed" },
+  cancelled: { color: "default", label: "Cancelled" },
+};
+
 export default function LotManager({ projectId }: Props) {
   const qc = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
@@ -32,6 +43,9 @@ export default function LotManager({ projectId }: Props) {
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [lotName, setLotName] = useState("");
   const [lotDescription, setLotDescription] = useState("");
+  const [aqlChoice, setAqlChoice] = useState<number | undefined>();
+  const [workspaceInspectionId, setWorkspaceInspectionId] = useState<number | undefined>();
+  const [reportOpen, setReportOpen] = useState(false);
 
   const { data: lots = [], isLoading: lotLoading } = useQuery<Lot[]>({
     queryKey: ["lots", projectId],
@@ -56,6 +70,29 @@ export default function LotManager({ projectId }: Props) {
     queryFn: () => api.get(`/lots/${detailLotId}`).then((r) => r.data),
     enabled: !!detailLotId,
     refetchInterval: 10_000,
+  });
+
+  const { data: inspectionList } = useQuery({
+    queryKey: lotInspectionsKey(detailLotId),
+    queryFn: () => listInspections(detailLotId!),
+    enabled: !!detailLotId,
+  });
+  const inspections = inspectionList?.inspections ?? [];
+  const activeInspection = inspections.find((i) => i.status === "in_progress");
+  // Latest attempt that wasn't cancelled — the one release is gated on
+  // (lot_inspection_service.assert_releasable).
+  const latestEffective = [...inspections].reverse().find((i) => i.status !== "cancelled");
+  const inspectionPassed = latestEffective?.status === "passed";
+  const recordsInRework = (lotDetail?.records ?? []).filter((r) => r.status !== "qa_passed").length;
+
+  const startInspectionMutation = useMutation({
+    mutationFn: () => startInspection(detailLotId!, aqlChoice ?? inspectionList!.default_aql_level),
+    onSuccess: (inspection) => {
+      message.success(`Random sample of ${inspection.sample_size} record(s) drawn`);
+      qc.invalidateQueries({ queryKey: lotInspectionsKey(detailLotId) });
+      setWorkspaceInspectionId(inspection.id);
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to start inspection")),
   });
 
   const createMutation = useMutation({
@@ -87,7 +124,7 @@ export default function LotManager({ projectId }: Props) {
       qc.invalidateQueries({ queryKey: ["lots", projectId] });
       qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });
     },
-    onError: () => message.error("Failed to release lot"),
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to release lot")),
   });
 
   const columns: ColumnType<Lot>[] = [
@@ -115,13 +152,19 @@ export default function LotManager({ projectId }: Props) {
             View
           </Button>
           {lot.status === "draft" && (
+            <Button size="small" type="primary" onClick={() => setDetailLotId(lot.id)}>
+              Inspect &amp; Release
+            </Button>
+          )}
+          {lot.status !== "draft" && (
             <Button
               size="small"
-              type="primary"
-              loading={releaseMutation.isPending}
-              onClick={() => releaseMutation.mutate(lot.id)}
+              onClick={() => {
+                setDetailLotId(lot.id);
+                setReportOpen(true);
+              }}
             >
-              Release
+              Report
             </Button>
           )}
         </Space>
@@ -243,8 +286,12 @@ export default function LotManager({ projectId }: Props) {
       <Drawer
         title={lotDetail ? `Lot: ${lotDetail.name}` : "Lot Detail"}
         open={!!detailLotId}
-        onClose={() => setDetailLotId(undefined)}
-        width={640}
+        onClose={() => {
+          setDetailLotId(undefined);
+          setAqlChoice(undefined);
+          setReportOpen(false);
+        }}
+        width={720}
       >
         {!lotDetail ? (
           <Spin />
@@ -266,17 +313,113 @@ export default function LotManager({ projectId }: Props) {
               )}
               {lotDetail.status === "draft" && (
                 <Col>
-                  <Button
-                    type="primary"
-                    size="small"
-                    loading={releaseMutation.isPending}
-                    onClick={() => releaseMutation.mutate(lotDetail.id)}
+                  <Tooltip
+                    title={
+                      !inspectionPassed
+                        ? "The lot must pass an outgoing inspection first"
+                        : recordsInRework > 0
+                          ? `${recordsInRework} record(s) still in rework`
+                          : undefined
+                    }
                   >
-                    Release to Customer
-                  </Button>
+                    <Button
+                      type="primary"
+                      size="small"
+                      disabled={!inspectionPassed || recordsInRework > 0}
+                      loading={releaseMutation.isPending}
+                      onClick={() => releaseMutation.mutate(lotDetail.id)}
+                    >
+                      Release to Customer
+                    </Button>
+                  </Tooltip>
                 </Col>
               )}
             </Row>
+
+            <Divider orientation="left" style={{ marginTop: 0 }}>Outgoing inspection (ISO 2859-1)</Divider>
+            {lotDetail.status === "draft" && !activeInspection && !inspectionPassed && (
+              recordsInRework > 0 ? (
+                <Alert
+                  type="warning"
+                  style={{ marginBottom: 12 }}
+                  message={`${recordsInRework} record(s) are in rework — re-inspect once they're back through QA.`}
+                />
+              ) : (
+                <Space style={{ marginBottom: 12 }} wrap>
+                  <Typography.Text>AQL</Typography.Text>
+                  <Select
+                    style={{ width: 110 }}
+                    value={aqlChoice ?? inspectionList?.default_aql_level}
+                    onChange={setAqlChoice}
+                    options={(inspectionList?.available_aql_levels ?? []).map((v) => ({ value: v, label: String(v) }))}
+                  />
+                  <Button
+                    type="primary"
+                    loading={startInspectionMutation.isPending}
+                    disabled={!inspectionList}
+                    onClick={() => startInspectionMutation.mutate()}
+                  >
+                    {inspections.length ? "Re-inspect (new random sample)" : "Start inspection"}
+                  </Button>
+                </Space>
+              )
+            )}
+            {lotDetail.status === "draft" && inspectionPassed && recordsInRework > 0 && (
+              <Alert
+                type="info"
+                style={{ marginBottom: 12 }}
+                message={`Inspection passed — release unlocks once the ${recordsInRework} reworked record(s) are back through QA.`}
+              />
+            )}
+            {inspections.length === 0 ? (
+              <Typography.Paragraph type="secondary">
+                No inspection yet. Starting one draws a random ISO 2859-1 sample for you to review.
+              </Typography.Paragraph>
+            ) : (
+              <Table
+                rowKey="id"
+                size="small"
+                style={{ marginBottom: 16 }}
+                pagination={false}
+                dataSource={[...inspections].reverse()}
+                columns={[
+                  { title: "#", dataIndex: "attempt_number", width: 40 },
+                  {
+                    title: "Result",
+                    dataIndex: "status",
+                    render: (s: LotInspectionStatus) => <Tag color={INSPECTION_TAG[s].color}>{INSPECTION_TAG[s].label}</Tag>,
+                  },
+                  { title: "AQL", dataIndex: "aql_level" },
+                  {
+                    title: "Plan",
+                    key: "plan",
+                    render: (_: unknown, i) => `n=${i.sample_size}, Ac ${i.acceptance_number}/Re ${i.rejection_number}`,
+                  },
+                  {
+                    title: "Non-conformities",
+                    key: "nc",
+                    render: (_: unknown, i) =>
+                      i.critical_defect_count === null ? "—" : `${i.critical_defect_count} crit / ${i.minor_defect_count} minor`,
+                  },
+                  {
+                    title: "",
+                    key: "open",
+                    render: (_: unknown, i) => (
+                      <Button size="small" type={i.status === "in_progress" ? "primary" : "default"} onClick={() => setWorkspaceInspectionId(i.id)}>
+                        {i.status === "in_progress" ? "Continue review" : "View"}
+                      </Button>
+                    ),
+                  },
+                ]}
+              />
+            )}
+            {inspections.length > 0 && (
+              <Button style={{ marginBottom: 16 }} onClick={() => setReportOpen(true)}>
+                View inspection report
+              </Button>
+            )}
+
+            <Divider orientation="left">Records</Divider>
             <Table
               rowKey="record_id"
               size="small"
@@ -287,6 +430,34 @@ export default function LotManager({ projectId }: Props) {
           </>
         )}
       </Drawer>
+
+      <Drawer
+        open={!!detailLotId && workspaceInspectionId !== undefined}
+        onClose={() => setWorkspaceInspectionId(undefined)}
+        width="100%"
+        closable={false}
+        destroyOnClose
+        styles={{ body: { padding: 0 } }}
+      >
+        {detailLotId && workspaceInspectionId !== undefined && (
+          <LotInspectionWorkspace
+            lotId={detailLotId}
+            inspectionId={workspaceInspectionId}
+            onClose={() => setWorkspaceInspectionId(undefined)}
+          />
+        )}
+      </Drawer>
+
+      <Modal
+        title="Outgoing Inspection Report"
+        open={!!detailLotId && reportOpen}
+        onCancel={() => setReportOpen(false)}
+        footer={null}
+        width={960}
+        destroyOnClose
+      >
+        {detailLotId && <LotInspectionReport lotId={detailLotId} />}
+      </Modal>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Button, Empty, Spin, Table, Tooltip } from "antd";
+import { Button, Empty, Modal, Spin, Table, Tooltip } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
+import LotInspectionReport from "@shared/components/LotInspectionReport";
 import PageHeader from "@shared/components/PageHeader";
 import StatusDot from "@shared/components/StatusDot";
 import LotSettingsDrawer from "../components/LotSettingsDrawer";
@@ -29,6 +30,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
   const isSupervisor = role === "customer_supervisor";
   const [settingsLotId, setSettingsLotId] = useState<number | undefined>();
   const [assignLotId, setAssignLotId] = useState<number | undefined>();
+  const [reportLotId, setReportLotId] = useState<number | undefined>();
 
   const { data: lots = [], isLoading: lotLoading } = useQuery<Lot[]>({
     queryKey: ["customer-lots", projectId],
@@ -72,6 +74,9 @@ export default function CustomerLotManager({ projectId, role }: Props) {
           key: "action",
           render: (_: unknown, lot: Lot) => (
             <>
+              <Button size="small" onClick={() => setReportLotId(lot.id)} style={{ marginRight: 8 }}>
+                Inspection report
+              </Button>
               <Button size="small" onClick={() => setSettingsLotId(lot.id)} style={{ marginRight: 8 }}>
                 Settings
               </Button>
@@ -114,6 +119,18 @@ export default function CustomerLotManager({ projectId, role }: Props) {
         isSupervisor={isSupervisor}
         onClose={() => setSettingsLotId(undefined)}
       />
+      {/* The digitizing supervisor's outgoing ISO 2859-1 inspection, handed
+          over with the lot — see LotInspectionReport. */}
+      <Modal
+        title="Outgoing Inspection Report"
+        open={reportLotId !== undefined}
+        onCancel={() => setReportLotId(undefined)}
+        footer={null}
+        width={960}
+        destroyOnClose
+      >
+        {reportLotId !== undefined && <LotInspectionReport lotId={reportLotId} />}
+      </Modal>
       <LotAssignQcDrawer
         lotId={assignLotId}
         projectId={projectId}

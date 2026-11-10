@@ -62,6 +62,33 @@ def compute_sample_size(batch_size: int, aql_level: float) -> tuple[int, int]:
     return row[actual_aql]
 
 
+# Every code letter row carries the same AQL columns, so any row's keys are
+# the full set of AQLs a sampling plan can be drawn for.
+AVAILABLE_AQLS: tuple[float, ...] = tuple(sorted(_SAMPLING_TABLE["A"].keys()))
+
+
+def sampling_plan(lot_size: int, aql_level: float) -> dict[str, Any]:
+    """Single sampling plan, Inspection Level II, for an exact tabulated AQL —
+    unlike compute_sample_size, which snaps to the nearest column, an
+    explicitly chosen AQL that isn't in the table is rejected, so a report
+    can never claim an AQL the plan wasn't actually drawn from. The sample
+    is capped at the lot size (100% inspection when the table's sample
+    size meets or exceeds the lot, per ISO 2859-1)."""
+    if aql_level not in AVAILABLE_AQLS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"aql_level must be one of {list(AVAILABLE_AQLS)}",
+        )
+    letter = _code_letter(lot_size)
+    table_size, acceptance_number = _SAMPLING_TABLE[letter][aql_level]
+    return {
+        "code_letter": letter,
+        "sample_size": min(table_size, lot_size),
+        "acceptance_number": acceptance_number,
+        "rejection_number": acceptance_number + 1,
+    }
+
+
 async def get_config(db: AsyncSession, project_id: int) -> AQLConfig | None:
     """AQLConfig's primary key is `id`; `project_id` is a separate unique
     column — db.get(AQLConfig, project_id) would look up by PK, not this
