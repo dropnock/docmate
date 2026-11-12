@@ -11,7 +11,7 @@ class LotCreate(BaseModel):
     project_id: int
     name: str
     description: str | None = None
-    record_ids: list[int]
+    record_ids: list[int] = Field(min_length=1)
 
 
 class LotOut(BaseModel):

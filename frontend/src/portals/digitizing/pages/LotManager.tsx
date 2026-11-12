@@ -66,9 +66,9 @@ export default function LotManager({ projectId }: Props) {
 
   // QA-passed records in the project cabinet
   const { data: qaPassedRecords = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
-    queryKey: ["cabinet-records", cabinet?.id, "qa_passed"],
+    queryKey: ["cabinet-records", cabinet?.id, "qa_passed", "not_in_lot"],
     queryFn: () =>
-      api.get(`/cabinets/${cabinet!.id}/records?status=qa_passed`).then((r) => r.data),
+      api.get(`/cabinets/${cabinet!.id}/records?status=qa_passed&not_in_lot=true`).then((r) => r.data),
     enabled: !!cabinet && createOpen,
   });
 

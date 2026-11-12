@@ -45,16 +45,34 @@ async def create_lot(
     user_id: int,
     tenant_id: int,
 ) -> Lot:
-    # Validate all records are qa_passed
+    from sqlalchemy.exc import IntegrityError
+    from app.services.s3_service import resolve_record_project
+
+    record_ids = list(dict.fromkeys(record_ids))  # drop repeats, keep order
+    if not record_ids:
+        raise HTTPException(status_code=422, detail="A lot needs at least one record")
     for rid in record_ids:
         record = await db.get(Record, rid)
         if not record:
             raise HTTPException(status_code=404, detail=f"Record {rid} not found")
+        project = await resolve_record_project(record, db)
+        if project is None or project.id != project_id:
+            raise HTTPException(status_code=422, detail=f"Record {rid} does not belong to this project")
         if record.status != RecordStatus.qa_passed:
             raise HTTPException(
                 status_code=422,
                 detail=f"Record {rid} is not qa_passed (status={record.status})",
             )
+    # A record belongs to at most one lot (also enforced by the unique index
+    # on lot_records.record_id). Removing it from a draft lot frees it.
+    taken = (await db.execute(
+        select(LotRecord.record_id, LotRecord.lot_id).where(LotRecord.record_id.in_(record_ids))
+    )).all()
+    if taken:
+        raise HTTPException(
+            status_code=409,
+            detail="Records already in a lot: " + ", ".join(f"{r} (lot {l})" for r, l in sorted(taken)),
+        )
 
     lot = Lot(
         tenant_id=tenant_id,
@@ -70,7 +88,12 @@ async def create_lot(
     for rid in record_ids:
         db.add(LotRecord(lot_id=lot.id, record_id=rid, is_sampled=False))
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Another request put one of these records into a lot between the
+        # check above and this insert.
+        raise HTTPException(status_code=409, detail="One or more records were just added to another lot")
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,

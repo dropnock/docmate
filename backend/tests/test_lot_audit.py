@@ -35,7 +35,7 @@ async def _events(db, entity_type, entity_id):
 
 class TestEntityTypes:
     async def test_lot_events_are_lot_typed(self, db: AsyncSession, seed):
-        records = [Record(status=RecordStatus.qa_passed, current_version=1) for _ in range(2)]
+        records = [Record(batch_id=seed["batch"].id, status=RecordStatus.qa_passed, current_version=1) for _ in range(2)]
         db.add_all(records)
         await db.flush()
         lot = await lot_service.create_lot(

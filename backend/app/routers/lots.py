@@ -42,6 +42,7 @@ async def create_lot(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "admin")),
 ):
+    check_project_access(await db.get(Project, body.project_id), current_user)
     lot = await lot_service.create_lot(
         db,
         project_id=body.project_id,

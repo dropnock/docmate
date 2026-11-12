@@ -58,7 +58,11 @@ class Lot(Base, TimestampMixin):
 
 class LotRecord(Base):
     __tablename__ = "lot_records"
-    __table_args__ = (UniqueConstraint("lot_id", "record_id", name="uq_lot_record"),)
+    __table_args__ = (
+        UniqueConstraint("lot_id", "record_id", name="uq_lot_record"),
+        # A record is in at most one lot (lot_service.create_lot checks first).
+        UniqueConstraint("record_id", name="uq_lot_records_record_id"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     lot_id: Mapped[int] = mapped_column(Integer, ForeignKey("lots.id"), nullable=False, index=True)
