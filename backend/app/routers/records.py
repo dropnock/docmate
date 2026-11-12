@@ -138,6 +138,7 @@ async def get_record_history(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
+    await _get_authorized_record(record_id, db, current_user)
     events = await audit_service.get_record_history(
         db, tenant_id=current_user._tenant_id, record_id=record_id
     )

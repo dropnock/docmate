@@ -91,3 +91,13 @@ export const lotHistoryKey = (lotId?: number) => ["lot-history", lotId] as const
 export function getLotHistory(lotId: number) {
   return api.get<AuditEvent[]>(`/lots/${lotId}/history`).then((r) => r.data);
 }
+
+/** Digitizing supervisor takes back a released, not-yet-sampled lot. It
+ * returns to draft and needs a fresh outgoing inspection. */
+export function recallLot(lotId: number, reason: string) {
+  return api.post<Lot>(`/lots/${lotId}/recall`, { reason }).then((r) => r.data);
+}
+
+export function removeLotRecords(lotId: number, recordIds: number[]) {
+  return api.post<Lot>(`/lots/${lotId}/remove-records`, { record_ids: recordIds }).then((r) => r.data);
+}

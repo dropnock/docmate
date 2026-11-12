@@ -22,6 +22,19 @@ async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
     return lot
 
 
+async def _get_lot_for_update(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
+    """_get_lot with the row locked (SELECT ... FOR UPDATE) until the caller's
+    transaction ends. recall_lot and apply_sample both take it, so a recall
+    and the customer's sampling can't both succeed on the same released lot.
+    populate_existing refreshes a copy already in the session."""
+    lot = (await db.execute(
+        select(Lot).where(Lot.id == lot_id).with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if not lot or lot.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    return lot
+
+
 async def create_lot(
     db: AsyncSession,
     *,
@@ -75,13 +88,14 @@ async def list_lots(
     *,
     project_id: int,
     tenant_id: int,
+    exclude_drafts: bool = False,
 ) -> list[Lot]:
-    result = await db.execute(
-        select(Lot).where(
-            Lot.project_id == project_id,
-            Lot.tenant_id == tenant_id,
-        ).order_by(Lot.created_at.desc())
-    )
+    """exclude_drafts=True is the customer's view: a draft lot hasn't been
+    handed over (or was recalled), so it doesn't exist as far as they know."""
+    stmt = select(Lot).where(Lot.project_id == project_id, Lot.tenant_id == tenant_id)
+    if exclude_drafts:
+        stmt = stmt.where(Lot.status != LotStatus.draft)
+    result = await db.execute(stmt.order_by(Lot.created_at.desc()))
     return list(result.scalars().all())
 
 
@@ -120,7 +134,7 @@ async def apply_sample(
     user_id: int,
     tenant_id: int,
 ) -> Lot:
-    lot = await _get_lot(db, lot_id, tenant_id)
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
     if lot.status != LotStatus.released:
         raise HTTPException(status_code=409, detail="Lot must be released before sampling")
 
@@ -202,6 +216,10 @@ async def create_qc_batches(
     lot = await _get_lot(db, lot_id, tenant_id)
     if lot.status != LotStatus.qc_in_progress:
         raise HTTPException(status_code=409, detail="Lot must be in qc_in_progress to create QC batches")
+    await _check_qc_batch_targets(
+        db, lot=lot, project_id=project_id, document_type_id=document_type_id,
+        agent_ids=[a["agent_id"] for a in assignments], tenant_id=tenant_id,
+    )
 
     if not assignments:
         raise HTTPException(status_code=400, detail="assignments must not be empty")
@@ -281,6 +299,153 @@ async def create_qc_batches(
 
     await db.flush()
     return batches
+
+
+async def _check_qc_batch_targets(
+    db: AsyncSession,
+    *,
+    lot: Lot,
+    project_id: int,
+    document_type_id: int,
+    agent_ids: list[int],
+    tenant_id: int,
+) -> None:
+    """project_id, document_type_id and the agent ids all come from the
+    request body. The QC batches must land in the lot's own project, under
+    one of its document types, assigned to active QC agents of that
+    project's customer organisation (the same set GET /projects/{id}/qc-agents
+    offers) — not another customer's project or agents."""
+    from app.models.document_type import DocumentType
+    from app.models.project import Project
+    from app.models.user import User, UserRole
+
+    if project_id != lot.project_id:
+        raise HTTPException(status_code=422, detail="project_id does not match the lot's project")
+    doc_type = await db.get(DocumentType, document_type_id)
+    if not doc_type or doc_type.project_id != lot.project_id:
+        raise HTTPException(status_code=422, detail="document_type_id is not a document type of the lot's project")
+    project = await db.get(Project, lot.project_id)
+    valid = set((await db.execute(
+        select(User.id).where(
+            User.id.in_(set(agent_ids)),
+            User.tenant_id == tenant_id,
+            User.organization_id == project.customer_org_id,
+            User.role == UserRole.customer_qc_agent,
+            User.is_active == True,  # noqa: E712
+        )
+    )).scalars().all())
+    invalid = sorted(set(agent_ids) - valid)
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Not active QC agents of this project's customer organisation: {invalid}",
+        )
+
+
+async def recall_lot(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    reason: str,
+    user_id: int,
+    tenant_id: int,
+) -> Lot:
+    """Digitizing supervisor takes a released lot back before the customer
+    has sampled it. The lot returns to draft (hidden from the customer
+    again) and its passing outgoing inspection is superseded, so it must be
+    inspected afresh before it can be released again. Records keep their
+    status; fixes go through the usual requeue/rework paths, which
+    assert_releasable already waits for."""
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
+    if lot.status != LotStatus.released or lot.sample_size is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a released lot the customer hasn't sampled yet can be recalled",
+        )
+    superseded = await lot_inspection_service.supersede_passed(db, lot)
+    released_at, released_by = lot.released_at, lot.released_by
+    lot.status = LotStatus.draft
+    lot.released_at = None
+    lot.released_by = None
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.lot,
+        entity_id=lot.id,
+        action=AuditAction.recalled,
+        performed_by=user_id,
+        old_value={
+            "status": "released",
+            "released_at": released_at.isoformat() if released_at else None,
+            "released_by": released_by,
+        },
+        new_value={"status": "draft"},
+        metadata={
+            "reason": reason,
+            "superseded_inspection_id": superseded.id if superseded else None,
+        },
+    )
+    return lot
+
+
+async def remove_lot_records(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    record_ids: list[int],
+    user_id: int,
+    tenant_id: int,
+) -> Lot:
+    """Take records out of a draft lot (e.g. after a recall, when the wrong
+    records went in). The records themselves are untouched and can go into
+    another lot. A passed inspection no longer describes the lot, so it is
+    superseded; an in-progress one blocks the change, since its sample was
+    drawn from the current set."""
+    from app.models.lot_inspection import LotInspection, LotInspectionStatus
+
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
+    if lot.status != LotStatus.draft:
+        raise HTTPException(status_code=409, detail="Records can only be removed from a draft lot")
+    in_progress = (await db.execute(
+        select(LotInspection.id).where(
+            LotInspection.lot_id == lot_id, LotInspection.status == LotInspectionStatus.in_progress,
+        )
+    )).first()
+    if in_progress:
+        raise HTTPException(
+            status_code=409, detail="Finish or cancel the inspection in progress before removing records",
+        )
+
+    wanted = set(record_ids)
+    rows = list((await db.execute(
+        select(LotRecord).where(LotRecord.lot_id == lot_id)
+    )).scalars().all())
+    to_remove = [lr for lr in rows if lr.record_id in wanted]
+    missing = sorted(wanted - {lr.record_id for lr in to_remove})
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Records not in this lot: {missing}")
+    if len(to_remove) == len(rows):
+        raise HTTPException(status_code=422, detail="A lot must keep at least one record")
+
+    for lr in to_remove:
+        await db.delete(lr)
+    superseded = await lot_inspection_service.supersede_passed(db, lot)
+    await db.flush()
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.lot,
+        entity_id=lot.id,
+        action=AuditAction.lot_records_removed,
+        performed_by=user_id,
+        old_value={"record_count": len(rows)},
+        new_value={"record_count": len(rows) - len(to_remove)},
+        metadata={
+            "record_ids": sorted(wanted),
+            "superseded_inspection_id": superseded.id if superseded else None,
+        },
+    )
+    return lot
 
 
 async def calculate_accuracy(

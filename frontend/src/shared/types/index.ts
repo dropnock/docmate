@@ -332,7 +332,9 @@ export interface DocumentType {
 // ── Outgoing lot inspection (digitizing supervisor, before release) ─────────
 // See backend/app/services/lot_inspection_service.py.
 
-export type LotInspectionStatus = "in_progress" | "passed" | "failed" | "cancelled";
+/** superseded: passed, but the lot was recalled or had records removed
+ * afterwards, so it no longer clears the lot for release. */
+export type LotInspectionStatus = "in_progress" | "passed" | "failed" | "cancelled" | "superseded";
 export type InspectionItemStatus = "pending" | "accepted" | "defective";
 
 export interface InspectionFieldResult {

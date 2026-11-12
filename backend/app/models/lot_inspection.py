@@ -13,6 +13,9 @@ class LotInspectionStatus(str, enum.Enum):
     passed = "passed"
     failed = "failed"
     cancelled = "cancelled"
+    # A passed attempt that no longer clears the lot for release: the lot was
+    # recalled, or records were removed from it, after it passed.
+    superseded = "superseded"
 
 
 class InspectionItemStatus(str, enum.Enum):

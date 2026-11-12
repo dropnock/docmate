@@ -1,5 +1,5 @@
 import {
-  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Row,
+  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Popconfirm, Row,
   Select, Space, Spin, Table, Tag, Tooltip, Typography, message,
 } from "antd";
 import { useState } from "react";
@@ -7,7 +7,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
-import { listInspections, lotInspectionsKey, startInspection } from "@shared/api/lots";
+import {
+  listInspections, lotHistoryKey, lotInspectionsKey, recallLot, removeLotRecords, startInspection,
+} from "@shared/api/lots";
 import { useCabinets } from "@shared/hooks/useCabinets";
 import LotHistory from "@shared/components/LotHistory";
 import LotInspectionReport from "@shared/components/LotInspectionReport";
@@ -35,6 +37,7 @@ const INSPECTION_TAG: Record<LotInspectionStatus, { color: string; label: string
   passed: { color: "green", label: "Passed" },
   failed: { color: "red", label: "Failed" },
   cancelled: { color: "default", label: "Cancelled" },
+  superseded: { color: "default", label: "Superseded" },
 };
 
 export default function LotManager({ projectId }: Props) {
@@ -47,6 +50,9 @@ export default function LotManager({ projectId }: Props) {
   const [aqlChoice, setAqlChoice] = useState<number | undefined>();
   const [workspaceInspectionId, setWorkspaceInspectionId] = useState<number | undefined>();
   const [reportOpen, setReportOpen] = useState(false);
+  const [recallOpen, setRecallOpen] = useState(false);
+  const [recallReason, setRecallReason] = useState("");
+  const [removeSelection, setRemoveSelection] = useState<number[]>([]);
 
   const { data: lots = [], isLoading: lotLoading } = useQuery<Lot[]>({
     queryKey: ["lots", projectId],
@@ -80,9 +86,9 @@ export default function LotManager({ projectId }: Props) {
   });
   const inspections = inspectionList?.inspections ?? [];
   const activeInspection = inspections.find((i) => i.status === "in_progress");
-  // Latest attempt that wasn't cancelled — the one release is gated on
-  // (lot_inspection_service.assert_releasable).
-  const latestEffective = [...inspections].reverse().find((i) => i.status !== "cancelled");
+  // Latest attempt that wasn't cancelled or superseded — the one release is
+  // gated on (lot_inspection_service.assert_releasable).
+  const latestEffective = [...inspections].reverse().find((i) => i.status !== "cancelled" && i.status !== "superseded");
   const inspectionPassed = latestEffective?.status === "passed";
   const recordsInRework = (lotDetail?.records ?? []).filter((r) => r.status !== "qa_passed").length;
 
@@ -126,6 +132,34 @@ export default function LotManager({ projectId }: Props) {
       qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });
     },
     onError: (err: unknown) => message.error(formatApiError(err, "Failed to release lot")),
+  });
+
+  const invalidateLot = () => {
+    qc.invalidateQueries({ queryKey: ["lots", projectId] });
+    qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });
+    qc.invalidateQueries({ queryKey: lotInspectionsKey(detailLotId) });
+    qc.invalidateQueries({ queryKey: lotHistoryKey(detailLotId) });
+  };
+
+  const recallMutation = useMutation({
+    mutationFn: () => recallLot(detailLotId!, recallReason.trim()),
+    onSuccess: () => {
+      message.success("Lot recalled — it's a draft again and needs a fresh inspection");
+      setRecallOpen(false);
+      setRecallReason("");
+      invalidateLot();
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to recall lot")),
+  });
+
+  const removeRecordsMutation = useMutation({
+    mutationFn: () => removeLotRecords(detailLotId!, removeSelection),
+    onSuccess: () => {
+      message.success(`${removeSelection.length} record(s) removed from the lot`);
+      setRemoveSelection([]);
+      invalidateLot();
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to remove records")),
   });
 
   const columns: ColumnType<Lot>[] = [
@@ -291,6 +325,7 @@ export default function LotManager({ projectId }: Props) {
           setDetailLotId(undefined);
           setAqlChoice(undefined);
           setReportOpen(false);
+          setRemoveSelection([]);
         }}
         width={720}
       >
@@ -331,6 +366,15 @@ export default function LotManager({ projectId }: Props) {
                       onClick={() => releaseMutation.mutate(lotDetail.id)}
                     >
                       Release to Customer
+                    </Button>
+                  </Tooltip>
+                </Col>
+              )}
+              {lotDetail.status === "released" && lotDetail.sample_size === null && (
+                <Col>
+                  <Tooltip title="Take the lot back before the customer samples it">
+                    <Button danger size="small" onClick={() => setRecallOpen(true)}>
+                      Recall
                     </Button>
                   </Tooltip>
                 </Col>
@@ -421,12 +465,31 @@ export default function LotManager({ projectId }: Props) {
             )}
 
             <Divider orientation="left">Records</Divider>
+            {lotDetail.status === "draft" && !activeInspection && removeSelection.length > 0 && (
+              <Popconfirm
+                title={`Remove ${removeSelection.length} record(s) from this lot?`}
+                description={inspectionPassed
+                  ? "The passed inspection will be superseded; the lot must be inspected again."
+                  : "The records stay QA-passed and can go into another lot."}
+                okText="Remove"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => removeRecordsMutation.mutate()}
+              >
+                <Button danger size="small" style={{ marginBottom: 8 }} loading={removeRecordsMutation.isPending}>
+                  Remove {removeSelection.length} from lot
+                </Button>
+              </Popconfirm>
+            )}
             <Table
               rowKey="record_id"
               size="small"
               dataSource={lotDetail.records}
               columns={recordColumns}
               pagination={{ pageSize: 20 }}
+              rowSelection={lotDetail.status === "draft" && !activeInspection ? {
+                selectedRowKeys: removeSelection,
+                onChange: (keys) => setRemoveSelection(keys as number[]),
+              } : undefined}
             />
             <LotHistory lotId={lotDetail.id} />
           </>
@@ -449,6 +512,35 @@ export default function LotManager({ projectId }: Props) {
           />
         )}
       </Drawer>
+
+      <Modal
+        title="Recall lot"
+        open={!!detailLotId && recallOpen}
+        onCancel={() => setRecallOpen(false)}
+        okText="Recall lot"
+        okButtonProps={{ danger: true, disabled: !recallReason.trim(), loading: recallMutation.isPending }}
+        onOk={() => recallMutation.mutate()}
+        destroyOnClose
+      >
+        <Typography.Paragraph>
+          The lot goes back to draft and disappears from the customer portal. Its passed inspection is
+          superseded, so it must be inspected again before it can be released.
+        </Typography.Paragraph>
+        <Form layout="vertical">
+          <Form.Item
+            label="Reason"
+            required
+            extra="Kept on the lot's audit trail. The customer sees it in the lot history once the lot is released again."
+          >
+            <Input.TextArea
+              rows={3}
+              maxLength={1024}
+              value={recallReason}
+              onChange={(e) => setRecallReason(e.target.value)}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Outgoing Inspection Report"

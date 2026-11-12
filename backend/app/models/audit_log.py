@@ -40,6 +40,8 @@ class AuditAction(str, enum.Enum):
     record_flagged = "record_flagged"
     flag_withdrawn = "flag_withdrawn"
     flag_resolved = "flag_resolved"
+    recalled = "recalled"
+    lot_records_removed = "lot_records_removed"
 
 
 class AuditLog(Base):

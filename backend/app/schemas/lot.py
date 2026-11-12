@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.schemas.task import FieldResultIn
 
@@ -86,3 +88,13 @@ class ReviewInspectionItemRequest(BaseModel):
 
 class CompleteInspectionRequest(BaseModel):
     summary_note: str | None = Field(default=None, max_length=2048)
+
+
+class RecallLotRequest(BaseModel):
+    """Why the lot is being taken back. Recorded on the audit trail, which
+    the customer can see once the lot is released again."""
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+
+
+class RemoveLotRecordsRequest(BaseModel):
+    record_ids: list[int] = Field(min_length=1)

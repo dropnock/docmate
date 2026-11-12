@@ -3,7 +3,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import check_project_access, require_roles
-from app.models.lot import LotStatus
+from app.models.lot import Lot, LotStatus
+from app.models.project import Project
+from app.models.user import Portal
 from app.schemas.lot import (
     ApplySampleRequest,
     CompleteInspectionRequest,
@@ -11,12 +13,27 @@ from app.schemas.lot import (
     LotCreate,
     LotOut,
     QcFieldResultsOut,
+    RecallLotRequest,
+    RemoveLotRecordsRequest,
     ReviewInspectionItemRequest,
     StartInspectionRequest,
 )
 from app.services import aql_service, lot_inspection_service, lot_service
 
 router = APIRouter(prefix="/api/lots", tags=["lots"])
+
+
+async def _get_authorized_lot(db: AsyncSession, lot_id: int, current_user) -> Lot:
+    """Fetch a lot and enforce the same boundary as check_project_access: a
+    tenant can hold several customer organisations, so a customer user only
+    reaches lots of their own organisation's projects — and never a draft
+    (not yet handed over, or recalled). 404 either way, so neither the lot
+    nor its draft state leaks."""
+    lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
+    check_project_access(await db.get(Project, lot.project_id), current_user)
+    if current_user.portal == Portal.customer and lot.status == LotStatus.draft:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    return lot
 
 
 @router.post("", status_code=201)
@@ -44,8 +61,10 @@ async def list_lots(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
+    check_project_access(await db.get(Project, project_id), current_user)
     lots = await lot_service.list_lots(
-        db, project_id=project_id, tenant_id=current_user._tenant_id
+        db, project_id=project_id, tenant_id=current_user._tenant_id,
+        exclude_drafts=current_user.portal == Portal.customer,
     )
     return [LotOut.model_validate(lot) for lot in lots]
 
@@ -60,7 +79,7 @@ async def get_lot(
     from app.models.lot import Lot, LotRecord
     from app.models.record import Record
 
-    lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
+    lot = await _get_authorized_lot(db, lot_id, current_user)
     lot_records_result = await db.execute(
         select(LotRecord).where(LotRecord.lot_id == lot_id)
     )
@@ -87,8 +106,43 @@ async def release_lot(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "admin")),
 ):
+    await _get_authorized_lot(db, lot_id, current_user)
     lot = await lot_service.release_lot(
         db, lot_id=lot_id, user_id=current_user.id, tenant_id=current_user._tenant_id
+    )
+    await db.commit()
+    return LotOut.model_validate(lot)
+
+
+@router.post("/{lot_id}/recall")
+async def recall_lot(
+    lot_id: int,
+    body: RecallLotRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    """Take a released lot back before the customer samples it. It returns
+    to draft and needs a fresh outgoing inspection before release."""
+    await _get_authorized_lot(db, lot_id, current_user)
+    lot = await lot_service.recall_lot(
+        db, lot_id=lot_id, reason=body.reason,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return LotOut.model_validate(lot)
+
+
+@router.post("/{lot_id}/remove-records")
+async def remove_lot_records(
+    lot_id: int,
+    body: RemoveLotRecordsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    await _get_authorized_lot(db, lot_id, current_user)
+    lot = await lot_service.remove_lot_records(
+        db, lot_id=lot_id, record_ids=body.record_ids,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
     )
     await db.commit()
     return LotOut.model_validate(lot)
@@ -101,6 +155,7 @@ async def apply_sample(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("customer_supervisor", "admin")),
 ):
+    await _get_authorized_lot(db, lot_id, current_user)
     lot = await lot_service.apply_sample(
         db,
         lot_id=lot_id,
@@ -119,6 +174,7 @@ async def create_qc_batches(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("customer_supervisor", "admin")),
 ):
+    await _get_authorized_lot(db, lot_id, current_user)
     batches = await lot_service.create_qc_batches(
         db,
         lot_id=lot_id,
@@ -138,6 +194,7 @@ async def get_qc_field_results(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
 ):
+    await _get_authorized_lot(db, lot_id, current_user)
     tabulation = await lot_service.get_field_result_tabulation(
         db, lot_id=lot_id, tenant_id=current_user._tenant_id
     )
@@ -150,6 +207,7 @@ async def send_for_remediation(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("customer_supervisor", "admin")),
 ):
+    await _get_authorized_lot(db, lot_id, current_user)
     lot = await lot_service.send_for_remediation(
         db, lot_id=lot_id, user_id=current_user.id, tenant_id=current_user._tenant_id
     )
@@ -267,13 +325,7 @@ async def get_inspection_report(
     """Shared with the customer alongside the released lot. Customers only
     see it once the lot has been handed over (not while it's still a draft
     being inspected), and only for their own organisation's projects."""
-    from app.models.project import Project
-    from app.models.user import Portal
-
-    lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
-    check_project_access(await db.get(Project, lot.project_id), current_user)
-    if current_user.portal == Portal.customer and lot.status == LotStatus.draft:
-        raise HTTPException(status_code=404, detail="Lot not found")
+    lot = await _get_authorized_lot(db, lot_id, current_user)
     return await lot_inspection_service.build_report(db, lot=lot)
 
 
@@ -285,15 +337,10 @@ async def get_lot_history(
 ):
     """The lot's own audit trail. Customers only get it for their own
     organisation's released lots, and only from the first release onward."""
-    from app.models.project import Project
-    from app.models.user import Portal
     from app.services import audit_service
 
-    lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
-    check_project_access(await db.get(Project, lot.project_id), current_user)
+    await _get_authorized_lot(db, lot_id, current_user)
     is_customer = current_user.portal == Portal.customer
-    if is_customer and lot.status == LotStatus.draft:
-        raise HTTPException(status_code=404, detail="Lot not found")
     events = await audit_service.get_lot_history(
         db, tenant_id=current_user._tenant_id, lot_id=lot_id, from_first_release=is_customer
     )
