@@ -43,15 +43,19 @@ class TestAgentErrorRate:
 
 class TestProjectErrorRate:
     async def test_project_kpis_reports_defect_rate_from_qc_results(self, db: AsyncSession, seed):
-        # 20-record batch -> code letter C (16-25) -> sample 5, accept 0 at AQL 1.5
-        await aql_service.evaluate_batch(
-            db,
-            project_id=seed["project"].id,
-            batch_id=seed["batch"].id,
-            batch_size=20,
-            defects_found=2,
-            tenant_id=seed["tenant"].id,
-            performed_by=seed["qc_agent"].id,
+        """Records the customer's QC reviewed: 3 accepted, 2 rejected. Open
+        QC tasks and QA tasks don't count."""
+        from app.models.task import Task, TaskStatus, TaskType
+
+        def qc(status, task_type=TaskType.qc):
+            return Task(
+                record_id=seed["record"].id, batch_id=seed["batch"].id, task_type=task_type,
+                assigned_to=seed["qc_agent"].id, status=status,
+            )
+        db.add_all(
+            [qc(TaskStatus.completed) for _ in range(3)]
+            + [qc(TaskStatus.failed) for _ in range(2)]
+            + [qc(TaskStatus.pending), qc(TaskStatus.failed, task_type=TaskType.qa)]
         )
         await db.flush()
 

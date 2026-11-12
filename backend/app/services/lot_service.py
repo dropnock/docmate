@@ -22,6 +22,19 @@ async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
     return lot
 
 
+async def _get_lot_for_update(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
+    """_get_lot with the row locked (SELECT ... FOR UPDATE) until the caller's
+    transaction ends. recall_lot and apply_sample both take it, so a recall
+    and the customer's sampling can't both succeed on the same released lot.
+    populate_existing refreshes a copy already in the session."""
+    lot = (await db.execute(
+        select(Lot).where(Lot.id == lot_id).with_for_update().execution_options(populate_existing=True)
+    )).scalar_one_or_none()
+    if not lot or lot.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    return lot
+
+
 async def create_lot(
     db: AsyncSession,
     *,
@@ -32,16 +45,34 @@ async def create_lot(
     user_id: int,
     tenant_id: int,
 ) -> Lot:
-    # Validate all records are qa_passed
+    from sqlalchemy.exc import IntegrityError
+    from app.services.s3_service import resolve_record_project
+
+    record_ids = list(dict.fromkeys(record_ids))  # drop repeats, keep order
+    if not record_ids:
+        raise HTTPException(status_code=422, detail="A lot needs at least one record")
     for rid in record_ids:
         record = await db.get(Record, rid)
         if not record:
             raise HTTPException(status_code=404, detail=f"Record {rid} not found")
+        project = await resolve_record_project(record, db)
+        if project is None or project.id != project_id:
+            raise HTTPException(status_code=422, detail=f"Record {rid} does not belong to this project")
         if record.status != RecordStatus.qa_passed:
             raise HTTPException(
                 status_code=422,
                 detail=f"Record {rid} is not qa_passed (status={record.status})",
             )
+    # A record belongs to at most one lot (also enforced by the unique index
+    # on lot_records.record_id). Removing it from a draft lot frees it.
+    taken = (await db.execute(
+        select(LotRecord.record_id, LotRecord.lot_id).where(LotRecord.record_id.in_(record_ids))
+    )).all()
+    if taken:
+        raise HTTPException(
+            status_code=409,
+            detail="Records already in a lot: " + ", ".join(f"{r} (lot {l})" for r, l in sorted(taken)),
+        )
 
     lot = Lot(
         tenant_id=tenant_id,
@@ -57,11 +88,16 @@ async def create_lot(
     for rid in record_ids:
         db.add(LotRecord(lot_id=lot.id, record_id=rid, is_sampled=False))
 
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Another request put one of these records into a lot between the
+        # check above and this insert.
+        raise HTTPException(status_code=409, detail="One or more records were just added to another lot")
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.created,
         performed_by=user_id,
@@ -75,13 +111,14 @@ async def list_lots(
     *,
     project_id: int,
     tenant_id: int,
+    exclude_drafts: bool = False,
 ) -> list[Lot]:
-    result = await db.execute(
-        select(Lot).where(
-            Lot.project_id == project_id,
-            Lot.tenant_id == tenant_id,
-        ).order_by(Lot.created_at.desc())
-    )
+    """exclude_drafts=True is the customer's view: a draft lot hasn't been
+    handed over (or was recalled), so it doesn't exist as far as they know."""
+    stmt = select(Lot).where(Lot.project_id == project_id, Lot.tenant_id == tenant_id)
+    if exclude_drafts:
+        stmt = stmt.where(Lot.status != LotStatus.draft)
+    result = await db.execute(stmt.order_by(Lot.created_at.desc()))
     return list(result.scalars().all())
 
 
@@ -102,7 +139,7 @@ async def release_lot(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=user_id,
@@ -120,7 +157,7 @@ async def apply_sample(
     user_id: int,
     tenant_id: int,
 ) -> Lot:
-    lot = await _get_lot(db, lot_id, tenant_id)
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
     if lot.status != LotStatus.released:
         raise HTTPException(status_code=409, detail="Lot must be released before sampling")
 
@@ -174,7 +211,7 @@ async def apply_sample(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.sampled,
         performed_by=user_id,
@@ -202,6 +239,10 @@ async def create_qc_batches(
     lot = await _get_lot(db, lot_id, tenant_id)
     if lot.status != LotStatus.qc_in_progress:
         raise HTTPException(status_code=409, detail="Lot must be in qc_in_progress to create QC batches")
+    await _check_qc_batch_targets(
+        db, lot=lot, project_id=project_id, document_type_id=document_type_id,
+        agent_ids=[a["agent_id"] for a in assignments], tenant_id=tenant_id,
+    )
 
     if not assignments:
         raise HTTPException(status_code=400, detail="assignments must not be empty")
@@ -283,6 +324,263 @@ async def create_qc_batches(
     return batches
 
 
+async def _check_qc_batch_targets(
+    db: AsyncSession,
+    *,
+    lot: Lot,
+    project_id: int,
+    document_type_id: int,
+    agent_ids: list[int],
+    tenant_id: int,
+) -> None:
+    """project_id, document_type_id and the agent ids all come from the
+    request body. The QC batches must land in the lot's own project, under
+    one of its document types, assigned to active QC agents of that
+    project's customer organisation (the same set GET /projects/{id}/qc-agents
+    offers) — not another customer's project or agents."""
+    from app.models.document_type import DocumentType
+    from app.models.project import Project
+    from app.models.user import User, UserRole
+
+    if project_id != lot.project_id:
+        raise HTTPException(status_code=422, detail="project_id does not match the lot's project")
+    doc_type = await db.get(DocumentType, document_type_id)
+    if not doc_type or doc_type.project_id != lot.project_id:
+        raise HTTPException(status_code=422, detail="document_type_id is not a document type of the lot's project")
+    project = await db.get(Project, lot.project_id)
+    valid = set((await db.execute(
+        select(User.id).where(
+            User.id.in_(set(agent_ids)),
+            User.tenant_id == tenant_id,
+            User.organization_id == project.customer_org_id,
+            User.role == UserRole.customer_qc_agent,
+            User.is_active == True,  # noqa: E712
+        )
+    )).scalars().all())
+    invalid = sorted(set(agent_ids) - valid)
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Not active QC agents of this project's customer organisation: {invalid}",
+        )
+
+
+async def recall_lot(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    reason: str,
+    user_id: int,
+    tenant_id: int,
+) -> Lot:
+    """Digitizing supervisor takes a released lot back before the customer
+    has sampled it. The lot returns to draft (hidden from the customer
+    again) and its passing outgoing inspection is superseded, so it must be
+    inspected afresh before it can be released again. Records keep their
+    status; fixes go through the usual requeue/rework paths, which
+    assert_releasable already waits for."""
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
+    if lot.status != LotStatus.released or lot.sample_size is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Only a released lot the customer hasn't sampled yet can be recalled",
+        )
+    superseded = await lot_inspection_service.supersede_passed(db, lot)
+    released_at, released_by = lot.released_at, lot.released_by
+    lot.status = LotStatus.draft
+    lot.released_at = None
+    lot.released_by = None
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.lot,
+        entity_id=lot.id,
+        action=AuditAction.recalled,
+        performed_by=user_id,
+        old_value={
+            "status": "released",
+            "released_at": released_at.isoformat() if released_at else None,
+            "released_by": released_by,
+        },
+        new_value={"status": "draft"},
+        metadata={
+            "reason": reason,
+            "superseded_inspection_id": superseded.id if superseded else None,
+        },
+    )
+    return lot
+
+
+async def remove_lot_records(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    record_ids: list[int],
+    user_id: int,
+    tenant_id: int,
+) -> Lot:
+    """Take records out of a draft lot (e.g. after a recall, when the wrong
+    records went in). The records themselves are untouched and can go into
+    another lot. A passed inspection no longer describes the lot, so it is
+    superseded; an in-progress one blocks the change, since its sample was
+    drawn from the current set."""
+    from app.models.lot_inspection import LotInspection, LotInspectionStatus
+
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
+    if lot.status != LotStatus.draft:
+        raise HTTPException(status_code=409, detail="Records can only be removed from a draft lot")
+    in_progress = (await db.execute(
+        select(LotInspection.id).where(
+            LotInspection.lot_id == lot_id, LotInspection.status == LotInspectionStatus.in_progress,
+        )
+    )).first()
+    if in_progress:
+        raise HTTPException(
+            status_code=409, detail="Finish or cancel the inspection in progress before removing records",
+        )
+
+    wanted = set(record_ids)
+    rows = list((await db.execute(
+        select(LotRecord).where(LotRecord.lot_id == lot_id)
+    )).scalars().all())
+    to_remove = [lr for lr in rows if lr.record_id in wanted]
+    missing = sorted(wanted - {lr.record_id for lr in to_remove})
+    if missing:
+        raise HTTPException(status_code=422, detail=f"Records not in this lot: {missing}")
+    if len(to_remove) == len(rows):
+        raise HTTPException(status_code=422, detail="A lot must keep at least one record")
+
+    for lr in to_remove:
+        await db.delete(lr)
+    superseded = await lot_inspection_service.supersede_passed(db, lot)
+    await db.flush()
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.lot,
+        entity_id=lot.id,
+        action=AuditAction.lot_records_removed,
+        performed_by=user_id,
+        old_value={"record_count": len(rows)},
+        new_value={"record_count": len(rows) - len(to_remove)},
+        metadata={
+            "record_ids": sorted(wanted),
+            "superseded_inspection_id": superseded.id if superseded else None,
+        },
+    )
+    return lot
+
+
+async def resubmit_lot(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    user_id: int,
+    tenant_id: int,
+) -> Lot:
+    """Digitizing supervisor resubmits a lot the customer failed and sent
+    for remediation, once every record the customer rejected is back
+    through QA. The finished round is archived as a LotQcRound, the lot's
+    live sample/result fields are cleared, records the customer passed go
+    back to qa_passed so they can be sampled again, and the lot returns to
+    draft with its old outgoing inspection superseded: ISO 2859-1 treats a
+    resubmitted lot as a new submission, so it is inspected again before
+    release and the customer samples it afresh."""
+    from app.models.lot import LotQcRound
+
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
+    if lot.status != LotStatus.remediation:
+        raise HTTPException(status_code=409, detail="Only a lot in remediation can be resubmitted")
+
+    lot_records = list((await db.execute(
+        select(LotRecord).where(LotRecord.lot_id == lot_id)
+    )).scalars().all())
+    records = {r.id: r for r in (await db.execute(
+        select(Record).where(Record.id.in_([lr.record_id for lr in lot_records]))
+    )).scalars().all()}
+    ready = {RecordStatus.qa_passed, RecordStatus.qc_passed}
+    in_rework = sorted(rid for rid, r in records.items() if r.status not in ready)
+    if in_rework:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{len(in_rework)} record(s) are still being reworked: {in_rework[:50]}",
+        )
+
+    archived = LotQcRound(
+        tenant_id=tenant_id,
+        lot_id=lot.id,
+        round_number=lot.qc_round,
+        status=LotStatus.failed,
+        record_count=len(lot_records),
+        sample_rate=lot.sample_rate,
+        sample_size=lot.sample_size,
+        acceptance_number=lot.acceptance_number,
+        accuracy_rate=lot.accuracy_rate,
+        aql_status_snapshot=lot.aql_status_snapshot,
+        critical_defect_count=lot.critical_defect_count,
+        minor_defect_count=lot.minor_defect_count,
+        sampled_record_ids=sorted(lr.record_id for lr in lot_records if lr.is_sampled),
+        released_at=lot.released_at,
+        qc_completed_at=lot.qc_completed_at,
+        resubmitted_by=user_id,
+    )
+    db.add(archived)
+
+    reset = []
+    for lr in lot_records:
+        lr.is_sampled = False
+        record = records.get(lr.record_id)
+        if record is not None and record.status == RecordStatus.qc_passed:
+            record.status = RecordStatus.qa_passed
+            reset.append(record.id)
+            await audit_service.write_event(
+                db,
+                tenant_id=tenant_id,
+                entity_type=AuditEntityType.record,
+                entity_id=record.id,
+                action=AuditAction.status_changed,
+                performed_by=user_id,
+                old_value={"status": "qc_passed"},
+                new_value={"status": "qa_passed"},
+                metadata={"reason": "lot_resubmitted", "lot_id": lot.id, "qc_round": lot.qc_round},
+            )
+
+    superseded = await lot_inspection_service.supersede_passed(db, lot)
+    old_round = lot.qc_round
+    for field in (
+        "sample_rate", "sample_size", "acceptance_number", "accuracy_rate", "aql_status_snapshot",
+        "qc_completed_at", "critical_defect_count", "minor_defect_count", "released_at", "released_by",
+    ):
+        setattr(lot, field, None)
+    lot.qc_round = old_round + 1
+    lot.status = LotStatus.draft
+    await db.flush()
+
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.lot,
+        entity_id=lot.id,
+        action=AuditAction.resubmitted,
+        performed_by=user_id,
+        old_value={"status": "remediation", "qc_round": old_round},
+        new_value={"status": "draft", "qc_round": lot.qc_round},
+        metadata={
+            "archived_round_id": archived.id,
+            "records_reset_to_qa_passed": reset,
+            "superseded_inspection_id": superseded.id if superseded else None,
+        },
+    )
+    return lot
+
+
+async def list_qc_rounds(db: AsyncSession, *, lot_id: int) -> list:
+    from app.models.lot import LotQcRound
+    return list((await db.execute(
+        select(LotQcRound).where(LotQcRound.lot_id == lot_id).order_by(LotQcRound.round_number)
+    )).scalars().all())
+
+
 async def calculate_accuracy(
     db: AsyncSession,
     *,
@@ -291,6 +589,7 @@ async def calculate_accuracy(
 ) -> Lot:
     """Called after a QC task completes or fails. Checks if all sampled records are done."""
     lot = await _get_lot(db, lot_id, tenant_id)
+    already_finalised = lot.qc_completed_at is not None
 
     sampled_result = await db.execute(
         select(LotRecord).where(LotRecord.lot_id == lot_id, LotRecord.is_sampled == True)  # noqa: E712
@@ -325,6 +624,7 @@ async def calculate_accuracy(
         defective_rows = (await db.execute(
             select(QcFieldResult.is_critical).where(
                 QcFieldResult.lot_id == lot_id,
+                QcFieldResult.qc_round == lot.qc_round,
                 QcFieldResult.record_id.in_(record_ids),
                 QcFieldResult.status == QcFieldStatus.defective,
             )
@@ -346,10 +646,17 @@ async def calculate_accuracy(
     else:
         lot.status = LotStatus.passed if accuracy >= 0.9 else LotStatus.failed
 
+    # ISO 2859-1 switching counts each lot once, on its original submission:
+    # a resubmitted lot's later rounds don't move the project's status.
+    if lot.qc_round == 1 and not already_finalised:
+        await aql_service.record_lot_outcome(
+            db, lot=lot, passed=lot.status == LotStatus.passed, tenant_id=tenant_id,
+        )
+
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=None,
@@ -386,7 +693,7 @@ async def get_field_result_tabulation(
     rows = (await db.execute(
         select(QcFieldResult, Task.assigned_to)
         .join(Task, Task.id == QcFieldResult.task_id)
-        .where(QcFieldResult.lot_id == lot_id)
+        .where(QcFieldResult.lot_id == lot_id, QcFieldResult.qc_round == lot.qc_round)
     )).all()
 
     agent_ids = {assigned_to for _, assigned_to in rows if assigned_to is not None}
@@ -460,7 +767,7 @@ async def send_for_remediation(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=user_id,

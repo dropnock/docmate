@@ -14,15 +14,14 @@ rolling that back means reverting record statuses and tearing down that
 work too, which this script deliberately does not attempt blind. Handle
 that case by hand once you've confirmed no real QC work has happened yet.
 
-lot_service writes its own audit events under entity_type=record (there's
-no AuditEntityType.lot — see lot_service.py; same reused-entity_type quirk
-cabinet_service.py has for AuditEntityType.record/entity_id=cabinet.id), so
-entity_id=<lot_id> can collide with a genuine Record or Cabinet that happens
-to share the same numeric id. To avoid deleting a real record's audit
-history by mistake, this script only deletes an entity_type=record row
-matching entity_id=<lot_id> if its action/value shape is exactly what
-lot_service.create_lot/release_lot write (a real record's own "created"
-event always carries a "source" key instead — see cabinet_service.
+lot_service writes its audit events under entity_type=lot, and every such
+row for this lot is deleted. Older code wrote them under entity_type=record
+(with entity_id=<lot_id>, so they can collide with a genuine Record or
+Cabinet that shares the id) — if scripts/backfill_lot_audit_entity_type.py
+hasn't been run yet, this script also deletes an entity_type=record row
+matching entity_id=<lot_id>, but only if its action/value shape is exactly
+what the old lot_service.create_lot/release_lot wrote (a real record's own
+"created" event always carries a "source" key instead — see cabinet_service.
 ingest_json_records/upload_scan — and a cabinet's carries "project_id").
 Anything that doesn't match that shape is left alone and reported, not
 guessed at.
@@ -93,10 +92,18 @@ def _is_lot_released_event(row: AuditLog, lot: Lot) -> bool:
 
 
 async def _find_lot_audit_rows(db: AsyncSession, lot: Lot) -> tuple[list[AuditLog], list[AuditLog]]:
-    """Returns (matched, skipped) — skipped rows share entity_id with this lot
-    (entity_type=record) but don't match lot_service's known event shapes, so
-    they're left untouched rather than assumed to be ours."""
-    candidates = list((await db.execute(
+    """Returns (matched, skipped). Every entity_type=lot row for this lot is
+    matched. Legacy entity_type=record rows sharing the lot's id are matched
+    only if they have lot_service's old event shapes; the rest are skipped,
+    left untouched rather than assumed to be ours."""
+    matched = list((await db.execute(
+        select(AuditLog).where(
+            AuditLog.tenant_id == lot.tenant_id,
+            AuditLog.entity_type == AuditEntityType.lot,
+            AuditLog.entity_id == lot.id,
+        )
+    )).scalars().all())
+    legacy = list((await db.execute(
         select(AuditLog).where(
             AuditLog.tenant_id == lot.tenant_id,
             AuditLog.entity_type == AuditEntityType.record,
@@ -105,8 +112,8 @@ async def _find_lot_audit_rows(db: AsyncSession, lot: Lot) -> tuple[list[AuditLo
         )
     )).scalars().all())
 
-    matched, skipped = [], []
-    for row in candidates:
+    skipped = []
+    for row in legacy:
         if _is_lot_created_event(row, lot) or _is_lot_released_event(row, lot):
             matched.append(row)
         else:

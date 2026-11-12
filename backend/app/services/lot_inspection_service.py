@@ -63,11 +63,26 @@ async def _list_inspections(db: AsyncSession, lot_id: int) -> list[LotInspection
     return list(result.scalars().all())
 
 
+_INEFFECTIVE = (LotInspectionStatus.cancelled, LotInspectionStatus.superseded)
+
+
 def _latest_effective(inspections: list[LotInspection]) -> LotInspection | None:
-    """Latest attempt that wasn't cancelled — the one that decides whether
-    the lot may be released or must be re-inspected."""
-    effective = [i for i in inspections if i.status != LotInspectionStatus.cancelled]
+    """Latest attempt that wasn't cancelled or superseded — the one that
+    decides whether the lot may be released or must be re-inspected."""
+    effective = [i for i in inspections if i.status not in _INEFFECTIVE]
     return effective[-1] if effective else None
+
+
+async def supersede_passed(db: AsyncSession, lot: Lot) -> LotInspection | None:
+    """Called when a lot changes after it passed (recalled, or records
+    removed): the passing attempt no longer clears the lot for release, so a
+    fresh inspection is needed. Returns the superseded attempt, if any. The
+    caller writes the audit event for the change that caused it."""
+    latest = _latest_effective(await _list_inspections(db, lot.id))
+    if latest is None or latest.status != LotInspectionStatus.passed:
+        return None
+    latest.status = LotInspectionStatus.superseded
+    return latest
 
 
 async def _lot_records(db: AsyncSession, lot_id: int) -> list[Record]:

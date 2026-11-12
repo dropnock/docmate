@@ -23,6 +23,9 @@ const ACTION_COLOR: Record<string, string> = {
   record_flagged: "warning",
   flag_withdrawn: "default",
   flag_resolved: "success",
+  recalled: "warning",
+  lot_records_removed: "warning",
+  resubmitted: "processing",
 };
 
 function EventDetail({ event }: { event: AuditEvent }) {

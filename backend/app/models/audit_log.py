@@ -14,6 +14,7 @@ class AuditEntityType(str, enum.Enum):
     project = "project"
     user = "user"
     lot = "lot"
+    cabinet = "cabinet"
 
 
 class AuditAction(str, enum.Enum):
@@ -39,6 +40,9 @@ class AuditAction(str, enum.Enum):
     record_flagged = "record_flagged"
     flag_withdrawn = "flag_withdrawn"
     flag_resolved = "flag_resolved"
+    recalled = "recalled"
+    lot_records_removed = "lot_records_removed"
+    resubmitted = "resubmitted"
 
 
 class AuditLog(Base):

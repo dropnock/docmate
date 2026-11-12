@@ -48,11 +48,13 @@ async def get_cabinet(
 async def get_cabinet_records(
     cabinet_id: int,
     status: str | None = None,
+    not_in_lot: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     records = await cabinet_service.get_cabinet_records(
-        db, cabinet_id=cabinet_id, status_filter=status, tenant_id=current_user._tenant_id
+        db, cabinet_id=cabinet_id, status_filter=status, tenant_id=current_user._tenant_id,
+        not_in_lot=not_in_lot,
     )
     return [
         {

@@ -1,5 +1,5 @@
 import {
-  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Row,
+  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Popconfirm, Row,
   Select, Space, Spin, Table, Tag, Tooltip, Typography, message,
 } from "antd";
 import { useState } from "react";
@@ -7,9 +7,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
-import { listInspections, lotInspectionsKey, startInspection } from "@shared/api/lots";
+import {
+  listInspections, lotHistoryKey, lotInspectionsKey, recallLot, removeLotRecords, resubmitLot, startInspection,
+} from "@shared/api/lots";
 import { useCabinets } from "@shared/hooks/useCabinets";
+import LotHistory from "@shared/components/LotHistory";
 import LotInspectionReport from "@shared/components/LotInspectionReport";
+import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
 import LotInspectionWorkspace from "../components/LotInspectionWorkspace";
 import type { CabinetRecord, Lot, LotDetail, LotInspectionStatus } from "@shared/types";
@@ -34,6 +38,7 @@ const INSPECTION_TAG: Record<LotInspectionStatus, { color: string; label: string
   passed: { color: "green", label: "Passed" },
   failed: { color: "red", label: "Failed" },
   cancelled: { color: "default", label: "Cancelled" },
+  superseded: { color: "default", label: "Superseded" },
 };
 
 export default function LotManager({ projectId }: Props) {
@@ -46,6 +51,9 @@ export default function LotManager({ projectId }: Props) {
   const [aqlChoice, setAqlChoice] = useState<number | undefined>();
   const [workspaceInspectionId, setWorkspaceInspectionId] = useState<number | undefined>();
   const [reportOpen, setReportOpen] = useState(false);
+  const [recallOpen, setRecallOpen] = useState(false);
+  const [recallReason, setRecallReason] = useState("");
+  const [removeSelection, setRemoveSelection] = useState<number[]>([]);
 
   const { data: lots = [], isLoading: lotLoading } = useQuery<Lot[]>({
     queryKey: ["lots", projectId],
@@ -59,9 +67,9 @@ export default function LotManager({ projectId }: Props) {
 
   // QA-passed records in the project cabinet
   const { data: qaPassedRecords = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
-    queryKey: ["cabinet-records", cabinet?.id, "qa_passed"],
+    queryKey: ["cabinet-records", cabinet?.id, "qa_passed", "not_in_lot"],
     queryFn: () =>
-      api.get(`/cabinets/${cabinet!.id}/records?status=qa_passed`).then((r) => r.data),
+      api.get(`/cabinets/${cabinet!.id}/records?status=qa_passed&not_in_lot=true`).then((r) => r.data),
     enabled: !!cabinet && createOpen,
   });
 
@@ -79,11 +87,15 @@ export default function LotManager({ projectId }: Props) {
   });
   const inspections = inspectionList?.inspections ?? [];
   const activeInspection = inspections.find((i) => i.status === "in_progress");
-  // Latest attempt that wasn't cancelled — the one release is gated on
-  // (lot_inspection_service.assert_releasable).
-  const latestEffective = [...inspections].reverse().find((i) => i.status !== "cancelled");
+  // Latest attempt that wasn't cancelled or superseded — the one release is
+  // gated on (lot_inspection_service.assert_releasable).
+  const latestEffective = [...inspections].reverse().find((i) => i.status !== "cancelled" && i.status !== "superseded");
   const inspectionPassed = latestEffective?.status === "passed";
   const recordsInRework = (lotDetail?.records ?? []).filter((r) => r.status !== "qa_passed").length;
+  // A remediated lot can be resubmitted once nothing is still in rework:
+  // records the customer passed stay qc_passed until resubmit resets them.
+  const recordsAwaitingRework = (lotDetail?.records ?? [])
+    .filter((r) => r.status !== "qa_passed" && r.status !== "qc_passed").length;
 
   const startInspectionMutation = useMutation({
     mutationFn: () => startInspection(detailLotId!, aqlChoice ?? inspectionList!.default_aql_level),
@@ -125,6 +137,43 @@ export default function LotManager({ projectId }: Props) {
       qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });
     },
     onError: (err: unknown) => message.error(formatApiError(err, "Failed to release lot")),
+  });
+
+  const invalidateLot = () => {
+    qc.invalidateQueries({ queryKey: ["lots", projectId] });
+    qc.invalidateQueries({ queryKey: ["lot-detail", detailLotId] });
+    qc.invalidateQueries({ queryKey: lotInspectionsKey(detailLotId) });
+    qc.invalidateQueries({ queryKey: lotHistoryKey(detailLotId) });
+  };
+
+  const recallMutation = useMutation({
+    mutationFn: () => recallLot(detailLotId!, recallReason.trim()),
+    onSuccess: () => {
+      message.success("Lot recalled — it's a draft again and needs a fresh inspection");
+      setRecallOpen(false);
+      setRecallReason("");
+      invalidateLot();
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to recall lot")),
+  });
+
+  const resubmitMutation = useMutation({
+    mutationFn: () => resubmitLot(detailLotId!),
+    onSuccess: () => {
+      message.success("Lot resubmitted — inspect it again before releasing");
+      invalidateLot();
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to resubmit lot")),
+  });
+
+  const removeRecordsMutation = useMutation({
+    mutationFn: () => removeLotRecords(detailLotId!, removeSelection),
+    onSuccess: () => {
+      message.success(`${removeSelection.length} record(s) removed from the lot`);
+      setRemoveSelection([]);
+      invalidateLot();
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to remove records")),
   });
 
   const columns: ColumnType<Lot>[] = [
@@ -290,6 +339,7 @@ export default function LotManager({ projectId }: Props) {
           setDetailLotId(undefined);
           setAqlChoice(undefined);
           setReportOpen(false);
+          setRemoveSelection([]);
         }}
         width={720}
       >
@@ -334,7 +384,47 @@ export default function LotManager({ projectId }: Props) {
                   </Tooltip>
                 </Col>
               )}
+              {lotDetail.status === "remediation" && (
+                <Col>
+                  <Popconfirm
+                    title="Resubmit this lot?"
+                    description="The failed QC round is archived and the lot goes back to draft. It needs a fresh outgoing inspection, and the customer samples it again."
+                    okText="Resubmit"
+                    disabled={recordsAwaitingRework > 0}
+                    onConfirm={() => resubmitMutation.mutate()}
+                  >
+                    <Tooltip title={recordsAwaitingRework > 0 ? `${recordsAwaitingRework} record(s) still in rework` : undefined}>
+                      <Button
+                        type="primary"
+                        size="small"
+                        disabled={recordsAwaitingRework > 0}
+                        loading={resubmitMutation.isPending}
+                      >
+                        Resubmit
+                      </Button>
+                    </Tooltip>
+                  </Popconfirm>
+                </Col>
+              )}
+              {lotDetail.status === "released" && lotDetail.sample_size === null && (
+                <Col>
+                  <Tooltip title="Take the lot back before the customer samples it">
+                    <Button danger size="small" onClick={() => setRecallOpen(true)}>
+                      Recall
+                    </Button>
+                  </Tooltip>
+                </Col>
+              )}
             </Row>
+
+            {lotDetail.status === "remediation" && recordsAwaitingRework > 0 && (
+              <Alert
+                type="warning"
+                style={{ marginBottom: 12 }}
+                message={`The customer failed this lot. ${recordsAwaitingRework} rejected record(s) are back with QA; resubmit once they pass.`}
+              />
+            )}
+            <LotQcRounds rounds={lotDetail.qc_rounds ?? []} currentRound={lotDetail.qc_round} />
 
             <Divider orientation="left" style={{ marginTop: 0 }}>Outgoing inspection (ISO 2859-1)</Divider>
             {lotDetail.status === "draft" && !activeInspection && !inspectionPassed && (
@@ -420,13 +510,33 @@ export default function LotManager({ projectId }: Props) {
             )}
 
             <Divider orientation="left">Records</Divider>
+            {lotDetail.status === "draft" && !activeInspection && removeSelection.length > 0 && (
+              <Popconfirm
+                title={`Remove ${removeSelection.length} record(s) from this lot?`}
+                description={inspectionPassed
+                  ? "The passed inspection will be superseded; the lot must be inspected again."
+                  : "The records stay QA-passed and can go into another lot."}
+                okText="Remove"
+                okButtonProps={{ danger: true }}
+                onConfirm={() => removeRecordsMutation.mutate()}
+              >
+                <Button danger size="small" style={{ marginBottom: 8 }} loading={removeRecordsMutation.isPending}>
+                  Remove {removeSelection.length} from lot
+                </Button>
+              </Popconfirm>
+            )}
             <Table
               rowKey="record_id"
               size="small"
               dataSource={lotDetail.records}
               columns={recordColumns}
               pagination={{ pageSize: 20 }}
+              rowSelection={lotDetail.status === "draft" && !activeInspection ? {
+                selectedRowKeys: removeSelection,
+                onChange: (keys) => setRemoveSelection(keys as number[]),
+              } : undefined}
             />
+            <LotHistory lotId={lotDetail.id} />
           </>
         )}
       </Drawer>
@@ -447,6 +557,35 @@ export default function LotManager({ projectId }: Props) {
           />
         )}
       </Drawer>
+
+      <Modal
+        title="Recall lot"
+        open={!!detailLotId && recallOpen}
+        onCancel={() => setRecallOpen(false)}
+        okText="Recall lot"
+        okButtonProps={{ danger: true, disabled: !recallReason.trim(), loading: recallMutation.isPending }}
+        onOk={() => recallMutation.mutate()}
+        destroyOnClose
+      >
+        <Typography.Paragraph>
+          The lot goes back to draft and disappears from the customer portal. Its passed inspection is
+          superseded, so it must be inspected again before it can be released.
+        </Typography.Paragraph>
+        <Form layout="vertical">
+          <Form.Item
+            label="Reason"
+            required
+            extra="Kept on the lot's audit trail. The customer sees it in the lot history once the lot is released again."
+          >
+            <Input.TextArea
+              rows={3}
+              maxLength={1024}
+              value={recallReason}
+              onChange={(e) => setRecallReason(e.target.value)}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
 
       <Modal
         title="Outgoing Inspection Report"

@@ -1,6 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
 
 from app.schemas.task import FieldResultIn
 
@@ -9,7 +11,7 @@ class LotCreate(BaseModel):
     project_id: int
     name: str
     description: str | None = None
-    record_ids: list[int]
+    record_ids: list[int] = Field(min_length=1)
 
 
 class LotOut(BaseModel):
@@ -30,6 +32,7 @@ class LotOut(BaseModel):
     released_at: datetime | None = None
     released_by: int | None
     created_by: int | None
+    qc_round: int = 1
 
 
 class ApplySampleRequest(BaseModel):
@@ -86,3 +89,31 @@ class ReviewInspectionItemRequest(BaseModel):
 
 class CompleteInspectionRequest(BaseModel):
     summary_note: str | None = Field(default=None, max_length=2048)
+
+
+class RecallLotRequest(BaseModel):
+    """Why the lot is being taken back. Recorded on the audit trail, which
+    the customer can see once the lot is released again."""
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1024)]
+
+
+class RemoveLotRecordsRequest(BaseModel):
+    record_ids: list[int] = Field(min_length=1)
+
+
+class LotQcRoundOut(BaseModel):
+    model_config = {"from_attributes": True}
+    round_number: int
+    status: str
+    record_count: int
+    sample_rate: float | None
+    sample_size: int | None
+    acceptance_number: int | None
+    accuracy_rate: float | None
+    aql_status_snapshot: str | None
+    critical_defect_count: int | None
+    minor_defect_count: int | None
+    sampled_record_ids: list[int]
+    released_at: datetime | None
+    qc_completed_at: datetime | None
+    created_at: datetime

@@ -1,6 +1,6 @@
 import api from "@shared/api/client";
 import type {
-  AvailableStaff, FieldResult, Lot, LotDetail, LotInspectionDetail, LotInspectionList,
+  AuditEvent, AvailableStaff, FieldResult, Lot, LotDetail, LotInspectionDetail, LotInspectionList,
   LotInspectionReport, QcFieldResultsOut,
 } from "@shared/types";
 
@@ -82,4 +82,28 @@ export function cancelInspection(lotId: number, inspectionId: number) {
 
 export function getInspectionReport(lotId: number) {
   return api.get<LotInspectionReport>(`/lots/${lotId}/inspection-report`).then((r) => r.data);
+}
+
+export const lotHistoryKey = (lotId?: number) => ["lot-history", lotId] as const;
+
+/** The lot's own audit trail. The customer portal only gets events from the
+ * lot's first release onward (and 404s for a draft). */
+export function getLotHistory(lotId: number) {
+  return api.get<AuditEvent[]>(`/lots/${lotId}/history`).then((r) => r.data);
+}
+
+/** Digitizing supervisor takes back a released, not-yet-sampled lot. It
+ * returns to draft and needs a fresh outgoing inspection. */
+export function recallLot(lotId: number, reason: string) {
+  return api.post<Lot>(`/lots/${lotId}/recall`, { reason }).then((r) => r.data);
+}
+
+export function removeLotRecords(lotId: number, recordIds: number[]) {
+  return api.post<Lot>(`/lots/${lotId}/remove-records`, { record_ids: recordIds }).then((r) => r.data);
+}
+
+/** Digitizing supervisor puts a remediated lot back to draft for a fresh
+ * outgoing inspection and a new customer QC round. */
+export function resubmitLot(lotId: number) {
+  return api.post<Lot>(`/lots/${lotId}/resubmit`).then((r) => r.data);
 }

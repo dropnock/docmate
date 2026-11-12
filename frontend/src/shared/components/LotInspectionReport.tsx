@@ -17,6 +17,7 @@ const STATUS_LABEL: Record<LotInspectionStatus, string> = {
   passed: "Accepted",
   failed: "Rejected",
   cancelled: "Cancelled",
+  superseded: "Superseded",
 };
 
 const STATUS_COLOR: Record<LotInspectionStatus, string> = {
@@ -24,6 +25,7 @@ const STATUS_COLOR: Record<LotInspectionStatus, string> = {
   passed: "#15803D",
   failed: "#B91C1C",
   cancelled: "#64748B",
+  superseded: "#64748B",
 };
 
 const table: React.CSSProperties = { width: "100%", borderCollapse: "collapse", fontSize: 13, marginBottom: 16 };

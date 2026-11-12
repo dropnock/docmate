@@ -43,7 +43,7 @@ async def create_cabinet(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.cabinet,
         entity_id=cabinet.id,
         action=AuditAction.created,
         performed_by=user_id,
@@ -85,9 +85,14 @@ async def get_cabinet_records(
     cabinet_id: int,
     status_filter: str | None,
     tenant_id: int,
+    not_in_lot: bool = False,
 ) -> list[Record]:
     cabinet = await get_cabinet(db, cabinet_id=cabinet_id, tenant_id=tenant_id)
     q = select(Record).where(Record.cabinet_id == cabinet.id)
+    if not_in_lot:
+        # The Create Lot picker: a record already in a lot can't join another.
+        from app.models.lot import LotRecord
+        q = q.where(~select(LotRecord.id).where(LotRecord.record_id == Record.id).exists())
     if status_filter:
         q = q.where(Record.status == status_filter)
         # A record keeps status "pending" until its indexer actually starts

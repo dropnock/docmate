@@ -151,6 +151,69 @@ async def update_config(
     return config
 
 
+def apply_switching(config: AQLConfig, *, rejected: bool) -> tuple[AQLStatus, AQLStatus]:
+    """ISO 2859-1 switching between normal, tightened and reduced inspection,
+    driven by the project's AQLConfig thresholds. Updates config in place and
+    returns (old_status, new_status). Every switch resets both counters.
+
+      normal    -> tightened  after failures_to_tighten consecutive rejections
+      tightened -> normal     after passes_to_reduce consecutive acceptances
+      normal    -> reduced    after passes_to_reduce consecutive acceptances
+      reduced   -> normal     on any rejection
+    """
+    old = config.current_status
+    if rejected:
+        config.consecutive_passes = 0
+        config.consecutive_failures += 1
+        if old == AQLStatus.reduced:
+            config.current_status = AQLStatus.normal
+        elif old == AQLStatus.normal and config.consecutive_failures >= config.failures_to_tighten:
+            config.current_status = AQLStatus.tightened
+    else:
+        config.consecutive_failures = 0
+        config.consecutive_passes += 1
+        if config.consecutive_passes >= config.passes_to_reduce:
+            if old == AQLStatus.tightened:
+                config.current_status = AQLStatus.normal
+            elif old == AQLStatus.normal:
+                config.current_status = AQLStatus.reduced
+    if config.current_status != old:
+        config.consecutive_passes = 0
+        config.consecutive_failures = 0
+    return old, config.current_status
+
+
+async def record_lot_outcome(
+    db: AsyncSession,
+    *,
+    lot,
+    passed: bool,
+    tenant_id: int,
+) -> AQLStatus | None:
+    """Feed a lot's customer QC verdict into the project's switching state.
+    Only a lot's first QC round counts — a resubmitted lot that fails again
+    must not count against the project twice (lot_service.calculate_accuracy
+    enforces that). Writes a project audit event when the status switches.
+    Returns the new status, or None when the project has no AQLConfig."""
+    config = await get_config(db, lot.project_id)
+    if config is None:
+        return None
+    old, new = apply_switching(config, rejected=not passed)
+    if new != old:
+        await audit_service.write_event(
+            db,
+            tenant_id=tenant_id,
+            entity_type=AuditEntityType.project,
+            entity_id=lot.project_id,
+            action=AuditAction.batch_escalated if new == AQLStatus.tightened else AuditAction.status_changed,
+            performed_by=None,
+            old_value={"aql_status": old.value},
+            new_value={"aql_status": new.value},
+            metadata={"lot_id": lot.id, "lot_passed": passed, "reason": "iso_2859_1_switching"},
+        )
+    return new
+
+
 async def evaluate_batch(
     db: AsyncSession,
     *,
@@ -190,31 +253,19 @@ async def evaluate_batch(
 
     old_status = config.current_status.value
 
-    if outcome == "rejected":
-        config.consecutive_passes = 0
-        config.consecutive_failures += 1
-        if config.current_status != AQLStatus.tightened:
-            config.current_status = AQLStatus.tightened
-            await audit_service.write_event(
-                db,
-                tenant_id=tenant_id,
-                entity_type=AuditEntityType.batch,
-                entity_id=batch_id,
-                action=AuditAction.batch_escalated,
-                performed_by=performed_by,
-                old_value={"aql_status": old_status},
-                new_value={"aql_status": AQLStatus.tightened.value},
-                metadata={"defects_found": defects_found, "acceptance_number": acceptance_number},
-            )
-    else:
-        config.consecutive_failures = 0
-        config.consecutive_passes += 1
-        if config.current_status == AQLStatus.tightened and config.consecutive_passes >= config.passes_to_reduce:
-            config.current_status = AQLStatus.normal
-            config.consecutive_passes = 0
-        elif config.current_status == AQLStatus.normal and config.consecutive_passes >= config.passes_to_reduce:
-            config.current_status = AQLStatus.reduced
-            config.consecutive_passes = 0
+    _, new = apply_switching(config, rejected=outcome == "rejected")
+    if new == AQLStatus.tightened and old_status != AQLStatus.tightened.value:
+        await audit_service.write_event(
+            db,
+            tenant_id=tenant_id,
+            entity_type=AuditEntityType.batch,
+            entity_id=batch_id,
+            action=AuditAction.batch_escalated,
+            performed_by=performed_by,
+            old_value={"aql_status": old_status},
+            new_value={"aql_status": AQLStatus.tightened.value},
+            metadata={"defects_found": defects_found, "acceptance_number": acceptance_number},
+        )
 
     return {
         "outcome": outcome,

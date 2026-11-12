@@ -56,3 +56,43 @@ async def get_record_history(
         .order_by(AuditLog.performed_at)
     )
     return list(result.scalars().all())
+
+
+async def get_lot_history(
+    db: AsyncSession,
+    *,
+    tenant_id: int,
+    lot_id: int,
+    from_first_release: bool = False,
+) -> list[AuditLog]:
+    """Return all audit events for a lot, ordered chronologically.
+
+    from_first_release=True drops everything before the lot was first
+    released — the customer's view, which shouldn't include the digitizing
+    side's draft-stage work (the outgoing inspection itself is shared
+    separately as the inspection report)."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.entity_type == AuditEntityType.lot,
+            AuditLog.entity_id == lot_id,
+        )
+        .options(selectinload(AuditLog.actor))
+        .order_by(AuditLog.performed_at, AuditLog.id)
+    )
+    events = list(result.scalars().all())
+    if not from_first_release:
+        return events
+    first_release = next(
+        (
+            i for i, e in enumerate(events)
+            if e.action == AuditAction.status_changed
+            and (e.new_value or {}).get("status") == "released"
+        ),
+        None,
+    )
+    return [] if first_release is None else events[first_release:]
