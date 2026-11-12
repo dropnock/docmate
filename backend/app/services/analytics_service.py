@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.batch import Batch, BatchQCResult, BatchStatus
+from app.models.batch import Batch, BatchStatus
 from app.models.project import Project
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
@@ -237,21 +237,24 @@ async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
         if projected_end_date:
             on_track = date.fromisoformat(projected_end_date) <= project.proposed_end_date
 
-    # Error rate: defects found across all AQL-sampled QC inspections for
-    # this project, as a share of records inspected (not a share of batches
-    # rejected — a batch can be accepted with a nonzero defect count under
-    # the acceptance number).
-    qc_totals_q = await db.execute(
-        select(
-            func.sum(BatchQCResult.defects_found),
-            func.sum(BatchQCResult.total_inspected),
+    # Error rate: the share of records the customer's QC reviewed and
+    # rejected, across every lot and QC round of the project (ISO 2859-1's
+    # "percent nonconforming" — a lot can still pass with rejections inside
+    # its acceptance number). Read from QC task outcomes so it works in both
+    # sampling modes; manual mode records no per-field marks.
+    qc_counts = (await db.execute(
+        select(Task.status, func.count(Task.id))
+        .join(Batch, Task.batch_id == Batch.id)
+        .where(
+            Batch.project_id == project_id,
+            Task.task_type == TaskType.qc,
+            Task.status.in_([TaskStatus.completed, TaskStatus.failed]),
         )
-        .join(Batch, BatchQCResult.batch_id == Batch.id)
-        .where(Batch.project_id == project_id)
-    )
-    defects_found, total_inspected = qc_totals_q.one()
-    defects_found = defects_found or 0
-    total_inspected = total_inspected or 0
+        .group_by(Task.status)
+    )).all()
+    by_status = {s: n for s, n in qc_counts}
+    defects_found = by_status.get(TaskStatus.failed, 0)
+    total_inspected = defects_found + by_status.get(TaskStatus.completed, 0)
     error_rate = round(defects_found / total_inspected, 4) if total_inspected else 0.0
 
     return {
@@ -274,10 +277,7 @@ async def project_kpis(db: AsyncSession, *, project_id: int) -> dict:
 async def qc_project_summary(db: AsyncSession, *, project_id: int) -> dict:
     """Customer-supervisor QC reporting summary — lots quality-checked/
     rejected, records passed, and the QC team's daily throughput. Deliberately
-    separate from project_kpis's error_rate/records_inspected/defects_found,
-    which are computed from the dead BatchQCResult path (written only by the
-    unreachable aql_service.evaluate_batch) and are silently 0 for any
-    project using the live Lot/QcFieldResult flow."""
+    separate from project_kpis's record-level error_rate."""
     from app.models.lot import Lot, LotRecord, LotStatus
 
     def _lot_count(*conds):

@@ -200,12 +200,12 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                   </Row>
                   <Row gutter={12}>
                     <Col span={12}>
-                      <Form.Item name="passes_to_reduce" label="Passes to Reduce">
+                      <Form.Item name="passes_to_reduce" label="Passes to Reduce" tooltip="Consecutive accepted lots that move tightened inspection back to normal, and normal to reduced. Only a lot's first QC round counts.">
                         <InputNumber min={1} style={{ width: "100%" }} />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item name="failures_to_tighten" label="Failures to Tighten">
+                      <Form.Item name="failures_to_tighten" label="Failures to Tighten" tooltip="Consecutive rejected lots that move normal inspection to tightened. Under reduced inspection, any rejected lot returns to normal.">
                         <InputNumber min={1} style={{ width: "100%" }} />
                       </Form.Item>
                     </Col>

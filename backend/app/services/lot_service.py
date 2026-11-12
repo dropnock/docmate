@@ -589,6 +589,7 @@ async def calculate_accuracy(
 ) -> Lot:
     """Called after a QC task completes or fails. Checks if all sampled records are done."""
     lot = await _get_lot(db, lot_id, tenant_id)
+    already_finalised = lot.qc_completed_at is not None
 
     sampled_result = await db.execute(
         select(LotRecord).where(LotRecord.lot_id == lot_id, LotRecord.is_sampled == True)  # noqa: E712
@@ -644,6 +645,13 @@ async def calculate_accuracy(
             )
     else:
         lot.status = LotStatus.passed if accuracy >= 0.9 else LotStatus.failed
+
+    # ISO 2859-1 switching counts each lot once, on its original submission:
+    # a resubmitted lot's later rounds don't move the project's status.
+    if lot.qc_round == 1 and not already_finalised:
+        await aql_service.record_lot_outcome(
+            db, lot=lot, passed=lot.status == LotStatus.passed, tenant_id=tenant_id,
+        )
 
     await audit_service.write_event(
         db,

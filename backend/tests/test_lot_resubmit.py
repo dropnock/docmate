@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.aql import SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType, AuditLog
+from app.models.batch import Batch
 from app.models.document_type import DocumentType
 from app.models.lot import LotQcRound, LotRecord, LotStatus
 from app.models.lot_inspection import LotInspection, LotInspectionStatus
@@ -46,8 +47,13 @@ async def _customer_qc(db, seed, lot, *, fail_first: bool):
     # judged by the ISO rule, which reads per-field marks (QcFieldResult).
     lot.acceptance_number = 0
     seed["aql_config"].sampling_mode = SamplingMode.iso
+    # The document type the lot's records were indexed under (each
+    # _make_lot creates its own).
     doc_type = (await db.execute(
-        select(DocumentType).where(DocumentType.project_id == lot.project_id, DocumentType.name == "Inspect Form")
+        select(DocumentType).join(Batch, Batch.document_type_id == DocumentType.id)
+        .join(Record, Record.batch_id == Batch.id)
+        .join(LotRecord, LotRecord.record_id == Record.id)
+        .where(LotRecord.lot_id == lot.id).limit(1)
     )).scalar_one()
     sampled = sorted((await db.execute(
         select(LotRecord.record_id).where(LotRecord.lot_id == lot.id, LotRecord.is_sampled == True)  # noqa: E712
