@@ -8,7 +8,7 @@ Existing misfiled rows are NOT rewritten here: audit_logs is append-only and
 retyping rows is a deliberate, reviewable step. Run the dry-run-by-default
 scripts/backfill_lot_audit_entity_type.py afterwards.
 
-Revision ID: d7e8f9a0b1c2
+Revision ID: 214768b2c46b
 Revises: c6d7e8f9a0b1
 Create Date: 2026-11-11 00:00:00.000000
 
@@ -17,7 +17,7 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = 'd7e8f9a0b1c2'
+revision: str = '214768b2c46b'
 down_revision: Union[str, None] = 'c6d7e8f9a0b1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
