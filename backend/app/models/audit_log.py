@@ -14,6 +14,7 @@ class AuditEntityType(str, enum.Enum):
     project = "project"
     user = "user"
     lot = "lot"
+    cabinet = "cabinet"
 
 
 class AuditAction(str, enum.Enum):

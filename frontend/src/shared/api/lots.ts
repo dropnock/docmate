@@ -1,6 +1,6 @@
 import api from "@shared/api/client";
 import type {
-  AvailableStaff, FieldResult, Lot, LotDetail, LotInspectionDetail, LotInspectionList,
+  AuditEvent, AvailableStaff, FieldResult, Lot, LotDetail, LotInspectionDetail, LotInspectionList,
   LotInspectionReport, QcFieldResultsOut,
 } from "@shared/types";
 
@@ -82,4 +82,12 @@ export function cancelInspection(lotId: number, inspectionId: number) {
 
 export function getInspectionReport(lotId: number) {
   return api.get<LotInspectionReport>(`/lots/${lotId}/inspection-report`).then((r) => r.data);
+}
+
+export const lotHistoryKey = (lotId?: number) => ["lot-history", lotId] as const;
+
+/** The lot's own audit trail. The customer portal only gets events from the
+ * lot's first release onward (and 404s for a draft). */
+export function getLotHistory(lotId: number) {
+  return api.get<AuditEvent[]>(`/lots/${lotId}/history`).then((r) => r.data);
 }

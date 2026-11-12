@@ -9,6 +9,7 @@ import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { listInspections, lotInspectionsKey, startInspection } from "@shared/api/lots";
 import { useCabinets } from "@shared/hooks/useCabinets";
+import LotHistory from "@shared/components/LotHistory";
 import LotInspectionReport from "@shared/components/LotInspectionReport";
 import StatusDot from "@shared/components/StatusDot";
 import LotInspectionWorkspace from "../components/LotInspectionWorkspace";
@@ -427,6 +428,7 @@ export default function LotManager({ projectId }: Props) {
               columns={recordColumns}
               pagination={{ pageSize: 20 }}
             />
+            <LotHistory lotId={lotDetail.id} />
           </>
         )}
       </Drawer>

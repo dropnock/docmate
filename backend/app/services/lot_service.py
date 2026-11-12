@@ -61,7 +61,7 @@ async def create_lot(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.created,
         performed_by=user_id,
@@ -102,7 +102,7 @@ async def release_lot(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=user_id,
@@ -174,7 +174,7 @@ async def apply_sample(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.sampled,
         performed_by=user_id,
@@ -349,7 +349,7 @@ async def calculate_accuracy(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=None,
@@ -460,7 +460,7 @@ async def send_for_remediation(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.lot,
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=user_id,

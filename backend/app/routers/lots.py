@@ -275,3 +275,40 @@ async def get_inspection_report(
     if current_user.portal == Portal.customer and lot.status == LotStatus.draft:
         raise HTTPException(status_code=404, detail="Lot not found")
     return await lot_inspection_service.build_report(db, lot=lot)
+
+
+@router.get("/{lot_id}/history")
+async def get_lot_history(
+    lot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "customer_supervisor", "admin")),
+):
+    """The lot's own audit trail. Customers only get it for their own
+    organisation's released lots, and only from the first release onward."""
+    from app.models.project import Project
+    from app.models.user import Portal
+    from app.services import audit_service
+
+    lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
+    check_project_access(await db.get(Project, lot.project_id), current_user)
+    is_customer = current_user.portal == Portal.customer
+    if is_customer and lot.status == LotStatus.draft:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    events = await audit_service.get_lot_history(
+        db, tenant_id=current_user._tenant_id, lot_id=lot_id, from_first_release=is_customer
+    )
+    return [
+        {
+            "id": e.id,
+            "entity_type": e.entity_type.value,
+            "entity_id": e.entity_id,
+            "action": e.action.value,
+            "performed_by": e.performed_by,
+            "actor_name": e.actor.full_name if e.actor else None,
+            "performed_at": e.performed_at.isoformat(),
+            "old_value": e.old_value,
+            "new_value": e.new_value,
+            "metadata": e.metadata_,
+        }
+        for e in events
+    ]

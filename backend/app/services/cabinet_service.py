@@ -43,7 +43,7 @@ async def create_cabinet(
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
-        entity_type=AuditEntityType.record,
+        entity_type=AuditEntityType.cabinet,
         entity_id=cabinet.id,
         action=AuditAction.created,
         performed_by=user_id,

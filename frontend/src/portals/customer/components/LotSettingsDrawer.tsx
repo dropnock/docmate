@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@shared/api/errors";
 import { aqlConfigKey, getAqlConfig, getSampleSizePreview, updateAqlConfig } from "@shared/api/aql";
 import { applySample, getQcFieldResults, lotDetailKey, getLot, sendForRemediation } from "@shared/api/lots";
+import LotHistory from "@shared/components/LotHistory";
 import StatusDot from "@shared/components/StatusDot";
 import type { AQLConfig } from "@shared/types";
 
@@ -367,6 +368,7 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
               ]}
             />
           </Card>
+          <LotHistory lotId={lotDetail.id} />
         </>
       )}
     </Drawer>
