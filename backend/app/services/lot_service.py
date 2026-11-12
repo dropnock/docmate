@@ -471,6 +471,116 @@ async def remove_lot_records(
     return lot
 
 
+async def resubmit_lot(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    user_id: int,
+    tenant_id: int,
+) -> Lot:
+    """Digitizing supervisor resubmits a lot the customer failed and sent
+    for remediation, once every record the customer rejected is back
+    through QA. The finished round is archived as a LotQcRound, the lot's
+    live sample/result fields are cleared, records the customer passed go
+    back to qa_passed so they can be sampled again, and the lot returns to
+    draft with its old outgoing inspection superseded: ISO 2859-1 treats a
+    resubmitted lot as a new submission, so it is inspected again before
+    release and the customer samples it afresh."""
+    from app.models.lot import LotQcRound
+
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
+    if lot.status != LotStatus.remediation:
+        raise HTTPException(status_code=409, detail="Only a lot in remediation can be resubmitted")
+
+    lot_records = list((await db.execute(
+        select(LotRecord).where(LotRecord.lot_id == lot_id)
+    )).scalars().all())
+    records = {r.id: r for r in (await db.execute(
+        select(Record).where(Record.id.in_([lr.record_id for lr in lot_records]))
+    )).scalars().all()}
+    ready = {RecordStatus.qa_passed, RecordStatus.qc_passed}
+    in_rework = sorted(rid for rid, r in records.items() if r.status not in ready)
+    if in_rework:
+        raise HTTPException(
+            status_code=409,
+            detail=f"{len(in_rework)} record(s) are still being reworked: {in_rework[:50]}",
+        )
+
+    archived = LotQcRound(
+        tenant_id=tenant_id,
+        lot_id=lot.id,
+        round_number=lot.qc_round,
+        status=LotStatus.failed,
+        record_count=len(lot_records),
+        sample_rate=lot.sample_rate,
+        sample_size=lot.sample_size,
+        acceptance_number=lot.acceptance_number,
+        accuracy_rate=lot.accuracy_rate,
+        aql_status_snapshot=lot.aql_status_snapshot,
+        critical_defect_count=lot.critical_defect_count,
+        minor_defect_count=lot.minor_defect_count,
+        sampled_record_ids=sorted(lr.record_id for lr in lot_records if lr.is_sampled),
+        released_at=lot.released_at,
+        qc_completed_at=lot.qc_completed_at,
+        resubmitted_by=user_id,
+    )
+    db.add(archived)
+
+    reset = []
+    for lr in lot_records:
+        lr.is_sampled = False
+        record = records.get(lr.record_id)
+        if record is not None and record.status == RecordStatus.qc_passed:
+            record.status = RecordStatus.qa_passed
+            reset.append(record.id)
+            await audit_service.write_event(
+                db,
+                tenant_id=tenant_id,
+                entity_type=AuditEntityType.record,
+                entity_id=record.id,
+                action=AuditAction.status_changed,
+                performed_by=user_id,
+                old_value={"status": "qc_passed"},
+                new_value={"status": "qa_passed"},
+                metadata={"reason": "lot_resubmitted", "lot_id": lot.id, "qc_round": lot.qc_round},
+            )
+
+    superseded = await lot_inspection_service.supersede_passed(db, lot)
+    old_round = lot.qc_round
+    for field in (
+        "sample_rate", "sample_size", "acceptance_number", "accuracy_rate", "aql_status_snapshot",
+        "qc_completed_at", "critical_defect_count", "minor_defect_count", "released_at", "released_by",
+    ):
+        setattr(lot, field, None)
+    lot.qc_round = old_round + 1
+    lot.status = LotStatus.draft
+    await db.flush()
+
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.lot,
+        entity_id=lot.id,
+        action=AuditAction.resubmitted,
+        performed_by=user_id,
+        old_value={"status": "remediation", "qc_round": old_round},
+        new_value={"status": "draft", "qc_round": lot.qc_round},
+        metadata={
+            "archived_round_id": archived.id,
+            "records_reset_to_qa_passed": reset,
+            "superseded_inspection_id": superseded.id if superseded else None,
+        },
+    )
+    return lot
+
+
+async def list_qc_rounds(db: AsyncSession, *, lot_id: int) -> list:
+    from app.models.lot import LotQcRound
+    return list((await db.execute(
+        select(LotQcRound).where(LotQcRound.lot_id == lot_id).order_by(LotQcRound.round_number)
+    )).scalars().all())
+
+
 async def calculate_accuracy(
     db: AsyncSession,
     *,
@@ -513,6 +623,7 @@ async def calculate_accuracy(
         defective_rows = (await db.execute(
             select(QcFieldResult.is_critical).where(
                 QcFieldResult.lot_id == lot_id,
+                QcFieldResult.qc_round == lot.qc_round,
                 QcFieldResult.record_id.in_(record_ids),
                 QcFieldResult.status == QcFieldStatus.defective,
             )
@@ -574,7 +685,7 @@ async def get_field_result_tabulation(
     rows = (await db.execute(
         select(QcFieldResult, Task.assigned_to)
         .join(Task, Task.id == QcFieldResult.task_id)
-        .where(QcFieldResult.lot_id == lot_id)
+        .where(QcFieldResult.lot_id == lot_id, QcFieldResult.qc_round == lot.qc_round)
     )).all()
 
     agent_ids = {assigned_to for _, assigned_to in rows if assigned_to is not None}

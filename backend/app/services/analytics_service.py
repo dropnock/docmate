@@ -283,13 +283,23 @@ async def qc_project_summary(db: AsyncSession, *, project_id: int) -> dict:
     def _lot_count(*conds):
         return select(func.count(Lot.id)).where(Lot.project_id == project_id, *conds)
 
-    lots_quality_checked = (await db.execute(
-        _lot_count(Lot.qc_completed_at.is_not(None))
+    from app.models.lot import LotQcRound
+
+    # Counted per QC round, not per lot: a lot that failed, was resubmitted
+    # and then passed has been quality-checked twice and rejected once.
+    # Archived rounds (LotQcRound) are always failed ones (see resubmit_lot).
+    archived_rounds = (await db.execute(
+        select(func.count(LotQcRound.id)).join(Lot, Lot.id == LotQcRound.lot_id)
+        .where(Lot.project_id == project_id)
     )).scalar() or 0
 
-    lots_rejected = (await db.execute(
+    lots_quality_checked = ((await db.execute(
+        _lot_count(Lot.qc_completed_at.is_not(None))
+    )).scalar() or 0) + archived_rounds
+
+    lots_rejected = ((await db.execute(
         _lot_count(Lot.status.in_([LotStatus.failed, LotStatus.remediation]))
-    )).scalar() or 0
+    )).scalar() or 0) + archived_rounds
 
     # Lifetime snapshot — sampled records currently qc_passed across every
     # lot in the project, regardless of that lot's own status — same

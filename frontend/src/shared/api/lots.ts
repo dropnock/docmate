@@ -101,3 +101,9 @@ export function recallLot(lotId: number, reason: string) {
 export function removeLotRecords(lotId: number, recordIds: number[]) {
   return api.post<Lot>(`/lots/${lotId}/remove-records`, { record_ids: recordIds }).then((r) => r.data);
 }
+
+/** Digitizing supervisor puts a remediated lot back to draft for a fresh
+ * outgoing inspection and a new customer QC round. */
+export function resubmitLot(lotId: number) {
+  return api.post<Lot>(`/lots/${lotId}/resubmit`).then((r) => r.data);
+}

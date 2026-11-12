@@ -8,11 +8,12 @@ import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import {
-  listInspections, lotHistoryKey, lotInspectionsKey, recallLot, removeLotRecords, startInspection,
+  listInspections, lotHistoryKey, lotInspectionsKey, recallLot, removeLotRecords, resubmitLot, startInspection,
 } from "@shared/api/lots";
 import { useCabinets } from "@shared/hooks/useCabinets";
 import LotHistory from "@shared/components/LotHistory";
 import LotInspectionReport from "@shared/components/LotInspectionReport";
+import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
 import LotInspectionWorkspace from "../components/LotInspectionWorkspace";
 import type { CabinetRecord, Lot, LotDetail, LotInspectionStatus } from "@shared/types";
@@ -91,6 +92,10 @@ export default function LotManager({ projectId }: Props) {
   const latestEffective = [...inspections].reverse().find((i) => i.status !== "cancelled" && i.status !== "superseded");
   const inspectionPassed = latestEffective?.status === "passed";
   const recordsInRework = (lotDetail?.records ?? []).filter((r) => r.status !== "qa_passed").length;
+  // A remediated lot can be resubmitted once nothing is still in rework:
+  // records the customer passed stay qc_passed until resubmit resets them.
+  const recordsAwaitingRework = (lotDetail?.records ?? [])
+    .filter((r) => r.status !== "qa_passed" && r.status !== "qc_passed").length;
 
   const startInspectionMutation = useMutation({
     mutationFn: () => startInspection(detailLotId!, aqlChoice ?? inspectionList!.default_aql_level),
@@ -150,6 +155,15 @@ export default function LotManager({ projectId }: Props) {
       invalidateLot();
     },
     onError: (err: unknown) => message.error(formatApiError(err, "Failed to recall lot")),
+  });
+
+  const resubmitMutation = useMutation({
+    mutationFn: () => resubmitLot(detailLotId!),
+    onSuccess: () => {
+      message.success("Lot resubmitted — inspect it again before releasing");
+      invalidateLot();
+    },
+    onError: (err: unknown) => message.error(formatApiError(err, "Failed to resubmit lot")),
   });
 
   const removeRecordsMutation = useMutation({
@@ -370,6 +384,28 @@ export default function LotManager({ projectId }: Props) {
                   </Tooltip>
                 </Col>
               )}
+              {lotDetail.status === "remediation" && (
+                <Col>
+                  <Popconfirm
+                    title="Resubmit this lot?"
+                    description="The failed QC round is archived and the lot goes back to draft. It needs a fresh outgoing inspection, and the customer samples it again."
+                    okText="Resubmit"
+                    disabled={recordsAwaitingRework > 0}
+                    onConfirm={() => resubmitMutation.mutate()}
+                  >
+                    <Tooltip title={recordsAwaitingRework > 0 ? `${recordsAwaitingRework} record(s) still in rework` : undefined}>
+                      <Button
+                        type="primary"
+                        size="small"
+                        disabled={recordsAwaitingRework > 0}
+                        loading={resubmitMutation.isPending}
+                      >
+                        Resubmit
+                      </Button>
+                    </Tooltip>
+                  </Popconfirm>
+                </Col>
+              )}
               {lotDetail.status === "released" && lotDetail.sample_size === null && (
                 <Col>
                   <Tooltip title="Take the lot back before the customer samples it">
@@ -380,6 +416,15 @@ export default function LotManager({ projectId }: Props) {
                 </Col>
               )}
             </Row>
+
+            {lotDetail.status === "remediation" && recordsAwaitingRework > 0 && (
+              <Alert
+                type="warning"
+                style={{ marginBottom: 12 }}
+                message={`The customer failed this lot. ${recordsAwaitingRework} rejected record(s) are back with QA; resubmit once they pass.`}
+              />
+            )}
+            <LotQcRounds rounds={lotDetail.qc_rounds ?? []} currentRound={lotDetail.qc_round} />
 
             <Divider orientation="left" style={{ marginTop: 0 }}>Outgoing inspection (ISO 2859-1)</Divider>
             {lotDetail.status === "draft" && !activeInspection && !inspectionPassed && (

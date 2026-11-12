@@ -293,11 +293,14 @@ async def _persist_qc_field_results(
     if lot_record is None:
         raise HTTPException(status_code=409, detail="Record is not part of a sampled lot")
 
+    from app.models.lot import Lot
+    lot = await db.get(Lot, lot_record.lot_id)
     for fr in field_results:
         is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))
         db.add(QcFieldResult(
             task_id=task.id, record_id=record.id, lot_id=lot_record.lot_id, tenant_id=tenant_id,
             field_key=fr.field_key, status=QcFieldStatus(fr.status), is_critical=is_critical, note=fr.note,
+            qc_round=lot.qc_round,
         ))
     await db.flush()
 

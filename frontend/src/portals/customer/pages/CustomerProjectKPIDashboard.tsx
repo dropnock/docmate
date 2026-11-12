@@ -65,6 +65,12 @@ export default function CustomerProjectKPIDashboard({ projectId }: Props) {
   const columns: ColumnType<Lot>[] = [
     { title: "Lot", dataIndex: "name" },
     {
+      title: "QC Round",
+      dataIndex: "qc_round",
+      width: 90,
+      render: (v: number) => (v > 1 ? <Tag color="orange">{v}</Tag> : v),
+    },
+    {
       title: "Released",
       dataIndex: "released_at",
       render: (v: string | null) => (v ? dayjs(v).format("YYYY-MM-DD") : "—"),

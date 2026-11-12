@@ -12,6 +12,7 @@ from app.schemas.lot import (
     CreateQcBatchesRequest,
     LotCreate,
     LotOut,
+    LotQcRoundOut,
     QcFieldResultsOut,
     RecallLotRequest,
     RemoveLotRecordsRequest,
@@ -98,7 +99,14 @@ async def get_lot(
                 "is_sampled": lr.is_sampled,
             })
 
-    return {**LotOut.model_validate(lot).model_dump(), "records": records_out}
+    rounds = await lot_service.list_qc_rounds(db, lot_id=lot.id)
+    return {
+        **LotOut.model_validate(lot).model_dump(),
+        "records": records_out,
+        # Earlier customer QC rounds (failed, then resubmitted); the current
+        # round is the lot's own fields.
+        "qc_rounds": [LotQcRoundOut.model_validate(r).model_dump() for r in rounds],
+    }
 
 
 @router.post("/{lot_id}/release")
@@ -144,6 +152,22 @@ async def remove_lot_records(
     lot = await lot_service.remove_lot_records(
         db, lot_id=lot_id, record_ids=body.record_ids,
         user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return LotOut.model_validate(lot)
+
+
+@router.post("/{lot_id}/resubmit")
+async def resubmit_lot(
+    lot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    """Put a remediated lot back to draft for re-inspection and re-release,
+    once the records the customer rejected are back through QA."""
+    await _get_authorized_lot(db, lot_id, current_user)
+    lot = await lot_service.resubmit_lot(
+        db, lot_id=lot_id, user_id=current_user.id, tenant_id=current_user._tenant_id,
     )
     await db.commit()
     return LotOut.model_validate(lot)

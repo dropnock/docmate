@@ -36,6 +36,9 @@ class QcFieldResult(Base, TimestampMixin):
     status: Mapped[QcFieldStatus] = mapped_column(Enum(QcFieldStatus), nullable=False)
     is_critical: Mapped[bool] = mapped_column(Boolean, nullable=False)
     note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # The lot's customer QC round this mark belongs to (Lot.qc_round at
+    # write time) — tabulation and the lot verdict only count the current one.
+    qc_round: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
 
     task = relationship("Task")
     record = relationship("Record")

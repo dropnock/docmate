@@ -64,6 +64,26 @@ export interface Lot {
   released_at: string | null;
   released_by: number | null;
   created_by: number | null;
+  /** Current customer QC round; earlier (failed) rounds are in LotDetail.qc_rounds. */
+  qc_round: number;
+}
+
+/** A finished customer QC round of a lot that was failed and resubmitted. */
+export interface LotQcRound {
+  round_number: number;
+  status: string;
+  record_count: number;
+  sample_rate: number | null;
+  sample_size: number | null;
+  acceptance_number: number | null;
+  accuracy_rate: number | null;
+  aql_status_snapshot: "normal" | "tightened" | "reduced" | null;
+  critical_defect_count: number | null;
+  minor_defect_count: number | null;
+  sampled_record_ids: number[];
+  released_at: string | null;
+  qc_completed_at: string | null;
+  created_at: string;
 }
 
 export interface QcProjectSummary {
@@ -124,6 +144,7 @@ export interface LotDetail extends Lot {
     status: string;
     is_sampled: boolean;
   }[];
+  qc_rounds: LotQcRound[];
 }
 
 export interface Batch {

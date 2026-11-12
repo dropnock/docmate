@@ -8,6 +8,7 @@ import { formatApiError } from "@shared/api/errors";
 import { aqlConfigKey, getAqlConfig, getSampleSizePreview, updateAqlConfig } from "@shared/api/aql";
 import { applySample, getQcFieldResults, lotDetailKey, getLot, sendForRemediation } from "@shared/api/lots";
 import LotHistory from "@shared/components/LotHistory";
+import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
 import type { AQLConfig } from "@shared/types";
 
@@ -342,6 +343,12 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                   />
                 </>
               )}
+            </Card>
+          )}
+
+          {lotDetail.qc_rounds?.length > 0 && (
+            <Card title="Earlier QC rounds" style={{ marginBottom: 16 }}>
+              <LotQcRounds rounds={lotDetail.qc_rounds} currentRound={lotDetail.qc_round} />
             </Card>
           )}
 

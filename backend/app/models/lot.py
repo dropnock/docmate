@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.aql import AQLStatus
@@ -46,6 +46,10 @@ class Lot(Base, TimestampMixin):
     # QcFieldResult data exists for manual-mode lots to derive these from.
     critical_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minor_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Which customer QC round the live sample/result fields above describe.
+    # Starts at 1; resubmit_lot archives a failed round into LotQcRound and
+    # bumps this. QcFieldResult rows carry the round they were marked in.
+    qc_round: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     released_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
@@ -71,3 +75,30 @@ class LotRecord(Base):
 
     lot = relationship("Lot", back_populates="lot_records")
     record = relationship("Record", back_populates="lot_records")
+
+
+class LotQcRound(Base, TimestampMixin):
+    """A finished customer QC round of a lot that was later resubmitted —
+    the lot's live sample/result fields at the moment resubmit_lot reset
+    them, frozen so earlier rounds stay reportable. The current round lives
+    on the Lot row itself."""
+    __tablename__ = "lot_qc_rounds"
+    __table_args__ = (UniqueConstraint("lot_id", "round_number", name="uq_lot_qc_round"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    lot_id: Mapped[int] = mapped_column(Integer, ForeignKey("lots.id"), nullable=False, index=True)
+    round_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[LotStatus] = mapped_column(Enum(LotStatus), nullable=False)  # the round's verdict
+    record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    sample_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    acceptance_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    accuracy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    aql_status_snapshot: Mapped[AQLStatus | None] = mapped_column(Enum(AQLStatus), nullable=True)
+    critical_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    minor_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sampled_record_ids: Mapped[list] = mapped_column(JSON, nullable=False)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    qc_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resubmitted_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)

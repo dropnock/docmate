@@ -32,6 +32,7 @@ class LotOut(BaseModel):
     released_at: datetime | None = None
     released_by: int | None
     created_by: int | None
+    qc_round: int = 1
 
 
 class ApplySampleRequest(BaseModel):
@@ -98,3 +99,21 @@ class RecallLotRequest(BaseModel):
 
 class RemoveLotRecordsRequest(BaseModel):
     record_ids: list[int] = Field(min_length=1)
+
+
+class LotQcRoundOut(BaseModel):
+    model_config = {"from_attributes": True}
+    round_number: int
+    status: str
+    record_count: int
+    sample_rate: float | None
+    sample_size: int | None
+    acceptance_number: int | None
+    accuracy_rate: float | None
+    aql_status_snapshot: str | None
+    critical_defect_count: int | None
+    minor_defect_count: int | None
+    sampled_record_ids: list[int]
+    released_at: datetime | None
+    qc_completed_at: datetime | None
+    created_at: datetime
