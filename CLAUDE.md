@@ -75,7 +75,7 @@ Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises
 2. `batch_service.reject_record_by_customer()` — when customer QC rejects a specific record
 
 ### Audit trail (`services/audit_service.py`)
-`write_event()` is the only way to write to `audit_logs`. Call it from service methods, never from routers. It does not commit — the caller owns the transaction, keeping the audit entry atomic with the operation it records. `get_record_history()` returns the full chronological trail for one record.
+`write_event()` is the only way to write to `audit_logs`. Call it from service methods, never from routers. It does not commit — the caller owns the transaction, keeping the audit entry atomic with the operation it records. Use the entity type of the thing the event is about (`record`, `lot`, `cabinet`, `batch`, …) with that thing's id — `get_record_history()` (one record) and `get_lot_history()` (one lot, `GET /api/lots/{id}/history`; customers see it from first release onward) filter on it, so an event filed under the wrong type leaks into the history of an unrelated record that shares the id.
 
 ### Analytics (`services/analytics_service.py`)
 - `staff_productivity()` — per-agent metrics, filterable by shift/date
