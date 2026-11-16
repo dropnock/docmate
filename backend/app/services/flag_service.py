@@ -11,6 +11,8 @@ open flag (batch_service.complete_indexing_batch).
 
 Every change is audited against the record, so it shows on its timeline.
 Nothing here commits."""
+import csv
+import io
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -164,7 +166,7 @@ async def list_flags(db: AsyncSession, *, project_id: int, status: str | None) -
     pick one up: the record's filename, its batch, and who raised/closed it."""
     raiser, closer = aliased(User), aliased(User)
     stmt = (
-        select(RecordFlag, Record.original_filename, Record.status, Batch.name,
+        select(RecordFlag, Record.original_filename, Record.source_identifier, Record.status, Batch.name,
                raiser.full_name, closer.full_name)
         .join(Record, Record.id == RecordFlag.record_id)
         .outerjoin(Batch, Batch.id == Record.batch_id)
@@ -179,13 +181,54 @@ async def list_flags(db: AsyncSession, *, project_id: int, status: str | None) -
         {
             **flag_out(flag),
             "record_filename": filename,
+            "source_identifier": source_identifier,
             "record_status": getattr(record_status, "value", record_status),
             "batch_name": batch_name,
             "raised_by_name": raised_name,
             "closed_by_name": closed_name,
         }
-        for flag, filename, record_status, batch_name, raised_name, closed_name in (await db.execute(stmt)).all()
+        for flag, filename, source_identifier, record_status, batch_name, raised_name, closed_name
+        in (await db.execute(stmt)).all()
     ]
+
+
+CSV_COLUMNS = [
+    ("Flag ID", "id"), ("Record ID", "record_id"), ("Record", "record_filename"),
+    ("Identifier", "source_identifier"), ("Batch", "batch_name"), ("Record status", "record_status"),
+    ("Flag status", "status"), ("Issue", "reason"), ("Flagged by", "raised_by_name"),
+    ("Flagged at (UTC)", "raised_at"), ("Closed by", "closed_by_name"), ("Closed at (UTC)", "closed_at"),
+    ("Resolution", "resolution"),
+]
+
+
+def _csv_cell(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S") if value.tzinfo else value.strftime("%Y-%m-%d %H:%M:%S")
+    text = str(value)
+    # Free text comes from users: keep a spreadsheet from running it as a formula.
+    if text[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        text = "'" + text
+    return text
+
+
+async def export_flags_csv(db: AsyncSession, *, project_id: int, status: str | None, user, tenant_id: int) -> str:
+    """The flag list as CSV (UTF-8 with a BOM so Excel reads accents), one
+    row per flag. The export itself is audited against the project."""
+    flags = await list_flags(db, project_id=project_id, status=status)
+    out = io.StringIO()
+    out.write("\ufeff")
+    writer = csv.writer(out)
+    writer.writerow([title for title, _ in CSV_COLUMNS])
+    for f in flags:
+        writer.writerow([_csv_cell(f[key]) for _, key in CSV_COLUMNS])
+    await audit_service.write_event(
+        db, tenant_id=tenant_id, entity_type=AuditEntityType.project, entity_id=project_id,
+        action=AuditAction.flags_exported, performed_by=user.id,
+        new_value={"status": status or "all", "rows": len(flags)},
+    )
+    return out.getvalue()
 
 
 def flag_out(flag: RecordFlag | None) -> dict | None:

@@ -46,6 +46,7 @@ class AuditAction(str, enum.Enum):
     data_imported = "data_imported"
     record_held = "record_held"
     hold_released = "hold_released"
+    flags_exported = "flags_exported"
 
 
 class AuditLog(Base):

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -84,6 +86,31 @@ async def list_project_flags(
     if status and status not in {s.value for s in FlagStatus}:
         raise HTTPException(status_code=422, detail="Unknown flag status")
     return await flag_service.list_flags(db, project_id=project_id, status=status or None)
+
+
+@router.get("/projects/{project_id}/flags/export")
+async def export_project_flags(
+    project_id: int,
+    status: str | None = Query(FlagStatus.open.value, description="open | resolved | withdrawn, or empty for all"),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("de_supervisor", "admin")),
+):
+    """The flag list as a CSV download — same rows as GET /projects/{id}/flags."""
+    project = await db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    check_project_access(project, current_user)
+    if status and status not in {s.value for s in FlagStatus}:
+        raise HTTPException(status_code=422, detail="Unknown flag status")
+    body = await flag_service.export_flags_csv(
+        db, project_id=project_id, status=status or None, user=current_user, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    filename = f"flagged_records_{project_id}_{status or 'all'}_{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.csv"
+    return Response(
+        content=body.encode("utf-8"), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.post("/flags/{flag_id}/resolve")

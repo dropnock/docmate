@@ -3,9 +3,10 @@ import { Alert, Button, Card, Empty, Input, Segmented, Space, Table, Tag, Typogr
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
+import { Download } from "lucide-react";
 import { formatApiError } from "@shared/api/errors";
 import {
-  listProjectFlags, projectFlagsKey, resolveFlag, type FlagStatus, type RecordFlagListItem,
+  exportProjectFlags, listProjectFlags, projectFlagsKey, resolveFlag, type FlagStatus, type RecordFlagListItem,
 } from "@shared/api/flags";
 import RecordViewerDrawer from "@shared/components/RecordViewerDrawer";
 
@@ -34,6 +35,11 @@ export default function FlaggedRecords({ projectId }: { projectId: number }) {
       qc.invalidateQueries({ queryKey: ["project-flags", projectId] });
     },
     onError: (e: unknown) => message.error(formatApiError(e, "Couldn't resolve the flag")),
+  });
+
+  const exportCsv = useMutation({
+    mutationFn: () => exportProjectFlags(projectId, status),
+    onError: (e: unknown) => message.error(formatApiError(e, "Couldn't export the flags")),
   });
 
   const columns: ColumnsType<RecordFlagListItem> = [
@@ -78,15 +84,25 @@ export default function FlaggedRecords({ projectId }: { projectId: number }) {
     <Card
       title="Flagged Records"
       extra={
-        <Segmented
-          value={status}
-          onChange={(v) => setStatus(v as FlagStatus)}
-          options={[
-            { label: "Open", value: "open" },
-            { label: "Resolved", value: "resolved" },
-            { label: "Removed by indexer", value: "withdrawn" },
-          ]}
-        />
+        <Space wrap>
+          <Segmented
+            value={status}
+            onChange={(v) => setStatus(v as FlagStatus)}
+            options={[
+              { label: "Open", value: "open" },
+              { label: "Resolved", value: "resolved" },
+              { label: "Removed by indexer", value: "withdrawn" },
+            ]}
+          />
+          <Button
+            icon={<Download size={14} />}
+            disabled={!flags.length}
+            loading={exportCsv.isPending}
+            onClick={() => exportCsv.mutate()}
+          >
+            Export CSV
+          </Button>
+        </Space>
       }
     >
       <Table

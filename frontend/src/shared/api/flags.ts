@@ -50,6 +50,20 @@ export function listProjectFlags(projectId: number, status: FlagStatus) {
   return api.get<RecordFlagListItem[]>(`/projects/${projectId}/flags`, { params: { status } }).then((r) => r.data);
 }
 
+/** Downloads the flag list (one tab: open / resolved / withdrawn) as a CSV file. */
+export async function exportProjectFlags(projectId: number, status: FlagStatus) {
+  const res = await api.get<Blob>(`/projects/${projectId}/flags/export`, { params: { status }, responseType: "blob" });
+  const match = /filename="?([^";]+)"?/.exec(res.headers["content-disposition"] ?? "");
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = match?.[1] ?? `flagged_records_${status}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function resolveFlag(flagId: number, resolution: string) {
   return api.post<RecordFlag>(`/flags/${flagId}/resolve`, { resolution }).then((r) => r.data);
 }
