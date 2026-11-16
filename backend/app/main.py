@@ -27,6 +27,7 @@ from app.routers import (
     flags,
     holds,
     lots,
+    notifications,
     records,
     shifts,
     tasks,
@@ -145,6 +146,7 @@ app.include_router(users.router)
 app.include_router(client_errors.router)
 app.include_router(flags.router)
 app.include_router(holds.router)
+app.include_router(notifications.router)
 
 
 @app.get("/health")

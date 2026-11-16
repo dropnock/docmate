@@ -15,7 +15,7 @@ from app.models.record_version import RecordVersion
 from app.schemas.batch import (
     AuditEventOut, ExportRecordsRequest, RecordOut, RecordVersionOut, RequeueRecordsRequest,
 )
-from app.services import audit_service, record_service, s3_service
+from app.services import audit_service, flag_service, record_service, s3_service
 from app.services.lock_service import release_lock
 
 
@@ -142,6 +142,10 @@ async def get_record_history(
     events = await audit_service.get_record_history(
         db, tenant_id=current_user._tenant_id, record_id=record_id
     )
+    if flag_service.is_customer(current_user):
+        # Flags are internal to the digitizing team unless shared with the customer.
+        shared = await flag_service.shared_flag_ids_for_record(db, record_id)
+        events = [e for e in events if not flag_service.is_hidden_flag_event(e, shared)]
     return [
         {
             "id": e.id,

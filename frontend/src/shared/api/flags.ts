@@ -14,15 +14,31 @@ export interface RecordFlag {
   closed_by: number | null;
   closed_at: string | null;
   resolution: string | null;
+  /** Set while the flag is shared with the customer's supervisors. */
+  shared_at: string | null;
+  shared_by: number | null;
 }
 
 /** A row of the supervisor's flag list (GET /projects/{id}/flags). */
 export interface RecordFlagListItem extends RecordFlag {
   record_filename: string | null;
+  source_identifier: string | null;
   record_status: string;
   batch_name: string | null;
   raised_by_name: string;
   closed_by_name: string | null;
+  shared_by_name: string | null;
+  comment_count: number;
+}
+
+export interface FlagComment {
+  id: number;
+  flag_id: number;
+  author_id: number;
+  author_name: string;
+  author_side: "digitizing" | "customer";
+  body: string;
+  created_at: string;
 }
 
 export interface RecordFlagState {
@@ -32,6 +48,8 @@ export interface RecordFlagState {
 
 export const recordFlagKey = (recordId: number) => ["record-flag", recordId] as const;
 export const projectFlagsKey = (projectId: number, status: FlagStatus) => ["project-flags", projectId, status] as const;
+export const flagKey = (flagId: number) => ["flag", flagId] as const;
+export const flagCommentsKey = (flagId: number) => ["flag-comments", flagId] as const;
 
 export function getRecordFlag(recordId: number) {
   return api.get<RecordFlagState>(`/records/${recordId}/flag`).then((r) => r.data);
@@ -66,4 +84,26 @@ export async function exportProjectFlags(projectId: number, status: FlagStatus) 
 
 export function resolveFlag(flagId: number, resolution: string) {
   return api.post<RecordFlag>(`/flags/${flagId}/resolve`, { resolution }).then((r) => r.data);
+}
+
+/** One flag as a list row — a notification's link target. */
+export function getFlag(flagId: number) {
+  return api.get<RecordFlagListItem>(`/flags/${flagId}`).then((r) => r.data);
+}
+
+/** Makes the selected open flags visible to the customer's supervisors. */
+export function shareFlags(projectId: number, flagIds: number[]) {
+  return api.post<RecordFlag[]>(`/projects/${projectId}/flags/share`, { flag_ids: flagIds }).then((r) => r.data);
+}
+
+export function unshareFlag(flagId: number) {
+  return api.post<RecordFlag>(`/flags/${flagId}/unshare`).then((r) => r.data);
+}
+
+export function listFlagComments(flagId: number) {
+  return api.get<FlagComment[]>(`/flags/${flagId}/comments`).then((r) => r.data);
+}
+
+export function addFlagComment(flagId: number, body: string) {
+  return api.post<FlagComment>(`/flags/${flagId}/comments`, { body }).then((r) => r.data);
 }

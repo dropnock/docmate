@@ -35,3 +35,22 @@ class RecordFlag(Base):
     closed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set while a digitizing supervisor has shared the flag with the
+    # project's customer supervisors (flag_service.share_flags); cleared again
+    # if they stop sharing it. Shared flags carry a discussion (FlagComment).
+    shared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    shared_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class FlagComment(Base):
+    """One message in a shared flag's discussion between the digitizing and
+    customer supervisors. Immutable once written."""
+
+    __tablename__ = "flag_comments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(Integer, ForeignKey("tenants.id"), nullable=False, index=True)
+    flag_id: Mapped[int] = mapped_column(ForeignKey("record_flags.id", ondelete="CASCADE"), nullable=False, index=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
