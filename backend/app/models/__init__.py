@@ -17,6 +17,7 @@ from app.models.project import Project, S3BucketStatus
 from app.models.qc_field_result import QcFieldResult, QcFieldStatus
 from app.models.record import Record, RecordStatus
 from app.models.record_flag import FlagStatus, RecordFlag
+from app.models.record_hold import RecordHold
 from app.models.record_version import RecordVersion, VersionReason
 from app.models.shift import ProjectShift, Shift, ShiftRole, UserProjectAssignment
 from app.models.task import Task, TaskStatus, TaskType
@@ -35,6 +36,7 @@ __all__ = [
     "Batch", "BatchStatus", "BatchType", "BatchQCResult",
     "Record", "RecordStatus",
     "RecordFlag", "FlagStatus",
+    "RecordHold",
     "RecordVersion", "VersionReason",
     "Lot", "LotQcRound", "LotRecord", "LotStatus",
     "LotInspection", "LotInspectionItem", "LotInspectionFieldResult",

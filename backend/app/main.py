@@ -25,6 +25,7 @@ from app.routers import (
     cabinets,
     client_errors,
     flags,
+    holds,
     lots,
     records,
     shifts,
@@ -143,6 +144,7 @@ app.include_router(analytics.router)
 app.include_router(users.router)
 app.include_router(client_errors.router)
 app.include_router(flags.router)
+app.include_router(holds.router)
 
 
 @app.get("/health")

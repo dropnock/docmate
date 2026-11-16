@@ -14,8 +14,9 @@ from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.cabinet import Cabinet
 from app.models.document_type import DocumentType
 from app.models.record import Record, RecordStatus
+from app.models.record_hold import RecordHold
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service, image_service, s3_service, staff_assignment_service
+from app.services import audit_service, hold_service, image_service, s3_service, staff_assignment_service
 
 logger = logging.getLogger(__name__)
 
@@ -86,9 +87,15 @@ async def get_cabinet_records(
     status_filter: str | None,
     tenant_id: int,
     not_in_lot: bool = False,
+    exclude_held: bool = False,
 ) -> list[Record]:
     cabinet = await get_cabinet(db, cabinet_id=cabinet_id, tenant_id=tenant_id)
     q = select(Record).where(Record.cabinet_id == cabinet.id)
+    if exclude_held:
+        # Cabinet Assignment's picker: a held record mustn't be allocated.
+        q = q.where(~select(RecordHold.id).where(
+            RecordHold.record_id == Record.id, RecordHold.released_at.is_(None),
+        ).exists())
     if not_in_lot:
         # The Create Lot picker: a record already in a lot can't join another.
         from app.models.lot import LotRecord
@@ -381,6 +388,8 @@ async def create_indexing_batch(
                 f"ineligible record ids {ineligible_ids}"
             ),
         )
+
+    await hold_service.require_not_held(db, record_ids)
 
     batch = Batch(
         project_id=project_id,

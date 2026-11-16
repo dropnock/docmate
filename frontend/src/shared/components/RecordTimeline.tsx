@@ -27,6 +27,8 @@ const ACTION_COLOR: Record<string, string> = {
   lot_records_removed: "warning",
   resubmitted: "processing",
   data_imported: "blue",
+  record_held: "orange",
+  hold_released: "cyan",
 };
 
 function EventDetail({ event }: { event: AuditEvent }) {
