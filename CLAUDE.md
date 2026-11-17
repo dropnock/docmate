@@ -69,6 +69,12 @@ Digitizing supervisor's ISO 2859-1 inspection of a **draft** lot before handover
 ### Customer access to lots
 Every lot endpoint goes through `routers/lots.py::_get_authorized_lot`: tenant + `check_project_access` (a tenant holds several customer organisations) and, for the customer portal, 404 on draft lots. `list_lots` hides drafts from customers server-side. `create_qc_batches` checks that the body's project, document type and agents belong to the lot's project and its customer organisation.
 
+### Record holds (`services/hold_service.py`)
+A digitizing supervisor holds pending, unbatched records back from assignment (reason required; `record_holds`, active while `released_at` is null, one active hold per record). `cabinet_service.create_indexing_batch` and `task_service.assign_task` call `hold_service.require_not_held()` (409); Cabinet Assignment loads its picker with `exclude_held=true`. Hold/cancel are audited on the record (`record_held` / `hold_released`).
+
+### Flags shared with the customer (`services/flag_service.py`, `services/notification_service.py`)
+A digitizing supervisor shares open flags with the project's customer supervisors (`RecordFlag.shared_at/shared_by`). A customer-portal user only ever sees shared flags: `routers/flags.py::_flag` 404s otherwise, `GET /projects/{id}/flags` returns `shared_only`, and `GET /records/{id}/history` drops flag events of unshared flags (`flag_service.is_hidden_flag_event`). Both sides discuss a shared open flag in `flag_comments`. Sharing, each comment, resolving/withdrawing a shared flag and unsharing call `notification_service.notify_project_supervisors()` — active DE supervisors of the project's digitizing org (or no org) plus customer supervisors of its customer org, minus the actor — which writes `notifications` rows in the caller's transaction (header bell, `GET /api/notifications`). `GET /projects/{id}/flags/export` downloads the list as CSV and writes `flags_exported` on the project.
+
 ### Record locking (`services/lock_service.py`)
 Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises `409` with `{locked_by, locked_at}` if another user holds it. `release_lock()` is called on task complete, fail, or reassign.
 

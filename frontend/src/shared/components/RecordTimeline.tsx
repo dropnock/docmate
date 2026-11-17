@@ -27,6 +27,11 @@ const ACTION_COLOR: Record<string, string> = {
   lot_records_removed: "warning",
   resubmitted: "processing",
   data_imported: "blue",
+  record_held: "orange",
+  hold_released: "cyan",
+  flag_shared: "gold",
+  flag_unshared: "default",
+  flag_comment_added: "gold",
 };
 
 function EventDetail({ event }: { event: AuditEvent }) {

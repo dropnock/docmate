@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from "react";
 import { Drawer, Layout, Menu, Spin, Result } from "antd";
-import { BarChart3, CheckCircle2, Gauge, History, List } from "lucide-react";
+import { BarChart3, CheckCircle2, Flag, Gauge, History, List } from "lucide-react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@shared/query/queryClient";
 import {
@@ -24,6 +24,7 @@ const CustomerStaffProductivityDashboard = lazy(() => import("./pages/CustomerSt
 const RecordHistory = lazy(() => import("../digitizing/pages/RecordHistory"));
 const QCWorkspace = lazy(() => import("./pages/QCWorkspace"));
 const CustomerLotManager = lazy(() => import("./pages/CustomerLotManager"));
+const CustomerFlaggedRecords = lazy(() => import("./pages/CustomerFlaggedRecords"));
 
 const { Sider, Content } = Layout;
 const queryClient = createQueryClient();
@@ -38,6 +39,7 @@ const SUPERVISOR_ITEMS = [
   { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
   { key: "/staff-productivity", label: "Staff Productivity", icon: <Gauge size={16} /> },
   { key: "/history", label: "Record History", icon: <History size={16} /> },
+  { key: "/flagged-records", label: "Flagged Records", icon: <Flag size={16} /> },
 ];
 
 const QC_ITEMS = [{ key: "/qc", label: "QC Workspace", icon: <CheckCircle2 size={16} /> }];
@@ -163,6 +165,16 @@ function AppInner() {
                   <RequireRole allow={isSupervisor}>
                     <ProjectScopedRoute>
                       {(projectId) => <RecordHistory projectId={projectId} />}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/flagged-records"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <CustomerFlaggedRecords projectId={projectId} />}
                     </ProjectScopedRoute>
                   </RequireRole>
                 }

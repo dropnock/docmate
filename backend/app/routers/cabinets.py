@@ -15,7 +15,7 @@ from app.schemas.cabinet import (
     CreateIndexingBatchRequest,
     IngestJsonRequest,
 )
-from app.services import cabinet_service, batch_service, s3_service
+from app.services import cabinet_service, batch_service, hold_service, s3_service
 
 router = APIRouter(prefix="/api/cabinets", tags=["cabinets"])
 
@@ -49,13 +49,15 @@ async def get_cabinet_records(
     cabinet_id: int,
     status: str | None = None,
     not_in_lot: bool = False,
+    exclude_held: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     records = await cabinet_service.get_cabinet_records(
         db, cabinet_id=cabinet_id, status_filter=status, tenant_id=current_user._tenant_id,
-        not_in_lot=not_in_lot,
+        not_in_lot=not_in_lot, exclude_held=exclude_held,
     )
+    held = await hold_service.held_record_ids(db, [r.id for r in records])
     return [
         {
             "id": r.id,
@@ -68,6 +70,7 @@ async def get_cabinet_records(
             "has_data": r.indexed_data is not None,
             "cabinet_id": r.cabinet_id,
             "batch_id": r.batch_id,
+            "on_hold": r.id in held,
         }
         for r in records
     ]

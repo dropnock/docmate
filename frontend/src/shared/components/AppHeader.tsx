@@ -1,5 +1,6 @@
 import { Button, Layout, Space, Typography } from "antd";
 import { LogOut, Menu as MenuIcon, X } from "lucide-react";
+import NotificationBell from "./NotificationBell";
 
 const { Header } = Layout;
 
@@ -78,6 +79,7 @@ export default function AppHeader({
         </Typography.Text>
       </Space>
       <Space size={16}>
+        <NotificationBell />
         {userName && (
           <Typography.Text className="docmate-header-username" style={{ color: "#64748B" }}>
             {userName}

@@ -11,6 +11,7 @@ import { useCabinets } from "@shared/hooks/useCabinets";
 import { useDocumentTypes } from "@shared/hooks/useDocumentTypes";
 import { useAvailableStaff } from "@shared/hooks/useAvailableStaff";
 import type { Batch, CabinetRecord, Shift } from "@shared/types";
+import UnassignedRecordsCard from "../components/UnassignedRecordsCard";
 
 interface Props {
   projectId: number;
@@ -42,9 +43,12 @@ export default function CabinetAssignment({ projectId }: Props) {
   const { data: docTypes = [] } = useDocumentTypes(projectId);
 
   const { data: records = [], isLoading: recLoading } = useQuery<CabinetRecord[]>({
-    queryKey: ["cabinet-records", cabinet?.id, "pending"],
+    // Held records are left out — they mustn't be allocated (see UnassignedRecordsCard).
+    queryKey: ["cabinet-records", cabinet?.id, "pending", "not-held"],
     queryFn: () =>
-      api.get(`/cabinets/${cabinet!.id}/records?status=pending`).then((r) => r.data),
+      api
+        .get(`/cabinets/${cabinet!.id}/records`, { params: { status: "pending", exclude_held: true } })
+        .then((r) => r.data),
     enabled: !!cabinet,
   });
 
@@ -223,6 +227,13 @@ export default function CabinetAssignment({ projectId }: Props) {
           />
         </Col>
       </Row>
+
+      <UnassignedRecordsCard
+        projectId={projectId}
+        cabinetId={cabinet.id}
+        available={records.filter((r) => r.status === "pending")}
+        loading={recLoading}
+      />
 
       {recLoading ? (
         <Spin />

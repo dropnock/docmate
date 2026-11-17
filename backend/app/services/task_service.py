@@ -12,7 +12,7 @@ from app.models.qc_field_result import QcFieldResult, QcFieldStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.schemas.task import FieldResultIn
-from app.services import aql_service, audit_service, staff_assignment_service
+from app.services import aql_service, audit_service, hold_service, staff_assignment_service
 from app.services.lock_service import acquire_lock, release_lock
 
 
@@ -30,6 +30,7 @@ async def assign_task(
     await staff_assignment_service.require_shift_role_for_task_type(
         db, user_id=agent_id, project_id=batch.project_id, task_type=task_type,
     )
+    await hold_service.require_not_held(db, [record_id])
     task = Task(
         record_id=record_id,
         batch_id=batch_id,
