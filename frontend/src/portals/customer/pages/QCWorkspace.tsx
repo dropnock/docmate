@@ -253,10 +253,11 @@ export default function QCWorkspace() {
       {activeTask.status === "in_progress" && !isLockedByOther && (
         <Alert type="info" message="Record locked by you for QC review." banner />
       )}
-      {record && record.current_version > 1 && (
+      {/* Not current_version > 1: every indexed record is already at version 2. */}
+      {record?.previously_sent_back && (
         <Alert
           type="warning"
-          message={`This is version ${record.current_version} — previously rejected and re-indexed.`}
+          message={`This record was rejected before and has been corrected — this is version ${record.current_version}.`}
           banner
         />
       )}

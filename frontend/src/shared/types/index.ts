@@ -185,6 +185,8 @@ export interface DocRecord {
   source_identifier: string | null;
   indexed_data: { [key: string]: unknown } | null;
   current_version: number;
+  /** Rejected by QA or customer QC, or requeued, at some point (GET /records/{id}). */
+  previously_sent_back?: boolean;
   locked_by: number | null;
   locked_at: string | null;
   status: string;

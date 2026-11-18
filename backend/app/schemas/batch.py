@@ -57,6 +57,9 @@ class RecordOut(BaseModel):
     qa_by_name: str | None = None
     # Open flag for a supervisor (flag_service) — set by GET /batches/{id}/records.
     flagged: bool = False
+    # Rejected by QA or customer QC, or requeued, at some point — set by
+    # GET /records/{id} (record_service.attach_sent_back).
+    previously_sent_back: bool = False
 
 
 class RecordListOut(RecordOut):

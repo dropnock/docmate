@@ -12,7 +12,7 @@ from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.cabinet import Cabinet
 from app.models.record import Record, RecordStatus
-from app.models.record_version import VersionReason
+from app.models.record_version import RecordVersion, VersionReason
 from app.models.task import Task, TaskStatus, TaskType
 from app.models.user import User
 from app.services import audit_service
@@ -69,6 +69,40 @@ async def attach_task_attribution(db: AsyncSession, records: list[Record]) -> No
         qa = by_record.get(r.id, {}).get("qa", (None, None))
         r.indexed_by_id, r.indexed_by_name = indexing
         r.qa_by_id, r.qa_by_name = qa
+
+
+# What "sent back" means: rejected by QA or by customer QC (audit events —
+# a rejection QA later re-passes unchanged leaves no version), or requeued by
+# a supervisor (its version reason). current_version alone can't tell this:
+# the first indexing pass already takes a record to version 2.
+SENT_BACK_ACTIONS = (AuditAction.qa_failed, AuditAction.qc_rejected)
+SENT_BACK_REASONS = (
+    VersionReason.rework_after_qa,
+    VersionReason.rework_after_customer_rejection,
+    VersionReason.supervisor_requeue,
+)
+
+
+async def attach_sent_back(db: AsyncSession, records: list[Record]) -> None:
+    """Sets transient .previously_sent_back on each Record in place (two queries)."""
+    from app.models.audit_log import AuditLog
+
+    ids = [r.id for r in records]
+    if not ids:
+        return
+    sent_back = set((await db.execute(
+        select(AuditLog.entity_id).where(
+            AuditLog.entity_type == AuditEntityType.record, AuditLog.entity_id.in_(ids),
+            AuditLog.action.in_(SENT_BACK_ACTIONS),
+        ).distinct()
+    )).scalars())
+    sent_back |= set((await db.execute(
+        select(RecordVersion.record_id).where(
+            RecordVersion.record_id.in_(ids), RecordVersion.reason.in_(SENT_BACK_REASONS),
+        ).distinct()
+    )).scalars())
+    for r in records:
+        r.previously_sent_back = r.id in sent_back
 
 
 async def list_project_records(

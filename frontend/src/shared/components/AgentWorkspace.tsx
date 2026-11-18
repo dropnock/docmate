@@ -201,21 +201,23 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
         <Alert type="info" message="Record locked by you — submit to release." banner />
       )}
       {task.task_type === "indexing" && <RecordFlagBanner recordId={task.record_id} />}
-      {record?.current_version > 1 && (
+      {/* current_version alone can't drive this: the first indexing pass
+          already takes a record to version 2, so every QA task would read as
+          rework. previously_sent_back is set only when QA or customer QC
+          rejected the record, or a supervisor requeued it. */}
+      {record?.previously_sent_back ? (
         <Alert
           type="warning"
-          message={
-            // Indexing sees this on its own reopened/corrected records too
-            // (My Tasks lets an indexer go back in before the batch is
-            // completed) — "Rework" implies a QA rejection, which isn't
-            // necessarily what happened here.
-            task.task_type === "indexing"
-              ? `Editing submitted data — version ${record.current_version}. Previous data is pre-filled.`
-              : `Rework — version ${record.current_version}. Previous data is pre-filled.`
-          }
+          message={`Rework — this record was sent back for correction. Version ${record.current_version}; the previous data is pre-filled.`}
           banner
         />
-      )}
+      ) : task.task_type === "indexing" && record?.current_version > 1 ? (
+        <Alert
+          type="warning"
+          message={`Editing submitted data — version ${record.current_version}. Previous data is pre-filled.`}
+          banner
+        />
+      ) : null}
 
       <div style={{ flex: 1, overflow: "hidden" }}>
         <SplitWorkspace
