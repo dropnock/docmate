@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.aql import AQLStatus, SamplingMode
+from app.models.aql import AQLStatus, GeneralLevel, SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.lot import Lot, LotRecord, LotStatus
@@ -183,6 +183,7 @@ async def apply_sample(
     # The level the supervisor set when inspecting the lot; lots inspected
     # before levels were set per lot fall back to the project's suggestion.
     level = lot.inspection_level or (config.current_status if config else AQLStatus.normal)
+    general_level = config.general_level if config else GeneralLevel.II
 
     acceptance_number: int | None = None
     if mode == SamplingMode.iso:
@@ -192,7 +193,9 @@ async def apply_sample(
                 detail="sample_rate must not be supplied when sampling_mode is 'iso' — the sample size is computed from the ISO 2859-1 table",
             )
         aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
-        computed_size, acceptance_number = aql_service.compute_sample_size(total, aql_level, level)
+        computed_size, acceptance_number = aql_service.compute_sample_size(
+            total, aql_level, level, general_level,
+        )
         sample_size = min(computed_size, total) if total else 0
         derived_rate = sample_size / total if total else 0.0
     else:
@@ -228,6 +231,7 @@ async def apply_sample(
         new_value={
             "sampling_mode": mode.value,
             "inspection_level": level.value,
+            "general_level": general_level.value,
             "sample_rate": derived_rate,
             "sample_size": sample_size,
             "acceptance_number": acceptance_number,

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.security import check_project_access, get_current_user, require_roles
 from app.models.project import Project
-from app.models.aql import AQLStatus
+from app.models.aql import AQLStatus, GeneralLevel
 from app.schemas.aql import AQLConfigOut, AQLConfigUpdate
 from app.services import aql_service
 from app.services.aql_service import compute_sample_size, get_current_aql_level
@@ -37,6 +37,7 @@ async def get_aql_status(
         passes_to_reduce=config.passes_to_reduce,
         failures_to_tighten=config.failures_to_tighten,
         sampling_mode=config.sampling_mode.value,
+        general_level=config.general_level.value,
     )
 
 
@@ -69,6 +70,7 @@ async def update_aql_config(
         passes_to_reduce=config.passes_to_reduce,
         failures_to_tighten=config.failures_to_tighten,
         sampling_mode=config.sampling_mode.value,
+        general_level=config.general_level.value,
     )
 
 
@@ -77,12 +79,16 @@ async def calc_sample_size(
     batch_size: int,
     aql_level: float = 1.5,
     inspection_level: Literal["normal", "tightened", "reduced"] = "normal",
+    general_level: Literal["I", "II", "III"] = "II",
     current_user=Depends(get_current_user),
 ):
-    size, acceptance = compute_sample_size(batch_size, aql_level, AQLStatus(inspection_level))
+    size, acceptance = compute_sample_size(
+        batch_size, aql_level, AQLStatus(inspection_level), GeneralLevel(general_level),
+    )
     return {
         "sample_size": min(size, batch_size) if batch_size > 0 else 0,
         "acceptance_number": acceptance,
         "aql_level": aql_level,
         "inspection_level": inspection_level,
+        "general_level": general_level,
     }

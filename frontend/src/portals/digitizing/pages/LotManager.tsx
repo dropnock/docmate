@@ -456,8 +456,8 @@ export default function LotManager({ projectId }: Props) {
                     <HelpTip>
                       Sets which ISO 2859-1 table this lot is sampled from, for your inspection and for the
                       customer's QC. The suggestion follows the standard's switching rules from the customer's
-                      recent lot results; you can choose another level. AQL {inspectionList?.aql_level} (project
-                      setting).
+                      recent lot results; you can choose another level. AQL {inspectionList?.aql_level} and
+                      general inspection level {inspectionList?.general_level} (project settings).
                     </HelpTip>
                   </Space>
                   <Radio.Group
@@ -531,7 +531,9 @@ export default function LotManager({ projectId }: Props) {
                     render: (v: InspectionLevel, i) => (
                       <span>
                         <InspectionLevelTag level={v} />
-                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>AQL {i.aql_level}</Typography.Text>
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                          AQL {i.aql_level} · GIL {i.general_level}
+                        </Typography.Text>
                       </span>
                     ),
                   },

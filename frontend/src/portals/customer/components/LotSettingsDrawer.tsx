@@ -14,6 +14,11 @@ import InspectionLevelTag from "@shared/components/InspectionLevelTag";
 import type { AQLConfig } from "@shared/types";
 
 const AQL_OPTIONS = [0.65, 1.0, 1.5, 2.5].map((v) => ({ value: v, label: `${v}%` }));
+const GENERAL_LEVEL_OPTIONS = [
+  { value: "I", label: "I (smaller samples)" },
+  { value: "II", label: "II (standard)" },
+  { value: "III", label: "III (larger samples)" },
+];
 
 interface Props {
   lotId: number | undefined;
@@ -64,8 +69,9 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
   const lotLevel = lotDetail?.inspection_level ?? aqlConfig?.current_status ?? "normal";
 
   const { data: preview } = useQuery({
-    queryKey: ["sample-size-preview", totalRecords, aqlConfig?.current_aql_level, lotLevel],
-    queryFn: () => getSampleSizePreview(totalRecords, aqlConfig!.current_aql_level, lotLevel),
+    queryKey: ["sample-size-preview", totalRecords, aqlConfig?.current_aql_level, lotLevel, aqlConfig?.general_level],
+    queryFn: () =>
+      getSampleSizePreview(totalRecords, aqlConfig!.current_aql_level, lotLevel, aqlConfig!.general_level),
     enabled: !!lotDetail && notYetSampled && isIso && totalRecords > 0,
   });
 
@@ -193,6 +199,13 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                     tooltip="The project's acceptance quality limit. Normal, tightened and reduced inspection all use it, with ISO 2859-1's own sample sizes and acceptance numbers for each level."
                   >
                     <Select options={AQL_OPTIONS} style={{ width: 160 }} />
+                  </Form.Item>
+                  <Form.Item
+                    name="general_level"
+                    label="General inspection level"
+                    tooltip="ISO 2859-1 Table 1 column that turns a lot's size into its sample size code letter. II is the standard's default; III draws larger samples (e.g. a 1,000-record lot is code K instead of J), I smaller ones. Applies to lots inspected from now on."
+                  >
+                    <Select options={GENERAL_LEVEL_OPTIONS} style={{ width: 200 }} />
                   </Form.Item>
                   <Row gutter={12}>
                     <Col span={12}>

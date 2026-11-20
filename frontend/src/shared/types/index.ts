@@ -49,6 +49,8 @@ export interface CabinetRecord {
 }
 
 export type InspectionLevel = "normal" | "tightened" | "reduced";
+/** ISO 2859-1 general inspection level: the Table 1 column (lot size -> code letter). */
+export type GeneralLevel = "I" | "II" | "III";
 
 export interface Lot {
   id: number;
@@ -112,6 +114,7 @@ export interface AQLConfig {
   passes_to_reduce: number;
   failures_to_tighten: number;
   sampling_mode: "iso" | "manual";
+  general_level: GeneralLevel;
 }
 
 export type QcFieldStatus = "accepted" | "defective";
@@ -399,6 +402,7 @@ export interface LotInspectionSummary {
   /** Omitted from the customer's report: customers see the level only. */
   aql_level?: number;
   inspection_level: InspectionLevel;
+  general_level: GeneralLevel;
   lot_size: number;
   code_letter: string;
   sample_size: number;
@@ -431,6 +435,8 @@ export interface SamplingPlan {
 export interface LotInspectionList {
   /** The project's AQL; the supervisor chooses only the level. */
   aql_level: number;
+  /** The project's general inspection level (I / II / III). */
+  general_level: GeneralLevel;
   /** What ISO 2859-1's switching rules suggest for this lot. */
   suggested_level: InspectionLevel;
   lot_size: number;

@@ -253,14 +253,17 @@ async def list_inspections(
     lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
     aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
     lot_size = await lot_service.count_lot_records(db, lot_id=lot.id)
+    general_level = await aql_service.get_general_level(db, lot.project_id)
     return {
         "aql_level": aql_level,
+        # The project's ISO 2859-1 general inspection level (I / II / III).
+        "general_level": general_level.value,
         # What ISO 2859-1's switching rules suggest for this lot; the
         # supervisor chooses the level actually used.
         "suggested_level": (await aql_service.get_suggested_level(db, lot.project_id)).value,
         "lot_size": lot_size,
         # The plan each level would give this lot, for the chooser.
-        "level_plans": aql_service.plans_by_level(lot_size, aql_level) if lot_size else {},
+        "level_plans": aql_service.plans_by_level(lot_size, aql_level, general_level) if lot_size else {},
         "inspections": await lot_inspection_service.list_inspections(
             db, lot_id=lot_id, tenant_id=current_user._tenant_id
         ),

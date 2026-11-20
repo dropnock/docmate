@@ -77,7 +77,7 @@ function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
           <tr>
             <td style={td}><strong>Inspection level</strong></td>
             <td style={td}>
-              {INSPECTION_LEVEL[inspection.inspection_level].label}
+              {INSPECTION_LEVEL[inspection.inspection_level].label}, general level {inspection.general_level}
               {inspection.aql_level !== undefined ? ` (AQL ${inspection.aql_level})` : ""}
             </td>
             <td style={td}><strong>Sample size (n)</strong></td>

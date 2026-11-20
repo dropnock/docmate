@@ -4,7 +4,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.aql import AQLStatus
+from app.models.aql import AQLStatus, GeneralLevel
 from app.models.base import Base, TimestampMixin
 from app.models.qc_field_result import QcFieldStatus
 
@@ -34,7 +34,7 @@ class LotInspection(Base, TimestampMixin):
     fresh sample, so a lot can accumulate several rows. release_lot requires
     the latest non-cancelled attempt to have passed.
 
-    Every sampling-plan input is frozen here (lot_size, aql_level, inspection_level,
+    Every sampling-plan input is frozen here (lot_size, aql_level, inspection_level, general_level,
     code_letter, acceptance/rejection numbers, random_seed) so the report
     shown to the customer can't drift if the lot, the project's AQL config
     or the lookup table change later, and so the random draw can be
@@ -57,6 +57,12 @@ class LotInspection(Base, TimestampMixin):
     # state only suggests it) and copied to Lot.inspection_level.
     inspection_level: Mapped[AQLStatus] = mapped_column(
         Enum(AQLStatus), default=AQLStatus.normal, server_default="normal", nullable=False
+    )
+    # ISO 2859-1 general inspection level (Table 1 column) the code letter
+    # came from — the project's AQLConfig.general_level at inspection time.
+    general_level: Mapped[GeneralLevel] = mapped_column(
+        Enum(GeneralLevel, native_enum=False, length=3, validate_strings=True),
+        default=GeneralLevel.II, server_default="II", nullable=False,
     )
     lot_size: Mapped[int] = mapped_column(Integer, nullable=False)
     code_letter: Mapped[str] = mapped_column(String(2), nullable=False)
