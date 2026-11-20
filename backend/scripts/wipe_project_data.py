@@ -354,7 +354,7 @@ async def _print_projects(db: AsyncSession) -> None:
     from app.models.record import RecordStatus
 
     projects = list((await db.execute(select(Project).order_by(Project.tenant_id, Project.id))).scalars().all())
-    print(f"{'id':>5}  {'tenant':>6}  {'records':>8}  {'qa_passed':>9}  name")
+    print(f"{'id':>5}  {'tenant':>6}  {'records':>8}  {'qa_passed':>9}  {'indexed':>7}  name")
     for p in projects:
         cab = select(Cabinet.id).where(Cabinet.project_id == p.id)
         bat = select(Batch.id).where(Batch.project_id == p.id)
@@ -363,7 +363,10 @@ async def _print_projects(db: AsyncSession) -> None:
         passed = (await db.execute(
             select(func.count()).select_from(Record).where(in_project, Record.status == RecordStatus.qa_passed)
         )).scalar_one()
-        print(f"{p.id:>5}  {p.tenant_id:>6}  {total:>8}  {passed:>9}  {p.name}")
+        indexed = (await db.execute(
+            select(func.count()).select_from(Record).where(in_project, Record.status == RecordStatus.indexed)
+        )).scalar_one()
+        print(f"{p.id:>5}  {p.tenant_id:>6}  {total:>8}  {passed:>9}  {indexed:>7}  {p.name}")
     print()
 
 
