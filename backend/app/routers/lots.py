@@ -251,11 +251,16 @@ async def list_inspections(
     current_user=Depends(require_roles("de_supervisor", "admin")),
 ):
     lot = await lot_service._get_lot(db, lot_id, current_user._tenant_id)
+    aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
+    lot_size = await lot_service.count_lot_records(db, lot_id=lot.id)
     return {
-        "available_aql_levels": list(aql_service.AVAILABLE_AQLS),
-        # Pre-selects the customer's current AQL; the supervisor may pick
-        # any tabulated level for the internal inspection.
-        "default_aql_level": await aql_service.get_current_aql_level(db, lot.project_id),
+        "aql_level": aql_level,
+        # What ISO 2859-1's switching rules suggest for this lot; the
+        # supervisor chooses the level actually used.
+        "suggested_level": (await aql_service.get_suggested_level(db, lot.project_id)).value,
+        "lot_size": lot_size,
+        # The plan each level would give this lot, for the chooser.
+        "level_plans": aql_service.plans_by_level(lot_size, aql_level) if lot_size else {},
         "inspections": await lot_inspection_service.list_inspections(
             db, lot_id=lot_id, tenant_id=current_user._tenant_id
         ),
@@ -270,7 +275,7 @@ async def start_inspection(
     current_user=Depends(require_roles("de_supervisor", "admin")),
 ):
     inspection = await lot_inspection_service.start_inspection(
-        db, lot_id=lot_id, aql_level=body.aql_level,
+        db, lot_id=lot_id, inspection_level=body.inspection_level,
         user_id=current_user.id, tenant_id=current_user._tenant_id,
     )
     await db.commit()
@@ -351,7 +356,10 @@ async def get_inspection_report(
     see it once the lot has been handed over (not while it's still a draft
     being inspected), and only for their own organisation's projects."""
     lot = await _get_authorized_lot(db, lot_id, current_user)
-    return await lot_inspection_service.build_report(db, lot=lot)
+    # Customers see the inspection level, not the AQL number behind it.
+    return await lot_inspection_service.build_report(
+        db, lot=lot, include_aql=current_user.portal != Portal.customer,
+    )
 
 
 @router.get("/{lot_id}/history")

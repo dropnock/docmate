@@ -13,33 +13,87 @@ from app.models.aql import AQLConfig, AQLStatus, SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.services import audit_service
 
-# ISO 2859-1 Level II: batch_size_range -> code_letter. Upper bound of each
-# range maps to that letter (e.g. lot size 51-90 -> E, 91-150 -> F); anything
-# beyond the last entry falls through to "Q" in _code_letter below.
+# ISO 2859-1 Level II: lot size -> sample size code letter. Upper bound of
+# each range maps to that letter (e.g. lot size 51-90 -> E, 91-150 -> F);
+# anything beyond the last entry falls through to "Q" in _code_letter below.
 _CODE_LETTER_TABLE = [
     (8, "A"), (15, "B"), (25, "C"), (50, "D"), (90, "E"), (150, "F"),
     (280, "G"), (500, "H"), (1200, "J"), (3200, "K"), (10000, "L"),
     (35000, "M"), (150000, "N"), (500000, "P"),
 ]
 
-# code_letter -> {aql_level -> (sample_size, acceptance_number)}
-_SAMPLING_TABLE: dict[str, dict[float, tuple[int, int]]] = {
-    "A": {0.65: (2, 0), 1.0: (2, 0), 1.5: (2, 0), 2.5: (2, 0)},
-    "B": {0.65: (3, 0), 1.0: (3, 0), 1.5: (3, 0), 2.5: (3, 0)},
-    "C": {0.65: (5, 0), 1.0: (5, 0), 1.5: (5, 0), 2.5: (5, 1)},
-    "D": {0.65: (8, 0), 1.0: (8, 0), 1.5: (8, 0), 2.5: (8, 0)},
-    "E": {0.65: (13, 0), 1.0: (13, 0), 1.5: (13, 0), 2.5: (13, 1)},
-    "F": {0.65: (20, 0), 1.0: (20, 0), 1.5: (20, 1), 2.5: (20, 1)},
-    "G": {0.65: (32, 0), 1.0: (32, 1), 1.5: (32, 1), 2.5: (32, 2)},
-    "H": {0.65: (50, 1), 1.0: (50, 1), 1.5: (50, 2), 2.5: (50, 3)},
-    "J": {0.65: (80, 1), 1.0: (80, 2), 1.5: (80, 3), 2.5: (80, 5)},
-    "K": {0.65: (125, 2), 1.0: (125, 3), 1.5: (125, 5), 2.5: (125, 7)},
-    "L": {0.65: (200, 3), 1.0: (200, 5), 1.5: (200, 7), 2.5: (200, 10)},
-    "M": {0.65: (315, 5), 1.0: (315, 7), 1.5: (315, 10), 2.5: (315, 14)},
-    "N": {0.65: (500, 7), 1.0: (500, 10), 1.5: (500, 14), 2.5: (500, 21)},
-    "P": {0.65: (800, 10), 1.0: (800, 14), 1.5: (800, 21), 2.5: (800, 21)},
-    "Q": {0.65: (1250, 14), 1.0: (1250, 21), 1.5: (1250, 21), 2.5: (1250, 21)},
+_LETTERS = "ABCDEFGHJKLMNPQRS"
+
+# Single sampling master tables (ISO 2859-1 Tables 2-A, 2-B, 2-C) for the
+# AQL columns DocMate offers. Each cell is the acceptance number Ac (the
+# rejection number is always Ac + 1), or an arrow: "v" = use the first plan
+# below, "^" = use the first plan above — the sample size then comes from
+# the row the arrow lands on, not the lot's own code letter. Reduced
+# inspection uses the 1999 edition's plans (Re = Ac + 1, no gap).
+AVAILABLE_AQLS: tuple[float, ...] = (0.65, 1.0, 1.5, 2.5)
+
+_SAMPLE_SIZES: dict[AQLStatus, dict[str, int]] = {
+    AQLStatus.normal: dict(zip(_LETTERS, (2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800, 1250, 2000))),
+    AQLStatus.tightened: dict(zip(_LETTERS, (2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800, 1250, 2000, 3150))),
+    AQLStatus.reduced: dict(zip(_LETTERS, (2, 2, 2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800))),
 }
+
+#                 AQL:  0.65   1.0   1.5   2.5
+_NORMAL_AC: dict[str, tuple] = {
+    "A": ("v", "v", "v", "v"),
+    "B": ("v", "v", "v", "v"),
+    "C": ("v", "v", "v", 0),
+    "D": ("v", "v", 0, "^"),
+    "E": ("v", 0, "^", "v"),
+    "F": (0, "^", "v", 1),
+    "G": ("^", "v", 1, 2),
+    "H": ("v", 1, 2, 3),
+    "J": (1, 2, 3, 5),
+    "K": (2, 3, 5, 7),
+    "L": (3, 5, 7, 10),
+    "M": (5, 7, 10, 14),
+    "N": (7, 10, 14, 21),
+    "P": (10, 14, 21, "^"),
+    "Q": (14, 21, "^", "^"),
+    "R": (21, "^", "^", "^"),
+}
+
+#                 AQL:  0.65   1.0   1.5   2.5
+_TIGHTENED_AC: dict[str, tuple] = {
+    "A": ("v", "v", "v", "v"),
+    "B": ("v", "v", "v", "v"),
+    "C": ("v", "v", "v", "v"),
+    "D": ("v", "v", "v", "v"),
+    "E": ("v", "v", "v", 0),
+    "F": ("v", "v", 0, "v"),
+    "G": ("v", 0, "v", 1),
+    "H": (0, "v", 1, 2),
+    "J": ("v", 1, 2, 3),
+    "K": (1, 2, 3, 5),
+    "L": (2, 3, 5, 8),
+    "M": (3, 5, 8, 12),
+    "N": (5, 8, 12, 18),
+    "P": (8, 12, 18, "^"),
+    "Q": (12, 18, "^", "^"),
+    "R": (18, "^", "^", "^"),
+    "S": ("^", "^", "^", "^"),
+}
+
+# Reduced: each code letter takes the normal-inspection cell of the letter
+# whose (normal) sample size equals its own reduced sample size — e.g. K's
+# reduced n=50 is H's normal n, so K reduced = H normal. A, B and C all
+# reduce to n=2 (A).
+_REDUCED_AC: dict[str, tuple] = {
+    letter: _NORMAL_AC[_LETTERS[max(0, i - 2)]] for i, letter in enumerate(_LETTERS[:16])
+}
+
+_AC_TABLES: dict[AQLStatus, dict[str, tuple]] = {
+    AQLStatus.normal: _NORMAL_AC,
+    AQLStatus.tightened: _TIGHTENED_AC,
+    AQLStatus.reduced: _REDUCED_AC,
+}
+
+INSPECTION_LEVELS: tuple[AQLStatus, ...] = (AQLStatus.normal, AQLStatus.tightened, AQLStatus.reduced)
 
 
 def _code_letter(batch_size: int) -> str:
@@ -49,44 +103,69 @@ def _code_letter(batch_size: int) -> str:
     return "Q"
 
 
-def _closest_aql(table: dict[float, tuple[int, int]], aql: float) -> float:
-    """Return the nearest AQL key available in the sampling table."""
-    return min(table.keys(), key=lambda k: abs(k - aql))
+def _closest_aql(aql: float) -> float:
+    """Return the nearest AQL column available in the sampling tables."""
+    return min(AVAILABLE_AQLS, key=lambda k: abs(k - aql))
 
 
-def compute_sample_size(batch_size: int, aql_level: float) -> tuple[int, int]:
-    """Return (sample_size, acceptance_number) for given batch size and AQL."""
-    letter = _code_letter(batch_size)
-    row = _SAMPLING_TABLE[letter]
-    actual_aql = _closest_aql(row, aql_level)
-    return row[actual_aql]
+def _resolve(level: AQLStatus, letter: str, aql: float) -> tuple[str, int, int]:
+    """Follow the table's arrows from `letter` to the plan that applies:
+    returns (plan_letter, table_sample_size, acceptance_number)."""
+    table = _AC_TABLES[level]
+    col = AVAILABLE_AQLS.index(aql)
+    i = _LETTERS.index(letter)
+    while True:
+        cell = table[_LETTERS[i]][col]
+        if cell == "v":
+            i += 1
+        elif cell == "^":
+            i -= 1
+        else:
+            plan_letter = _LETTERS[i]
+            return plan_letter, _SAMPLE_SIZES[level][plan_letter], cell
 
 
-# Every code letter row carries the same AQL columns, so any row's keys are
-# the full set of AQLs a sampling plan can be drawn for.
-AVAILABLE_AQLS: tuple[float, ...] = tuple(sorted(_SAMPLING_TABLE["A"].keys()))
+def compute_sample_size(
+    batch_size: int, aql_level: float, inspection_level: AQLStatus = AQLStatus.normal,
+) -> tuple[int, int]:
+    """Return (table_sample_size, acceptance_number) for a lot size and AQL,
+    snapping an untabulated AQL to the nearest column. Callers cap the
+    sample at the lot size."""
+    _, n, ac = _resolve(AQLStatus(inspection_level), _code_letter(batch_size), _closest_aql(aql_level))
+    return n, ac
 
 
-def sampling_plan(lot_size: int, aql_level: float) -> dict[str, Any]:
-    """Single sampling plan, Inspection Level II, for an exact tabulated AQL —
-    unlike compute_sample_size, which snaps to the nearest column, an
-    explicitly chosen AQL that isn't in the table is rejected, so a report
-    can never claim an AQL the plan wasn't actually drawn from. The sample
-    is capped at the lot size (100% inspection when the table's sample
-    size meets or exceeds the lot, per ISO 2859-1)."""
+def sampling_plan(
+    lot_size: int, aql_level: float, inspection_level: AQLStatus = AQLStatus.normal,
+) -> dict[str, Any]:
+    """Single sampling plan, general inspection level II, for an exact
+    tabulated AQL and an inspection level (normal / tightened / reduced) —
+    unlike compute_sample_size, which snaps to the nearest column, an AQL
+    that isn't in the table is rejected, so a report can never claim an AQL
+    the plan wasn't actually drawn from. code_letter is the lot's own
+    letter; when the table points elsewhere (an arrow), the sample size and
+    Ac/Re come from that row. The sample is capped at the lot size (100%
+    inspection when the table's sample size meets or exceeds the lot)."""
     if aql_level not in AVAILABLE_AQLS:
         raise HTTPException(
             status_code=422,
             detail=f"aql_level must be one of {list(AVAILABLE_AQLS)}",
         )
     letter = _code_letter(lot_size)
-    table_size, acceptance_number = _SAMPLING_TABLE[letter][aql_level]
+    _, table_size, acceptance_number = _resolve(AQLStatus(inspection_level), letter, aql_level)
     return {
         "code_letter": letter,
         "sample_size": min(table_size, lot_size),
         "acceptance_number": acceptance_number,
         "rejection_number": acceptance_number + 1,
     }
+
+
+def plans_by_level(lot_size: int, aql_level: float) -> dict[str, dict[str, Any]]:
+    """The plan each inspection level would give this lot — what the
+    supervisor chooses between."""
+    aql = _closest_aql(aql_level)
+    return {lvl.value: sampling_plan(lot_size, aql, lvl) for lvl in INSPECTION_LEVELS}
 
 
 async def get_config(db: AsyncSession, project_id: int) -> AQLConfig | None:
@@ -99,15 +178,23 @@ async def get_config(db: AsyncSession, project_id: int) -> AQLConfig | None:
 
 
 async def get_current_aql_level(db: AsyncSession, project_id: int) -> float:
+    """The project's AQL, as tabulated. The inspection level (normal /
+    tightened / reduced) no longer changes the AQL — it picks the table the
+    plan comes from — so this is always the project's configured AQL
+    (AQLConfig.normal_aql), snapped to the nearest tabulated column."""
     config = await get_config(db, project_id)
     if config is None:
         return 1.5
-    mapping = {
-        AQLStatus.normal: config.normal_aql,
-        AQLStatus.tightened: config.tightened_aql,
-        AQLStatus.reduced: config.reduced_aql,
-    }
-    return mapping[config.current_status]
+    return _closest_aql(config.normal_aql)
+
+
+async def get_suggested_level(db: AsyncSession, project_id: int) -> AQLStatus:
+    """The inspection level ISO 2859-1's switching rules suggest for the
+    project's next lot (AQLConfig.current_status, moved by apply_switching
+    on each lot's first-round customer QC verdict). Only a suggestion: the
+    digitizing supervisor sets each lot's level when inspecting it."""
+    config = await get_config(db, project_id)
+    return config.current_status if config else AQLStatus.normal
 
 
 async def update_config(
@@ -123,6 +210,11 @@ async def update_config(
     config = await get_config(db, project_id)
     if config is None:
         raise HTTPException(status_code=404, detail="No AQL config for project")
+
+    if updates.get("normal_aql") is not None and updates["normal_aql"] not in AVAILABLE_AQLS:
+        raise HTTPException(
+            status_code=422, detail=f"normal_aql must be one of {list(AVAILABLE_AQLS)}",
+        )
 
     old_value: dict[str, Any] = {}
     new_value: dict[str, Any] = {}
@@ -155,6 +247,8 @@ def apply_switching(config: AQLConfig, *, rejected: bool) -> tuple[AQLStatus, AQ
     """ISO 2859-1 switching between normal, tightened and reduced inspection,
     driven by the project's AQLConfig thresholds. Updates config in place and
     returns (old_status, new_status). Every switch resets both counters.
+    current_status is the *suggested* level for the next lot — the
+    supervisor decides each lot's actual level (Lot.inspection_level).
 
       normal    -> tightened  after failures_to_tighten consecutive rejections
       tightened -> normal     after passes_to_reduce consecutive acceptances
@@ -209,7 +303,7 @@ async def record_lot_outcome(
             performed_by=None,
             old_value={"aql_status": old.value},
             new_value={"aql_status": new.value},
-            metadata={"lot_id": lot.id, "lot_passed": passed, "reason": "iso_2859_1_switching"},
+            metadata={"lot_id": lot.id, "lot_passed": passed, "reason": "iso_2859_1_switching_suggestion"},
         )
     return new
 

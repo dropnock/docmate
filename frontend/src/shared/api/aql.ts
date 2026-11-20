@@ -1,5 +1,5 @@
 import api from "@shared/api/client";
-import type { AQLConfig } from "@shared/types";
+import type { AQLConfig, InspectionLevel } from "@shared/types";
 
 export const aqlConfigKey = (projectId?: number) => ["aql-config", projectId] as const;
 
@@ -11,10 +11,10 @@ export function updateAqlConfig(projectId: number, body: Partial<AQLConfig>) {
   return api.patch<AQLConfig>(`/projects/${projectId}/aql`, body).then((r) => r.data);
 }
 
-export function getSampleSizePreview(batchSize: number, aqlLevel: number) {
+export function getSampleSizePreview(batchSize: number, aqlLevel: number, inspectionLevel: InspectionLevel) {
   return api
     .get<{ sample_size: number; acceptance_number: number; aql_level: number }>("/aql/sample-size", {
-      params: { batch_size: batchSize, aql_level: aqlLevel },
+      params: { batch_size: batchSize, aql_level: aqlLevel, inspection_level: inspectionLevel },
     })
     .then((r) => r.data);
 }

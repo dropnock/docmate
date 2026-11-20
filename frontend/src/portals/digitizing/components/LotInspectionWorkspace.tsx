@@ -14,6 +14,7 @@ import { useRecordImage } from "@shared/hooks/useRecordImage";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
+import { INSPECTION_LEVEL } from "@shared/components/InspectionLevelTag";
 import type { DocRecord, DocumentType, FieldResult, InspectionItem, QcFieldStatus } from "@shared/types";
 
 interface Props {
@@ -163,7 +164,7 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
         <Button size="small" onClick={onClose}>← Back to lot</Button>
         <Typography.Text strong>Inspection #{inspection.attempt_number}</Typography.Text>
         <Typography.Text type="secondary">
-          AQL {inspection.aql_level} · code {inspection.code_letter} · n={inspection.sample_size} of N=
+          {INSPECTION_LEVEL[inspection.inspection_level].label} inspection · AQL {inspection.aql_level} · code {inspection.code_letter} · n={inspection.sample_size} of N=
           {inspection.lot_size} · Ac {inspection.acceptance_number} / Re {inspection.rejection_number}
         </Typography.Text>
         <Tag color={allReviewed ? "green" : "blue"}>{reviewed} / {inspection.items.length} reviewed</Tag>

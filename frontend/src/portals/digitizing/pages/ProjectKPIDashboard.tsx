@@ -76,9 +76,9 @@ export default function ProjectKPIDashboard({ projectId }: Props) {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8} lg={6}>
-          <Card title="AQL Status">
+          <Card title="Suggested Inspection Level">
             <Tag>{aql?.current_status?.toUpperCase()}</Tag>
-            <div style={{ marginTop: 8, fontSize: 12 }}>Level: {aql?.current_aql_level}</div>
+            <div style={{ marginTop: 8, fontSize: 12 }}>AQL: {aql?.current_aql_level}</div>
             <div style={{ fontSize: 12 }}>Consecutive failures: {aql?.consecutive_failures}</div>
           </Card>
         </Col>

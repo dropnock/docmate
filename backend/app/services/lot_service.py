@@ -3,10 +3,10 @@ import random
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.aql import SamplingMode
+from app.models.aql import AQLStatus, SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.lot import Lot, LotRecord, LotStatus
@@ -122,6 +122,12 @@ async def list_lots(
     return list(result.scalars().all())
 
 
+async def count_lot_records(db: AsyncSession, *, lot_id: int) -> int:
+    return (await db.execute(
+        select(func.count()).select_from(LotRecord).where(LotRecord.lot_id == lot_id)
+    )).scalar_one()
+
+
 async def release_lot(
     db: AsyncSession,
     *,
@@ -174,6 +180,10 @@ async def apply_sample(
     all_lot_records = list(lot_records_result.scalars().all())
     total = len(all_lot_records)
 
+    # The level the supervisor set when inspecting the lot; lots inspected
+    # before levels were set per lot fall back to the project's suggestion.
+    level = lot.inspection_level or (config.current_status if config else AQLStatus.normal)
+
     acceptance_number: int | None = None
     if mode == SamplingMode.iso:
         if sample_rate is not None:
@@ -182,7 +192,7 @@ async def apply_sample(
                 detail="sample_rate must not be supplied when sampling_mode is 'iso' — the sample size is computed from the ISO 2859-1 table",
             )
         aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
-        computed_size, acceptance_number = aql_service.compute_sample_size(total, aql_level)
+        computed_size, acceptance_number = aql_service.compute_sample_size(total, aql_level, level)
         sample_size = min(computed_size, total) if total else 0
         derived_rate = sample_size / total if total else 0.0
     else:
@@ -205,7 +215,7 @@ async def apply_sample(
     lot.sample_rate = derived_rate
     lot.sample_size = sample_size
     lot.acceptance_number = acceptance_number
-    lot.aql_status_snapshot = config.current_status if config else None
+    lot.aql_status_snapshot = level
     lot.status = LotStatus.qc_in_progress
 
     await audit_service.write_event(
@@ -217,6 +227,7 @@ async def apply_sample(
         performed_by=user_id,
         new_value={
             "sampling_mode": mode.value,
+            "inspection_level": level.value,
             "sample_rate": derived_rate,
             "sample_size": sample_size,
             "acceptance_number": acceptance_number,

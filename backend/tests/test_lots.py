@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.aql import SamplingMode
+from app.models.aql import AQLStatus, SamplingMode
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
@@ -143,12 +143,40 @@ class TestApplySampleIsoMode:
             user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
         )
         assert result.status == LotStatus.qc_in_progress
-        # 5 items -> code letter A (2-8) -> AQL 1.5 -> sample 2, accept 0 (see test_aql_service.py)
-        assert result.sample_size == 2
+        # 5 items -> code letter A; AQL 1.5 points down to D's n=8, Ac 0,
+        # capped at the lot -> every record sampled (see test_aql_service.py)
+        assert result.sample_size == 5
         assert result.acceptance_number == 0
+        # No level set on the lot (not inspected) -> the project's suggestion.
+        assert result.aql_status_snapshot == AQLStatus.normal
 
         lot_records = (await db.execute(select(LotRecord).where(LotRecord.lot_id == lot.id))).scalars().all()
-        assert sum(1 for lr in lot_records if lr.is_sampled) == 2
+        assert sum(1 for lr in lot_records if lr.is_sampled) == 5
+
+    async def test_uses_the_lots_inspection_level(self, db: AsyncSession, seed):
+        # 100 items -> F at AQL 1.5: normal n=32 Ac 1, tightened n=20 Ac 0,
+        # reduced n=8 Ac 0. The project suggests normal; the lot was set to
+        # tightened by the supervisor, which wins.
+        lot, _ = await _make_released_lot(db, seed, num_records=100)
+        lot.inspection_level = AQLStatus.tightened
+        await db.flush()
+        result = await lot_service.apply_sample(
+            db, lot_id=lot.id, sample_rate=None,
+            user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        assert (result.sample_size, result.acceptance_number) == (20, 0)
+        assert result.aql_status_snapshot == AQLStatus.tightened
+
+    async def test_falls_back_to_the_suggested_level(self, db: AsyncSession, seed):
+        seed["aql_config"].current_status = AQLStatus.reduced
+        lot, _ = await _make_released_lot(db, seed, num_records=100)
+        await db.flush()
+        result = await lot_service.apply_sample(
+            db, lot_id=lot.id, sample_rate=None,
+            user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        assert (result.sample_size, result.acceptance_number) == (8, 0)
+        assert result.aql_status_snapshot == AQLStatus.reduced
 
     async def test_rejects_client_supplied_sample_rate(self, db: AsyncSession, seed):
         lot, _ = await _make_released_lot(db, seed)

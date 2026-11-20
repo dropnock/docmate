@@ -6,6 +6,7 @@ import api from "@shared/api/client";
 import LotInspectionReport from "@shared/components/LotInspectionReport";
 import PageHeader from "@shared/components/PageHeader";
 import StatusDot from "@shared/components/StatusDot";
+import InspectionLevelTag from "@shared/components/InspectionLevelTag";
 import LotSettingsDrawer from "../components/LotSettingsDrawer";
 import LotAssignQcDrawer from "../components/LotAssignQcDrawer";
 import type { Lot } from "@shared/types";
@@ -51,6 +52,13 @@ export default function CustomerLotManager({ projectId, role }: Props) {
       render: (s: string) => (
         <StatusDot filled={LOT_STATUS_FILLED.has(s)} label={LOT_STATUS_LABEL[s] ?? s.replace(/_/g, " ")} />
       ),
+    },
+    {
+      title: "Inspection level",
+      key: "inspection_level",
+      // Once sampled, the level that sample was drawn under; before, the
+      // level the digitizing supervisor set for the lot.
+      render: (_: unknown, row: Lot) => <InspectionLevelTag level={row.aql_status_snapshot ?? row.inspection_level} />,
     },
     {
       title: "Sample",

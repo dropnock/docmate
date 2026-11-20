@@ -1,5 +1,5 @@
 import {
-  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Popconfirm, Row,
+  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Popconfirm, Radio, Row,
   Select, Space, Spin, Table, Tag, Tooltip, Typography, message,
 } from "antd";
 import { useState } from "react";
@@ -16,8 +16,11 @@ import LotInspectionReport from "@shared/components/LotInspectionReport";
 import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
 import HelpTip from "@shared/components/HelpTip";
+import InspectionLevelTag, { INSPECTION_LEVEL } from "@shared/components/InspectionLevelTag";
 import LotInspectionWorkspace from "../components/LotInspectionWorkspace";
-import type { CabinetRecord, Lot, LotDetail, LotInspectionStatus } from "@shared/types";
+import type { CabinetRecord, InspectionLevel, Lot, LotDetail, LotInspectionStatus } from "@shared/types";
+
+const INSPECTION_LEVELS: InspectionLevel[] = ["normal", "tightened", "reduced"];
 
 interface Props {
   projectId: number;
@@ -49,7 +52,7 @@ export default function LotManager({ projectId }: Props) {
   const [selectedRecordIds, setSelectedRecordIds] = useState<number[]>([]);
   const [lotName, setLotName] = useState("");
   const [lotDescription, setLotDescription] = useState("");
-  const [aqlChoice, setAqlChoice] = useState<number | undefined>();
+  const [levelChoice, setLevelChoice] = useState<InspectionLevel | undefined>();
   const [workspaceInspectionId, setWorkspaceInspectionId] = useState<number | undefined>();
   const [reportOpen, setReportOpen] = useState(false);
   const [recallOpen, setRecallOpen] = useState(false);
@@ -99,7 +102,7 @@ export default function LotManager({ projectId }: Props) {
     .filter((r) => r.status !== "qa_passed" && r.status !== "qc_passed").length;
 
   const startInspectionMutation = useMutation({
-    mutationFn: () => startInspection(detailLotId!, aqlChoice ?? inspectionList!.default_aql_level),
+    mutationFn: () => startInspection(detailLotId!, levelChoice ?? inspectionList!.suggested_level),
     onSuccess: (inspection) => {
       message.success(`Random sample of ${inspection.sample_size} record(s) drawn`);
       qc.invalidateQueries({ queryKey: lotInspectionsKey(detailLotId) });
@@ -186,6 +189,11 @@ export default function LotManager({ projectId }: Props) {
       render: (s: string) => (
         <StatusDot filled={LOT_STATUS_FILLED.has(s)} label={LOT_STATUS_LABEL[s] ?? s.replace(/_/g, " ")} />
       ),
+    },
+    {
+      title: "Inspection level",
+      dataIndex: "inspection_level",
+      render: (v: InspectionLevel | null) => <InspectionLevelTag level={v} />,
     },
     {
       title: "Accuracy",
@@ -338,7 +346,7 @@ export default function LotManager({ projectId }: Props) {
         open={!!detailLotId}
         onClose={() => {
           setDetailLotId(undefined);
-          setAqlChoice(undefined);
+          setLevelChoice(undefined);
           setReportOpen(false);
           setRemoveSelection([]);
         }}
@@ -442,14 +450,45 @@ export default function LotManager({ projectId }: Props) {
                   message={`${recordsInRework} record(s) are in rework — re-inspect once they're back through QA.`}
                 />
               ) : (
-                <Space style={{ marginBottom: 12 }} wrap>
-                  <Typography.Text>AQL</Typography.Text>
-                  <Select
-                    style={{ width: 110 }}
-                    value={aqlChoice ?? inspectionList?.default_aql_level}
-                    onChange={setAqlChoice}
-                    options={(inspectionList?.available_aql_levels ?? []).map((v) => ({ value: v, label: String(v) }))}
-                  />
+                <Space direction="vertical" style={{ marginBottom: 12, width: "100%" }}>
+                  <Space wrap align="center">
+                    <Typography.Text>Inspection level</Typography.Text>
+                    <HelpTip>
+                      Sets which ISO 2859-1 table this lot is sampled from, for your inspection and for the
+                      customer's QC. The suggestion follows the standard's switching rules from the customer's
+                      recent lot results; you can choose another level. AQL {inspectionList?.aql_level} (project
+                      setting).
+                    </HelpTip>
+                  </Space>
+                  <Radio.Group
+                    value={levelChoice ?? inspectionList?.suggested_level}
+                    onChange={(e) => setLevelChoice(e.target.value)}
+                  >
+                    {INSPECTION_LEVELS.map((lvl) => {
+                      const plan = inspectionList?.level_plans[lvl];
+                      return (
+                        <Radio.Button key={lvl} value={lvl} style={{ height: "auto", lineHeight: 1.4, padding: "4px 12px" }}>
+                          <div>
+                            {INSPECTION_LEVEL[lvl].label}
+                            {inspectionList?.suggested_level === lvl && (
+                              <Tag color="gold" style={{ marginLeft: 6, marginRight: 0 }}>Suggested</Tag>
+                            )}
+                          </div>
+                          {plan && (
+                            <div style={{ fontSize: 12, opacity: 0.75 }}>
+                              n={plan.sample_size}, Ac {plan.acceptance_number}/Re {plan.rejection_number}
+                            </div>
+                          )}
+                        </Radio.Button>
+                      );
+                    })}
+                  </Radio.Group>
+                  {levelChoice && inspectionList && levelChoice !== inspectionList.suggested_level && (
+                    <Typography.Text type="warning">
+                      You're overriding the suggested level ({INSPECTION_LEVEL[inspectionList.suggested_level].label});
+                      the choice is recorded on the lot's audit trail.
+                    </Typography.Text>
+                  )}
                   <Button
                     type="primary"
                     loading={startInspectionMutation.isPending}
@@ -486,7 +525,16 @@ export default function LotManager({ projectId }: Props) {
                     dataIndex: "status",
                     render: (s: LotInspectionStatus) => <Tag color={INSPECTION_TAG[s].color}>{INSPECTION_TAG[s].label}</Tag>,
                   },
-                  { title: "AQL", dataIndex: "aql_level" },
+                  {
+                    title: "Level",
+                    dataIndex: "inspection_level",
+                    render: (v: InspectionLevel, i) => (
+                      <span>
+                        <InspectionLevelTag level={v} />
+                        <Typography.Text type="secondary" style={{ fontSize: 12 }}>AQL {i.aql_level}</Typography.Text>
+                      </span>
+                    ),
+                  },
                   {
                     title: "Plan",
                     key: "plan",
