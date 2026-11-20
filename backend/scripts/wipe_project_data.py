@@ -1,8 +1,10 @@
 """
 One-time, irreversible cleanup: deletes every record for one project — plus
 everything that references those records (record_versions, tasks,
-lot_records, matching audit_logs) and their S3 images — along with any
-batches/lots built from those records. The project itself and its cabinet(s)
+lot_records, QC field results, flags and their comments, holds,
+notifications, matching audit_logs, and any other table holding a
+record_id, e.g. OCR results on builds that have them) and their S3 images —
+along with any batches/lots built from those records. The project itself and its cabinet(s)
 are left in place, so the cabinet can be re-ingested into afterward.
 
 Dry-run by default: prints exactly what would be deleted and makes no
@@ -15,7 +17,10 @@ tell you this happened afterward, so a --confirm run always writes a JSON
 report of every ID it touched (auto-named if --report isn't given) — that
 report is the only record of what was removed.
 
-Run inside the backend container/environment (needs direct DB + S3 access):
+Run inside the backend container/environment (needs direct DB + S3 access).
+Without --project-name / --project-id it lists the projects and asks:
+    docker compose exec backend python -m scripts.wipe_project_data  # asks, dry run
+
     docker compose exec backend python -m scripts.wipe_project_data \\
         --project-name NLA-Caveat-Cards                    # dry run
 
@@ -37,15 +42,28 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import AsyncSessionLocal
 from app.models.audit_log import AuditEntityType, AuditLog
+from app.models.base import Base
 from app.models.batch import Batch, BatchQCResult
 from app.models.cabinet import Cabinet
-from app.models.lot import Lot, LotRecord
+from app.models.lot import Lot, LotQcRound, LotRecord
 from app.models.lot_inspection import LotInspection, LotInspectionFieldResult, LotInspectionItem
+from app.models.notification import Notification
 from app.models.project import Project
+from app.models.qc_field_result import QcFieldResult
 from app.models.record import Record
+from app.models.record_flag import FlagComment, RecordFlag
+from app.models.record_hold import RecordHold
 from app.models.record_version import RecordVersion
 from app.models.task import Task
 from app.services import s3_service
+
+# Tables deleted explicitly below; any *other* table with a foreign key to
+# records.id (e.g. OCR results/accuracy on builds that have them) is swept
+# generically by record id, so the wipe doesn't stop on a constraint.
+_EXPLICIT_RECORD_TABLES = {
+    "records", "record_versions", "tasks", "lot_records", "lot_inspection_items",
+    "qc_field_results", "record_flags", "record_holds", "notifications",
+}
 
 
 def _s3_keys_for_record(record: Record) -> list[str]:
@@ -242,6 +260,32 @@ async def _delete_db_rows(db: AsyncSession, scope: dict) -> None:
     if lot_ids:
         await db.execute(delete(LotInspection).where(LotInspection.lot_id.in_(lot_ids)))
 
+    # Customer QC marks reference records, lots and QC tasks.
+    qc_conditions = []
+    if record_ids:
+        qc_conditions.append(QcFieldResult.record_id.in_(record_ids))
+    if lot_ids:
+        qc_conditions.append(QcFieldResult.lot_id.in_(lot_ids))
+    if task_ids:
+        qc_conditions.append(QcFieldResult.task_id.in_(task_ids))
+    if qc_conditions:
+        await db.execute(delete(QcFieldResult).where(or_(*qc_conditions)))
+    if lot_ids:
+        await db.execute(delete(LotQcRound).where(LotQcRound.lot_id.in_(lot_ids)))
+
+    # Flags (with their comments and notifications) and holds. The database
+    # cascades these from records, but deleting them here keeps the order
+    # explicit and works where cascades aren't enforced.
+    if record_ids:
+        flag_ids = select(RecordFlag.id).where(RecordFlag.record_id.in_(record_ids))
+        await db.execute(delete(Notification).where(
+            or_(Notification.record_id.in_(record_ids), Notification.flag_id.in_(flag_ids))
+        ))
+        await db.execute(delete(FlagComment).where(FlagComment.flag_id.in_(flag_ids)))
+        await db.execute(delete(RecordFlag).where(RecordFlag.record_id.in_(record_ids)))
+        await db.execute(delete(RecordHold).where(RecordHold.record_id.in_(record_ids)))
+        await _sweep_other_record_tables(db, record_ids)
+
     lot_record_conditions = []
     if lot_ids:
         lot_record_conditions.append(LotRecord.lot_id.in_(lot_ids))
@@ -270,6 +314,57 @@ async def _delete_db_rows(db: AsyncSession, scope: dict) -> None:
 
     if batch_ids:
         await db.execute(delete(Batch).where(Batch.id.in_(batch_ids)))
+
+
+async def _sweep_other_record_tables(db: AsyncSession, record_ids: list[int]) -> None:
+    """Delete rows of any table not handled above that points at these
+    records, children before parents (reverse dependency order)."""
+    for table in reversed(Base.metadata.sorted_tables):
+        if table.name in _EXPLICIT_RECORD_TABLES:
+            continue
+        for fk in table.foreign_keys:
+            if fk.column.table.name == "records":
+                await db.execute(delete(table).where(fk.parent.in_(record_ids)))
+
+
+async def _prompt_project(db: AsyncSession, prompt: str, *, exclude: int | None = None) -> Project:
+    """Ask for a project by name or id until one matches unambiguously."""
+    while True:
+        answer = input(f"{prompt} (name or id): ").strip()
+        if not answer:
+            continue
+        if answer.isdigit():
+            project = await db.get(Project, int(answer))
+            matches = [project] if project else []
+        else:
+            matches = list((await db.execute(select(Project).where(Project.name == answer))).scalars().all())
+        if not matches:
+            print(f"  No project {answer!r}. Try again.")
+        elif len(matches) > 1:
+            ids = ", ".join(str(p.id) for p in matches)
+            print(f"  {len(matches)} projects are named {answer!r} (ids {ids}) — enter the id instead.")
+        elif exclude is not None and matches[0].id == exclude:
+            print("  That's the project already chosen above — pick a different one.")
+        else:
+            return matches[0]
+
+
+async def _print_projects(db: AsyncSession) -> None:
+    """id / tenant / name / record and qa_passed counts for every project."""
+    from app.models.record import RecordStatus
+
+    projects = list((await db.execute(select(Project).order_by(Project.tenant_id, Project.id))).scalars().all())
+    print(f"{'id':>5}  {'tenant':>6}  {'records':>8}  {'qa_passed':>9}  name")
+    for p in projects:
+        cab = select(Cabinet.id).where(Cabinet.project_id == p.id)
+        bat = select(Batch.id).where(Batch.project_id == p.id)
+        in_project = or_(Record.cabinet_id.in_(cab), Record.batch_id.in_(bat))
+        total = (await db.execute(select(func.count()).select_from(Record).where(in_project))).scalar_one()
+        passed = (await db.execute(
+            select(func.count()).select_from(Record).where(in_project, Record.status == RecordStatus.qa_passed)
+        )).scalar_one()
+        print(f"{p.id:>5}  {p.tenant_id:>6}  {total:>8}  {passed:>9}  {p.name}")
+    print()
 
 
 async def _delete_s3_objects(project: Project, scope: dict) -> list[tuple[str, str]]:
@@ -315,7 +410,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    id_group = parser.add_mutually_exclusive_group(required=True)
+    id_group = parser.add_mutually_exclusive_group()
     id_group.add_argument("--project-id", type=int)
     id_group.add_argument("--project-name")
     parser.add_argument(
@@ -342,9 +437,13 @@ async def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
     async with AsyncSessionLocal() as db:
-        project = await _resolve_project(
-            db, project_id=args.project_id, project_name=args.project_name, tenant_id=args.tenant_id
-        )
+        if args.project_id is None and args.project_name is None:
+            await _print_projects(db)
+            project = await _prompt_project(db, "Project to clean out")
+        else:
+            project = await _resolve_project(
+                db, project_id=args.project_id, project_name=args.project_name, tenant_id=args.tenant_id
+            )
         scope = await _gather_scope(db, project)
         _print_summary(project, scope)
 
