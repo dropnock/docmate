@@ -7,6 +7,57 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-20
+
+### Added
+- **Inspection level per lot (normal / tightened / reduced).** The
+  digitizing supervisor sets each lot's level when starting its outgoing
+  inspection, choosing from the plan (n, Ac/Re) each level would give; the
+  ISO 2859-1 switching rules only suggest a level, and overriding the
+  suggestion shows a warning. The customer's ISO sample uses the lot's
+  level. Lots, the inspection report, Lot Settings and the KPI dashboards
+  show the level; customers see the level, never the AQL number. New
+  columns `lots.inspection_level`, `lot_inspections.inspection_level`
+  (migration `7c1e9a4d2b6f`).
+- **General inspection level I / II / III per project.** The customer
+  supervisor sets it in Lot Settings next to the AQL (default II, as
+  before); it picks the ISO 2859-1 Table 1 code letter for every lot
+  inspection, customer sample and preview. Each inspection keeps the level
+  it was drawn at, and the report names it. New columns
+  `aql_configs.general_level`, `lot_inspections.general_level` (migration
+  `9d4f2a7e1c3b`).
+- **Lot recall and resubmission.** A released lot the customer hasn't
+  sampled can be recalled to draft (reason required); a remediated lot can
+  be resubmitted for a new customer QC round, with earlier rounds kept.
+- **Record holds and flag sharing.** Supervisors can hold unassigned
+  records back from assignment, export flagged records as CSV, and share
+  flagged records with the customer to discuss them, with notifications.
+- `x-multiline` schema keyword for multi-line text fields; helper notes
+  moved behind hover info icons.
+- Script reporting `qa_passed` records with null array fields.
+
+### Changed
+- **The AQL engine uses ISO 2859-1's real tightened and reduced tables**
+  (2-B, 2-C) instead of swapping AQL columns, so the sample size changes
+  with the level as the standard intends; several normal-table cells were
+  also corrected. The project has a single AQL (`normal_aql`, one of 0.65 /
+  1.0 / 1.5 / 2.5); `tightened_aql` / `reduced_aql` are no longer read.
+- Switching between normal, tightened and reduced is driven by each lot's
+  first-round customer QC verdict.
+
+### Fixed
+- New customer users are now made to change their temporary password
+  (customer Keycloak realms register `UPDATE_PASSWORD`; existing realms are
+  fixed on backend startup).
+- The "previously rejected / rework" banner shows only on records actually
+  sent back, not on every record.
+- A record can belong to only one lot; lot creation checks the project.
+- Customer access to lots is limited to the customer's own organisation.
+- Lot and cabinet audit events are filed under their own entity types.
+- JSON cabinet import links every record to its image; the caveat export
+  refuses a folder holding an earlier export; the database backup script
+  is hardened.
+
 ## [0.8.0] - 2026-11-09
 
 ### Added
