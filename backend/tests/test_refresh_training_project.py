@@ -72,7 +72,9 @@ class TestRefresh:
         fake = _FakeS3()
         fake.install(monkeypatch)
 
-        assert await refresh._count_qa_passed(db, w["source"]) == 3
+        assert await refresh._count_copyable(db, w["source"]) == {
+            RecordStatus.qa_passed: 3, RecordStatus.indexed: 1,
+        }
 
         scope = await wipe._gather_scope(db, w["training"])
         assert scope["record_ids"] == [w["old"].id]
@@ -119,6 +121,33 @@ class TestRefresh:
         )
         assert len(copied) == 2
         assert failures == [{"source_record_id": w["passed"][1].id, "error": "boom"}]
+
+    async def test_copies_indexed_records_keeping_their_status(self, db: AsyncSession, seed, monkeypatch):
+        w = await _world(db, seed)
+        _FakeS3().install(monkeypatch)
+        both = (RecordStatus.qa_passed, RecordStatus.indexed)
+        only_indexed = await refresh._select_source_records(
+            db, w["source"], limit=10, order="oldest", statuses=(RecordStatus.indexed,),
+        )
+        assert [r.status for r in only_indexed] == [RecordStatus.indexed]
+        records = await refresh._select_source_records(db, w["source"], limit=10, order="oldest", statuses=both)
+        assert len(records) == 4
+        copied, failures = await refresh._copy_records(
+            db, records, target_project=w["training"], cabinet=w["train_cab"],
+        )
+        assert failures == []
+        assert sorted(c["status"] for c in copied) == ["indexed", "qa_passed", "qa_passed", "qa_passed"]
+        new_ids = [c["training_record_id"] for c in copied]
+        rows = list((await db.execute(select(Record).where(Record.id.in_(new_ids)))).scalars())
+        assert sorted(r.status.value for r in rows) == ["indexed", "qa_passed", "qa_passed", "qa_passed"]
+
+    def test_status_prompt(self, monkeypatch):
+        counts = {RecordStatus.qa_passed: 5, RecordStatus.indexed: 2}
+        answers = iter(["", "9", "2", "3"])
+        monkeypatch.setattr("builtins.input", lambda _p: next(answers))
+        assert refresh._prompt_statuses(counts) == (RecordStatus.qa_passed,)
+        assert refresh._prompt_statuses(counts) == (RecordStatus.indexed,)
+        assert refresh._prompt_statuses(counts) == (RecordStatus.qa_passed, RecordStatus.indexed)
 
     def test_count_prompt_defaults_to_1000(self, monkeypatch):
         answers = iter(["", ])
