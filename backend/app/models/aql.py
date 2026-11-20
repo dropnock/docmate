@@ -12,6 +12,14 @@ class AQLStatus(str, enum.Enum):
     reduced = "reduced"
 
 
+class GeneralLevel(str, enum.Enum):
+    """ISO 2859-1 general inspection level: picks the code-letter column of
+    Table 1 (lot size -> code letter). II is the standard's default."""
+    I = "I"
+    II = "II"
+    III = "III"
+
+
 class SamplingMode(str, enum.Enum):
     iso = "iso"
     manual = "manual"
@@ -35,6 +43,12 @@ class AQLConfig(Base, TimestampMixin):
     normal_aql: Mapped[float] = mapped_column(Float, default=1.5, nullable=False)
     tightened_aql: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     reduced_aql: Mapped[float] = mapped_column(Float, default=2.5, nullable=False)
+    # General inspection level I / II / III for every lot of the project —
+    # stored as text ("I"/"II"/"III"); snapshotted on each LotInspection.
+    general_level: Mapped[GeneralLevel] = mapped_column(
+        Enum(GeneralLevel, native_enum=False, length=3, validate_strings=True),
+        default=GeneralLevel.II, server_default="II", nullable=False,
+    )
     passes_to_reduce: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     failures_to_tighten: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # Default "iso": the lot's sample size is computed from the ISO 2859-1

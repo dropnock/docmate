@@ -12,7 +12,7 @@ from app.models.audit_log import AuditEntityType, AuditLog
 from app.models.batch import Batch, BatchStatus
 from app.models.cabinet import Cabinet
 from app.models.document_type import DocumentType
-from app.models.aql import AQLStatus
+from app.models.aql import AQLStatus, GeneralLevel
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.lot_inspection import InspectionItemStatus, LotInspectionItem, LotInspectionStatus
 from app.models.organization import Organization, OrgType
@@ -326,6 +326,40 @@ class TestInspectionLevel:
         )
         assert (sampled.sample_size, sampled.acceptance_number) == (8, 0)
         assert sampled.aql_status_snapshot == AQLStatus.reduced
+
+
+class TestGeneralLevel:
+    async def test_inspection_and_customer_sample_follow_project_general_level(self, db: AsyncSession, seed):
+        # 60 records at AQL 1.5, normal: level II is code E (arrow up to D,
+        # n=8 Ac 0); level III is code F (arrow down to G, n=32 Ac 1).
+        lot_ii, _ = await _make_lot(db, seed, num_records=60)
+        ii = await _start(db, seed, lot_ii)
+        assert (ii.general_level, ii.code_letter, ii.sample_size, ii.acceptance_number) == (
+            GeneralLevel.II, "E", 8, 0,
+        )
+
+        seed["aql_config"].general_level = GeneralLevel.III
+        await db.flush()
+        lot, _ = await _make_lot(db, seed, num_records=60)
+        inspection = await _start(db, seed, lot)
+        assert (inspection.general_level, inspection.code_letter, inspection.sample_size,
+                inspection.acceptance_number) == (GeneralLevel.III, "F", 32, 1)
+        row = (await db.execute(
+            select(AuditLog).where(AuditLog.entity_type == AuditEntityType.lot, AuditLog.entity_id == lot.id)
+        )).scalars().one()
+        assert row.new_value["general_level"] == "III"
+
+        await _review_all(db, seed, lot, inspection)
+        await _complete(db, seed, lot, inspection)
+        await _release(db, seed, lot)
+        report = await lot_inspection_service.build_report(db, lot=lot, include_aql=False)
+        assert report["standard"].endswith("general inspection level III")
+        assert report["inspections"][0]["general_level"] == "III"
+        sampled = await lot_service.apply_sample(
+            db, lot_id=lot.id, sample_rate=None,
+            user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        assert (sampled.sample_size, sampled.acceptance_number) == (32, 1)
 
 
 class TestReleaseGate:

@@ -1,4 +1,4 @@
-from app.models.aql import AQLConfig, AQLStatus, SamplingMode
+from app.models.aql import AQLConfig, AQLStatus, GeneralLevel, SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType, AuditLog
 from app.models.base import Base
 from app.models.batch import Batch, BatchQCResult, BatchStatus, BatchType
@@ -46,5 +46,5 @@ __all__ = [
     "QcFieldResult", "QcFieldStatus",
     "AuditLog", "AuditAction", "AuditEntityType",
     "Task", "TaskType", "TaskStatus",
-    "AQLConfig", "AQLStatus", "SamplingMode",
+    "AQLConfig", "AQLStatus", "GeneralLevel", "SamplingMode",
 ]

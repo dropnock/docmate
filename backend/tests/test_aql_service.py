@@ -5,7 +5,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.aql import AQLStatus
+from app.models.aql import AQLStatus, GeneralLevel
 from app.models import AQLConfig, AuditAction, AuditEntityType, AuditLog, Project, S3BucketStatus
 from app.services import aql_service
 from app.services.aql_service import compute_sample_size
@@ -85,6 +85,48 @@ class TestSamplingPlanLevels:
     def test_sample_capped_at_lot_size_for_every_level(self):
         for level in (N, T, R):
             assert aql_service.sampling_plan(20, 1.5, level)["sample_size"] <= 20
+
+
+class TestGeneralInspectionLevel:
+    """ISO 2859-1 Table 1: lot size -> code letter for general levels I/II/III."""
+
+    @pytest.mark.parametrize("lot_size,i,ii,iii", [
+        (2, "A", "A", "B"), (8, "A", "A", "B"), (9, "A", "B", "C"), (15, "A", "B", "C"),
+        (16, "B", "C", "D"), (26, "C", "D", "E"), (51, "C", "E", "F"), (91, "D", "F", "G"),
+        (151, "E", "G", "H"), (281, "F", "H", "J"), (501, "G", "J", "K"), (1000, "G", "J", "K"),
+        (1200, "G", "J", "K"), (1201, "H", "K", "L"), (3000, "H", "K", "L"), (3201, "J", "L", "M"),
+        (10001, "K", "M", "N"), (35001, "L", "N", "P"), (150001, "M", "P", "Q"), (500001, "N", "Q", "R"),
+    ])
+    def test_code_letters(self, lot_size, i, ii, iii):
+        letters = {
+            lvl: aql_service.sampling_plan(lot_size, 1.5, N, lvl)["code_letter"]
+            for lvl in GeneralLevel
+        }
+        assert letters == {GeneralLevel.I: i, GeneralLevel.II: ii, GeneralLevel.III: iii}
+
+    def test_default_is_level_ii(self):
+        assert aql_service.sampling_plan(1000, 1.5, T) == aql_service.sampling_plan(1000, 1.5, T, GeneralLevel.II)
+
+    def test_tightened_1000_and_3000_records_at_aql_1_5(self):
+        def plan(size, lvl):
+            p = aql_service.sampling_plan(size, 1.5, T, lvl)
+            return p["code_letter"], p["sample_size"], p["acceptance_number"], p["rejection_number"]
+        assert plan(1000, GeneralLevel.II) == ("J", 80, 2, 3)
+        assert plan(3000, GeneralLevel.II) == ("K", 125, 3, 4)
+        assert plan(1000, GeneralLevel.III) == ("K", 125, 3, 4)
+        assert plan(3000, GeneralLevel.III) == ("L", 200, 5, 6)
+
+    def test_largest_level_iii_lot_resolves_for_every_table(self):
+        for level in (N, T, R):
+            for aql in aql_service.AVAILABLE_AQLS:
+                assert aql_service.sampling_plan(1_000_000, aql, level, GeneralLevel.III)["sample_size"] > 0
+
+    def test_plans_by_level_uses_general_level(self):
+        plans = aql_service.plans_by_level(1000, 1.5, GeneralLevel.III)
+        assert {lvl: p["code_letter"] for lvl, p in plans.items()} == {
+            "normal": "K", "tightened": "K", "reduced": "K",
+        }
+        assert plans["normal"]["sample_size"] == 125
 
 
 class TestGetConfigLooksUpByProjectId:
@@ -182,6 +224,21 @@ class TestUpdateConfig:
         assert events[0].action == AuditAction.status_changed
         assert events[0].new_value == {"normal_aql": 2.5, "sampling_mode": "manual"}
         assert events[0].old_value == {"normal_aql": 1.5, "sampling_mode": "iso"}
+
+    async def test_general_level_update_is_audited(self, db: AsyncSession, seed):
+        assert await aql_service.get_general_level(db, seed["project"].id) == GeneralLevel.II
+        await aql_service.update_config(
+            db, project_id=seed["project"].id, updates={"general_level": "III"},
+            user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.commit()
+        assert await aql_service.get_general_level(db, seed["project"].id) == GeneralLevel.III
+        event = (await db.execute(
+            select(AuditLog).where(
+                AuditLog.entity_type == AuditEntityType.project, AuditLog.entity_id == seed["project"].id,
+            )
+        )).scalars().one()
+        assert (event.old_value, event.new_value) == ({"general_level": "II"}, {"general_level": "III"})
 
     async def test_no_op_update_writes_no_audit_event(self, db: AsyncSession, seed):
         await aql_service.update_config(

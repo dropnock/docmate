@@ -14,6 +14,7 @@ class AQLConfigOut(BaseModel):
     passes_to_reduce: int
     failures_to_tighten: int
     sampling_mode: str
+    general_level: str
 
 
 class AQLConfigUpdate(BaseModel):
@@ -23,3 +24,5 @@ class AQLConfigUpdate(BaseModel):
     passes_to_reduce: int | None = None
     failures_to_tighten: int | None = None
     sampling_mode: Literal["iso", "manual"] | None = None
+    # ISO 2859-1 general inspection level (Table 1 column); II by default.
+    general_level: Literal["I", "II", "III"] | None = None

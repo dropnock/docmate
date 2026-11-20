@@ -150,7 +150,8 @@ async def start_inspection(
 
     aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
     suggested_level = await aql_service.get_suggested_level(db, lot.project_id)
-    plan = aql_service.sampling_plan(len(records), aql_level, inspection_level)
+    general_level = await aql_service.get_general_level(db, lot.project_id)
+    plan = aql_service.sampling_plan(len(records), aql_level, inspection_level, general_level)
     seed = secrets.token_hex(16)
     sampled_ids = random.Random(seed).sample(sorted(r.id for r in records), plan["sample_size"])
     records_by_id = {r.id: r for r in records}
@@ -168,6 +169,7 @@ async def start_inspection(
         status=LotInspectionStatus.in_progress,
         aql_level=aql_level,
         inspection_level=inspection_level,
+        general_level=general_level,
         lot_size=len(records),
         random_seed=seed,
         inspected_by=user_id,
@@ -196,6 +198,7 @@ async def start_inspection(
             "aql_level": aql_level,
             "inspection_level": inspection_level.value,
             "suggested_level": suggested_level.value,
+            "general_level": general_level.value,
             "lot_size": inspection.lot_size,
             **plan,
             "random_seed": seed,
@@ -420,6 +423,8 @@ async def build_report(db: AsyncSession, *, lot: Lot, include_aql: bool = True) 
     inspections = await _list_inspections(db, lot.id)
     latest = _latest_effective(inspections)
     serialized = await _serialize(db, inspections, include_pending_items=True)
+    deciding = latest or (inspections[-1] if inspections else None)
+    general = deciding.general_level if deciding else await aql_service.get_general_level(db, lot.project_id)
     if not include_aql:
         # The customer sees each attempt's inspection level, sample size and
         # Ac/Re, not the AQL number behind them.
@@ -432,7 +437,10 @@ async def build_report(db: AsyncSession, *, lot: Lot, include_aql: bool = True) 
         "project_name": project.name if project else None,
         "lot_size": lot_size,
         "released_at": lot.released_at,
-        "standard": "ISO 2859-1, single sampling, general inspection level II",
+        # The general level of the attempt that decided the lot (the
+        # project's setting can change between attempts; each attempt
+        # carries its own general_level too).
+        "standard": f"ISO 2859-1, single sampling, general inspection level {general.value}",
         "final_status": latest.status.value if latest else None,
         "inspection_level": lot.inspection_level.value if lot.inspection_level else None,
         "inspections": serialized,
@@ -493,6 +501,7 @@ async def _serialize(
             "status": inspection.status.value,
             "aql_level": inspection.aql_level,
             "inspection_level": inspection.inspection_level.value,
+            "general_level": inspection.general_level.value,
             "lot_size": inspection.lot_size,
             "code_letter": inspection.code_letter,
             "sample_size": inspection.sample_size,

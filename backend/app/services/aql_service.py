@@ -1,6 +1,7 @@
 """
-ISO 2859-1 Acceptance Sampling — Inspection Level II
-Sample size code letters and acceptance/rejection numbers.
+ISO 2859-1 Acceptance Sampling — general inspection levels I / II / III
+(per project, default II). Sample size code letters and
+acceptance/rejection numbers.
 """
 from datetime import datetime, timezone
 from typing import Any
@@ -9,18 +10,22 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.aql import AQLConfig, AQLStatus, SamplingMode
+from app.models.aql import AQLConfig, AQLStatus, GeneralLevel, SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.services import audit_service
 
-# ISO 2859-1 Level II: lot size -> sample size code letter. Upper bound of
-# each range maps to that letter (e.g. lot size 51-90 -> E, 91-150 -> F);
-# anything beyond the last entry falls through to "Q" in _code_letter below.
-_CODE_LETTER_TABLE = [
-    (8, "A"), (15, "B"), (25, "C"), (50, "D"), (90, "E"), (150, "F"),
-    (280, "G"), (500, "H"), (1200, "J"), (3200, "K"), (10000, "L"),
-    (35000, "M"), (150000, "N"), (500000, "P"),
-]
+# ISO 2859-1 Table 1: lot size -> sample size code letter, per general
+# inspection level. Each entry is the upper bound of a lot-size range;
+# lots above 500 000 take the last letter (I: N, II: Q, III: R).
+# Level II is the standard's default; III samples more (more
+# discrimination), I fewer.
+_LOT_SIZE_BOUNDS = (8, 15, 25, 50, 90, 150, 280, 500, 1200, 3200, 10000, 35000, 150000, 500000)
+_CODE_LETTERS_BY_GENERAL_LEVEL: dict[GeneralLevel, str] = {
+    #                  2   9  16  26  51  91 151 281 501 1201 3201 10001 35001 150001 500001+
+    GeneralLevel.I:   "AABCCDEFGHJKLMN",
+    GeneralLevel.II:  "ABCDEFGHJKLMNPQ",
+    GeneralLevel.III: "BCDEFGHJKLMNPQR",
+}
 
 _LETTERS = "ABCDEFGHJKLMNPQRS"
 
@@ -96,11 +101,12 @@ _AC_TABLES: dict[AQLStatus, dict[str, tuple]] = {
 INSPECTION_LEVELS: tuple[AQLStatus, ...] = (AQLStatus.normal, AQLStatus.tightened, AQLStatus.reduced)
 
 
-def _code_letter(batch_size: int) -> str:
-    for max_size, letter in _CODE_LETTER_TABLE:
+def _code_letter(batch_size: int, general_level: GeneralLevel = GeneralLevel.II) -> str:
+    letters = _CODE_LETTERS_BY_GENERAL_LEVEL[GeneralLevel(general_level)]
+    for i, max_size in enumerate(_LOT_SIZE_BOUNDS):
         if batch_size <= max_size:
-            return letter
-    return "Q"
+            return letters[i]
+    return letters[-1]
 
 
 def _closest_aql(aql: float) -> float:
@@ -127,18 +133,22 @@ def _resolve(level: AQLStatus, letter: str, aql: float) -> tuple[str, int, int]:
 
 def compute_sample_size(
     batch_size: int, aql_level: float, inspection_level: AQLStatus = AQLStatus.normal,
+    general_level: GeneralLevel = GeneralLevel.II,
 ) -> tuple[int, int]:
     """Return (table_sample_size, acceptance_number) for a lot size and AQL,
     snapping an untabulated AQL to the nearest column. Callers cap the
     sample at the lot size."""
-    _, n, ac = _resolve(AQLStatus(inspection_level), _code_letter(batch_size), _closest_aql(aql_level))
+    _, n, ac = _resolve(
+        AQLStatus(inspection_level), _code_letter(batch_size, general_level), _closest_aql(aql_level),
+    )
     return n, ac
 
 
 def sampling_plan(
     lot_size: int, aql_level: float, inspection_level: AQLStatus = AQLStatus.normal,
+    general_level: GeneralLevel = GeneralLevel.II,
 ) -> dict[str, Any]:
-    """Single sampling plan, general inspection level II, for an exact
+    """Single sampling plan, at the given general inspection level, for an exact
     tabulated AQL and an inspection level (normal / tightened / reduced) —
     unlike compute_sample_size, which snaps to the nearest column, an AQL
     that isn't in the table is rejected, so a report can never claim an AQL
@@ -151,7 +161,7 @@ def sampling_plan(
             status_code=422,
             detail=f"aql_level must be one of {list(AVAILABLE_AQLS)}",
         )
-    letter = _code_letter(lot_size)
+    letter = _code_letter(lot_size, general_level)
     _, table_size, acceptance_number = _resolve(AQLStatus(inspection_level), letter, aql_level)
     return {
         "code_letter": letter,
@@ -161,11 +171,13 @@ def sampling_plan(
     }
 
 
-def plans_by_level(lot_size: int, aql_level: float) -> dict[str, dict[str, Any]]:
+def plans_by_level(
+    lot_size: int, aql_level: float, general_level: GeneralLevel = GeneralLevel.II,
+) -> dict[str, dict[str, Any]]:
     """The plan each inspection level would give this lot — what the
     supervisor chooses between."""
     aql = _closest_aql(aql_level)
-    return {lvl.value: sampling_plan(lot_size, aql, lvl) for lvl in INSPECTION_LEVELS}
+    return {lvl.value: sampling_plan(lot_size, aql, lvl, general_level) for lvl in INSPECTION_LEVELS}
 
 
 async def get_config(db: AsyncSession, project_id: int) -> AQLConfig | None:
@@ -186,6 +198,13 @@ async def get_current_aql_level(db: AsyncSession, project_id: int) -> float:
     if config is None:
         return 1.5
     return _closest_aql(config.normal_aql)
+
+
+async def get_general_level(db: AsyncSession, project_id: int) -> GeneralLevel:
+    """The project's ISO 2859-1 general inspection level (I / II / III),
+    which picks the code-letter column of Table 1. II when unconfigured."""
+    config = await get_config(db, project_id)
+    return config.general_level if config else GeneralLevel.II
 
 
 async def get_suggested_level(db: AsyncSession, project_id: int) -> AQLStatus:
@@ -221,6 +240,8 @@ async def update_config(
     for field, value in updates.items():
         if field == "sampling_mode":
             value = SamplingMode(value)
+        elif field == "general_level":
+            value = GeneralLevel(value)
         current = getattr(config, field)
         current_comparable = current.value if hasattr(current, "value") else current
         if current_comparable == (value.value if hasattr(value, "value") else value):
