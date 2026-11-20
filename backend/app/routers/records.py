@@ -45,6 +45,7 @@ async def get_record(
 ):
     record = await _get_authorized_record(record_id, db, current_user)
     await record_service.attach_task_attribution(db, [record])
+    await record_service.attach_sent_back(db, [record])
     return record
 
 

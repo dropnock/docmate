@@ -136,6 +136,10 @@ async def complete_task(
         # which isn't "rework" in the QA-rejection sense.
         if status_before_completion == RecordStatus.qa_failed:
             reason = VersionReason.rework_after_qa
+        # qc_failed → QA correcting a record customer QC rejected (fail_task
+        # routes it to a QC Rework batch with a fresh QA task).
+        elif status_before_completion == RecordStatus.qc_failed:
+            reason = VersionReason.rework_after_customer_rejection
         elif record.current_version == 1:
             reason = VersionReason.initial_indexing
         else:

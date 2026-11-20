@@ -44,6 +44,11 @@ async def lifespan(app: FastAPI):
         await sync_de_client()
     except Exception:
         logger.exception("Failed to sync docmate-de Keycloak client redirect URIs at startup")
+    try:
+        from app.services.keycloak_service import sync_customer_realms
+        await sync_customer_realms()
+    except Exception:
+        logger.exception("Failed to check customer Keycloak realms' required actions at startup")
 
     yield
 

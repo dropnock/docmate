@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from urllib.parse import urlparse
@@ -244,6 +245,89 @@ def _make_admin(realm: str = "master") -> KeycloakAdmin:
     return KeycloakAdmin(connection=conn)
 
 
+# Required actions a customer realm registers. Creating a realm with an
+# explicit requiredActions list registers only these, not Keycloak's
+# defaults, so UPDATE_PASSWORD must be listed: without it the
+# requiredActions=["UPDATE_PASSWORD"] create_user_in_realm puts on every new
+# user is silently ignored and temporary passwords are never changed.
+CUSTOMER_REQUIRED_ACTIONS = [
+    {
+        "alias": "CONFIGURE_TOTP",
+        "name": "Configure OTP",
+        "providerId": "CONFIGURE_TOTP",
+        "enabled": False,
+        "defaultAction": False,
+        "priority": 10,
+        "config": {},
+    },
+    {
+        "alias": "UPDATE_PASSWORD",
+        "name": "Update Password",
+        "providerId": "UPDATE_PASSWORD",
+        "enabled": True,
+        "defaultAction": False,
+        "priority": 30,
+        "config": {},
+    },
+]
+
+
+def ensure_customer_required_actions(realm_slug: str) -> list[str]:
+    """Register and enable the required actions a customer realm needs
+    (CUSTOMER_REQUIRED_ACTIONS entries with enabled=True). Realms created
+    before UPDATE_PASSWORD was added to the template lack it. Idempotent;
+    returns the aliases it changed."""
+    admin = _make_admin("master")
+    admin.connection.realm_name = realm_slug
+    current = {a["alias"]: a for a in admin.get_required_actions()}
+    changed = []
+    for spec in CUSTOMER_REQUIRED_ACTIONS:
+        if not spec["enabled"]:
+            continue
+        alias = spec["alias"]
+        if alias not in current:
+            resp = admin.connection.raw_post(
+                f"admin/realms/{realm_slug}/authentication/register-required-action",
+                data=json.dumps({"providerId": spec["providerId"], "name": spec["name"]}),
+            )
+            if resp.status_code not in (200, 201, 204, 409):  # 409: another worker registered it
+                raise RuntimeError(f"register {alias} in {realm_slug}: HTTP {resp.status_code} {resp.text[:200]}")
+            admin.update_required_action(alias, {**spec})
+            changed.append(alias)
+        elif not current[alias].get("enabled"):
+            admin.update_required_action(alias, {**current[alias], "enabled": True})
+            changed.append(alias)
+    return changed
+
+
+_CUSTOMER_REALM_SYNC_LOCK_KEY = 8_791_234_002_518
+
+
+async def sync_customer_realms() -> None:
+    """Startup: make sure every customer realm enforces UPDATE_PASSWORD (see
+    CUSTOMER_REQUIRED_ACTIONS). Serialised across gunicorn workers with an
+    advisory lock, like sync_de_client; one bad realm doesn't stop the rest."""
+    from sqlalchemy import select
+
+    from app.models.organization import Organization
+
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _CUSTOMER_REALM_SYNC_LOCK_KEY})
+        try:
+            slugs = (await db.execute(
+                select(Organization.realm_slug).where(Organization.realm_slug.is_not(None)).distinct()
+            )).scalars().all()
+            for slug in slugs:
+                try:
+                    changed = ensure_customer_required_actions(slug)
+                    if changed:
+                        logger.info("Enabled required actions %s in customer realm %s", changed, slug)
+                except Exception:
+                    logger.exception("Could not check required actions in customer realm %s", slug)
+        finally:
+            await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _CUSTOMER_REALM_SYNC_LOCK_KEY})
+
+
 def create_customer_realm(realm_slug: str, display_name: str) -> None:
     admin = _make_admin("master")
     admin.create_realm(
@@ -263,17 +347,7 @@ def create_customer_realm(realm_slug: str, display_name: str) -> None:
             "otpPolicyAlgorithm": "HmacSHA1",
             "otpPolicyDigits": 6,
             "otpPolicyPeriod": 30,
-            "requiredActions": [
-                {
-                    "alias": "CONFIGURE_TOTP",
-                    "name": "Configure OTP",
-                    "providerId": "CONFIGURE_TOTP",
-                    "enabled": False,
-                    "defaultAction": False,
-                    "priority": 10,
-                    "config": {},
-                }
-            ],
+            "requiredActions": CUSTOMER_REQUIRED_ACTIONS,
         },
         skip_exists=True,
     )
