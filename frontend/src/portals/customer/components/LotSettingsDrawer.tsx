@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   Alert, Button, Card, Col, Descriptions, Drawer, Form, InputNumber, Row,
-  Segmented, Slider, Spin, Table, Tag, Typography, message,
+  Segmented, Select, Slider, Spin, Table, Tag, Typography, message,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@shared/api/errors";
@@ -10,7 +10,10 @@ import { applySample, getQcFieldResults, lotDetailKey, getLot, sendForRemediatio
 import LotHistory from "@shared/components/LotHistory";
 import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
+import InspectionLevelTag from "@shared/components/InspectionLevelTag";
 import type { AQLConfig } from "@shared/types";
+
+const AQL_OPTIONS = [0.65, 1.0, 1.5, 2.5].map((v) => ({ value: v, label: `${v}%` }));
 
 interface Props {
   lotId: number | undefined;
@@ -56,9 +59,13 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
   const isIso = aqlConfig?.sampling_mode === "iso";
   const notYetSampled = lotDetail?.status === "released";
 
+  // The level the digitizing supervisor set for this lot; lots inspected
+  // before levels were set per lot fall back to the project's suggestion.
+  const lotLevel = lotDetail?.inspection_level ?? aqlConfig?.current_status ?? "normal";
+
   const { data: preview } = useQuery({
-    queryKey: ["sample-size-preview", totalRecords, aqlConfig?.current_aql_level],
-    queryFn: () => getSampleSizePreview(totalRecords, aqlConfig!.current_aql_level),
+    queryKey: ["sample-size-preview", totalRecords, aqlConfig?.current_aql_level, lotLevel],
+    queryFn: () => getSampleSizePreview(totalRecords, aqlConfig!.current_aql_level, lotLevel),
     enabled: !!lotDetail && notYetSampled && isIso && totalRecords > 0,
   });
 
@@ -159,10 +166,9 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
             ) : (
               <>
                 <Descriptions size="small" column={2} bordered style={{ marginBottom: 16 }}>
-                  <Descriptions.Item label="Current Status">
-                    <Tag>{aqlConfig.current_status.toUpperCase()}</Tag>
+                  <Descriptions.Item label="Suggested level for next lot" span={2}>
+                    <InspectionLevelTag level={aqlConfig.current_status} />
                   </Descriptions.Item>
-                  <Descriptions.Item label="Current AQL Level">{aqlConfig.current_aql_level}</Descriptions.Item>
                   <Descriptions.Item label="Consecutive Passes">{aqlConfig.consecutive_passes}</Descriptions.Item>
                   <Descriptions.Item label="Consecutive Failures">{aqlConfig.consecutive_failures}</Descriptions.Item>
                 </Descriptions>
@@ -181,31 +187,21 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                       ]}
                     />
                   </Form.Item>
-                  <Row gutter={12}>
-                    <Col span={8}>
-                      <Form.Item name="normal_aql" label="Normal AQL %">
-                        <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name="tightened_aql" label="Tightened AQL %">
-                        <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name="reduced_aql" label="Reduced AQL %">
-                        <InputNumber min={0} step={0.1} style={{ width: "100%" }} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+                  <Form.Item
+                    name="normal_aql"
+                    label="Quality requirement (AQL %)"
+                    tooltip="The project's acceptance quality limit. Normal, tightened and reduced inspection all use it, with ISO 2859-1's own sample sizes and acceptance numbers for each level."
+                  >
+                    <Select options={AQL_OPTIONS} style={{ width: 160 }} />
+                  </Form.Item>
                   <Row gutter={12}>
                     <Col span={12}>
-                      <Form.Item name="passes_to_reduce" label="Passes to Reduce" tooltip="Consecutive accepted lots that move tightened inspection back to normal, and normal to reduced. Only a lot's first QC round counts.">
+                      <Form.Item name="passes_to_reduce" label="Passes to Reduce" tooltip="Consecutive accepted lots after which the suggested level moves from tightened back to normal, and from normal to reduced. Only a lot's first QC round counts. The digitizing supervisor sets each lot's level.">
                         <InputNumber min={1} style={{ width: "100%" }} />
                       </Form.Item>
                     </Col>
                     <Col span={12}>
-                      <Form.Item name="failures_to_tighten" label="Failures to Tighten" tooltip="Consecutive rejected lots that move normal inspection to tightened. Under reduced inspection, any rejected lot returns to normal.">
+                      <Form.Item name="failures_to_tighten" label="Failures to Tighten" tooltip="Consecutive rejected lots after which the suggested level moves from normal to tightened. Under reduced inspection, any rejected lot suggests normal again.">
                         <InputNumber min={1} style={{ width: "100%" }} />
                       </Form.Item>
                     </Col>
@@ -230,6 +226,9 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                 <div style={{ marginTop: 12 }}>
                   {preview ? (
                     <Descriptions size="small" column={2} bordered>
+                      <Descriptions.Item label="Inspection level" span={2}>
+                        <InspectionLevelTag level={lotLevel} />
+                      </Descriptions.Item>
                       <Descriptions.Item label="ISO Sample Size">{preview.sample_size}</Descriptions.Item>
                       <Descriptions.Item label="Acceptance Number">{preview.acceptance_number}</Descriptions.Item>
                     </Descriptions>
@@ -286,6 +285,11 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
               )
             ) : (
               <Descriptions size="small" column={2} bordered style={{ marginTop: 12 }}>
+                {lotDetail.aql_status_snapshot && (
+                  <Descriptions.Item label="Inspection level" span={2}>
+                    <InspectionLevelTag level={lotDetail.aql_status_snapshot} />
+                  </Descriptions.Item>
+                )}
                 <Descriptions.Item label="Sample Rate">
                   {lotDetail.sample_rate !== null ? `${(lotDetail.sample_rate * 100).toFixed(1)}%` : "—"}
                 </Descriptions.Item>

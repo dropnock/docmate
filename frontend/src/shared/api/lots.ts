@@ -1,7 +1,7 @@
 import api from "@shared/api/client";
 import type {
-  AuditEvent, AvailableStaff, FieldResult, Lot, LotDetail, LotInspectionDetail, LotInspectionList,
-  LotInspectionReport, QcFieldResultsOut,
+  AuditEvent, AvailableStaff, FieldResult, InspectionLevel, Lot, LotDetail, LotInspectionDetail,
+  LotInspectionList, LotInspectionReport, QcFieldResultsOut,
 } from "@shared/types";
 
 /** Shared across CustomerLotManager, LotSettingsDrawer, and LotAssignQcDrawer
@@ -50,9 +50,9 @@ export function listInspections(lotId: number) {
   return api.get<LotInspectionList>(`/lots/${lotId}/inspections`).then((r) => r.data);
 }
 
-export function startInspection(lotId: number, aqlLevel: number) {
+export function startInspection(lotId: number, inspectionLevel: InspectionLevel) {
   return api
-    .post<LotInspectionDetail>(`/lots/${lotId}/inspections`, { aql_level: aqlLevel })
+    .post<LotInspectionDetail>(`/lots/${lotId}/inspections`, { inspection_level: inspectionLevel })
     .then((r) => r.data);
 }
 

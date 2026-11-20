@@ -12,6 +12,7 @@ from app.models.audit_log import AuditEntityType, AuditLog
 from app.models.batch import Batch, BatchStatus
 from app.models.cabinet import Cabinet
 from app.models.document_type import DocumentType
+from app.models.aql import AQLStatus
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.lot_inspection import InspectionItemStatus, LotInspectionItem, LotInspectionStatus
 from app.models.organization import Organization, OrgType
@@ -77,9 +78,15 @@ async def _make_lot(db: AsyncSession, seed, *, num_records: int) -> tuple[Lot, l
     return lot, records
 
 
-async def _start(db, seed, lot, aql_level=1.5):
+async def _start(db, seed, lot, aql_level=None, level="normal"):
+    """aql_level, when given, becomes the project's AQL first — the
+    inspection always uses the project's AQL; the supervisor picks only
+    the inspection level."""
+    if aql_level is not None:
+        seed["aql_config"].normal_aql = aql_level
+        await db.flush()
     return await lot_inspection_service.start_inspection(
-        db, lot_id=lot.id, aql_level=aql_level,
+        db, lot_id=lot.id, inspection_level=level,
         user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
     )
 
@@ -115,9 +122,13 @@ async def _release(db, seed, lot):
 
 class TestSamplingPlan:
     def test_code_letter_sample_and_numbers(self):
-        # Lot of 20 -> code letter C; at AQL 2.5 the plan is n=5, Ac=1.
+        # Lot of 20 -> code letter C; at AQL 2.5 the plan is n=5, Ac=0.
         assert aql_service.sampling_plan(20, 2.5) == {
-            "code_letter": "C", "sample_size": 5, "acceptance_number": 1, "rejection_number": 2,
+            "code_letter": "C", "sample_size": 5, "acceptance_number": 0, "rejection_number": 1,
+        }
+        # Lot of 60 -> E, an arrow down to F's plan: n=20, Ac=1.
+        assert aql_service.sampling_plan(60, 2.5) == {
+            "code_letter": "E", "sample_size": 20, "acceptance_number": 1, "rejection_number": 2,
         }
 
     def test_sample_capped_at_lot_size(self):
@@ -135,8 +146,10 @@ class TestStartInspection:
         inspection = await _start(db, seed, lot, aql_level=2.5)
 
         assert inspection.sample_size == 5
-        assert inspection.acceptance_number == 1
+        assert inspection.acceptance_number == 0
         assert inspection.code_letter == "C"
+        assert inspection.inspection_level == AQLStatus.normal
+        assert inspection.aql_level == 2.5
         item_ids = sorted(i.record_id for i in await _items(db, inspection))
         expected = sorted(random.Random(inspection.random_seed).sample(sorted(r.id for r in records), 5))
         assert item_ids == expected
@@ -223,8 +236,8 @@ class TestReviewAndComplete:
         assert second.attempt_number == 2
 
     async def test_passed_with_defects_still_waits_for_rework(self, db: AsyncSession, seed):
-        # Lot of 20 at AQL 2.5 -> n=5, Ac=1: one minor defect is accepted.
-        lot, _ = await _make_lot(db, seed, num_records=20)
+        # Lot of 60 at AQL 2.5 -> n=20, Ac=1: one minor defect is accepted.
+        lot, _ = await _make_lot(db, seed, num_records=60)
         inspection = await _start(db, seed, lot, aql_level=2.5)
         await _review_all(db, seed, lot, inspection, {2: {"surname": None}})
         await _complete(db, seed, lot, inspection)
@@ -240,7 +253,7 @@ class TestReviewAndComplete:
         assert lot.status == LotStatus.released
 
     async def test_critical_defect_fails_regardless_of_acceptance_number(self, db: AsyncSession, seed):
-        lot, _ = await _make_lot(db, seed, num_records=20)
+        lot, _ = await _make_lot(db, seed, num_records=60)
         inspection = await _start(db, seed, lot, aql_level=2.5)
         await _review_all(db, seed, lot, inspection, {0: {"dob": "wrong year"}})
         await _complete(db, seed, lot, inspection)
@@ -268,6 +281,51 @@ class TestReviewAndComplete:
             select(AuditLog).where(AuditLog.entity_type == AuditEntityType.lot, AuditLog.entity_id == lot.id)
         )).scalars().all()
         assert len(rows) == 2
+
+
+class TestInspectionLevel:
+    async def test_level_chosen_by_supervisor_sets_the_plan(self, db: AsyncSession, seed):
+        # 100 records at the project's AQL 1.5 (code F): normal n=32 Ac 1,
+        # tightened n=20 Ac 0, reduced n=8 Ac 0.
+        plans = {}
+        for level in ("normal", "tightened", "reduced"):
+            lot, _ = await _make_lot(db, seed, num_records=100)
+            inspection = await _start(db, seed, lot, level=level)
+            plans[level] = (inspection.sample_size, inspection.acceptance_number)
+            assert inspection.inspection_level == AQLStatus(level)
+            assert lot.inspection_level == AQLStatus(level)
+            assert len(await _items(db, inspection)) == inspection.sample_size
+        assert plans == {"normal": (32, 1), "tightened": (20, 0), "reduced": (8, 0)}
+
+    async def test_audit_records_level_and_suggestion(self, db: AsyncSession, seed):
+        seed["aql_config"].current_status = AQLStatus.tightened
+        lot, _ = await _make_lot(db, seed, num_records=3)
+        await _start(db, seed, lot, level="normal")
+        row = (await db.execute(
+            select(AuditLog).where(AuditLog.entity_type == AuditEntityType.lot, AuditLog.entity_id == lot.id)
+        )).scalars().one()
+        assert row.new_value["inspection_level"] == "normal"
+        assert row.new_value["suggested_level"] == "tightened"
+        assert row.new_value["aql_level"] == 1.5
+
+    async def test_unknown_level_rejected(self, db: AsyncSession, seed):
+        lot, _ = await _make_lot(db, seed, num_records=3)
+        with pytest.raises(HTTPException) as exc:
+            await _start(db, seed, lot, level="strict")
+        assert exc.value.status_code == 422
+
+    async def test_released_lot_samples_at_its_level(self, db: AsyncSession, seed):
+        lot, _ = await _make_lot(db, seed, num_records=100)
+        inspection = await _start(db, seed, lot, level="reduced")
+        await _review_all(db, seed, lot, inspection)
+        await _complete(db, seed, lot, inspection)
+        await _release(db, seed, lot)
+        sampled = await lot_service.apply_sample(
+            db, lot_id=lot.id, sample_rate=None,
+            user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        assert (sampled.sample_size, sampled.acceptance_number) == (8, 0)
+        assert sampled.aql_status_snapshot == AQLStatus.reduced
 
 
 class TestReleaseGate:
@@ -317,8 +375,12 @@ class TestInspectionReportEndpoint:
         assert body["final_status"] == "passed"
         assert len(body["inspections"]) == 1
         report = body["inspections"][0]
-        assert report["sample_size"] == 2 and report["acceptance_number"] == 0
-        assert len(report["items"]) == 2
+        assert report["sample_size"] == 3 and report["acceptance_number"] == 0  # 100% of 3
+        # The customer sees the inspection level, never the AQL number.
+        assert body["inspection_level"] == "normal"
+        assert report["inspection_level"] == "normal"
+        assert "aql_level" not in report
+        assert len(report["items"]) == 3
         assert {f["title"] for f in report["items"][0]["field_results"]} == {"Surname", "Date of Birth"}
 
     async def test_other_customer_org_cannot_see_report(self, db: AsyncSession, seed, client):
@@ -343,12 +405,23 @@ class TestInspectionReportEndpoint:
 
         resp = await client.get(f"/api/lots/{lot.id}/inspections", headers=headers)
         assert resp.status_code == 200
-        assert resp.json()["default_aql_level"] == 1.5
-        assert resp.json()["available_aql_levels"] == [0.65, 1.0, 1.5, 2.5]
+        body = resp.json()
+        assert body["aql_level"] == 1.5
+        assert body["suggested_level"] == "normal"
+        assert body["lot_size"] == 3
+        assert set(body["level_plans"]) == {"normal", "tightened", "reduced"}
+        assert body["level_plans"]["normal"]["sample_size"] == 3  # capped: 100%
 
-        resp = await client.post(f"/api/lots/{lot.id}/inspections", json={"aql_level": 1.5}, headers=headers)
+        resp = await client.post(
+            f"/api/lots/{lot.id}/inspections", json={"aql_level": 1.5}, headers=headers,
+        )
+        assert resp.status_code == 422  # the level is required, the AQL isn't chosen here
+        resp = await client.post(
+            f"/api/lots/{lot.id}/inspections", json={"inspection_level": "tightened"}, headers=headers,
+        )
         assert resp.status_code == 201
         detail = resp.json()
+        assert detail["inspection_level"] == "tightened"
         assert detail["reviewed_count"] == 0
         for item in detail["items"]:
             resp = await client.put(
@@ -370,7 +443,7 @@ class TestInspectionReportEndpoint:
         cust = await _make_customer_supervisor(db, seed["cust_org"].id, seed)
         await db.commit()
         resp = await client.post(
-            f"/api/lots/{lot.id}/inspections", json={"aql_level": 1.5},
+            f"/api/lots/{lot.id}/inspections", json={"inspection_level": "normal"},
             headers={"Authorization": f"Bearer {token(cust)}", "X-Portal": "customer"},
         )
         assert resp.status_code == 403

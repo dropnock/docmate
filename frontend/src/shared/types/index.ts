@@ -48,6 +48,8 @@ export interface CabinetRecord {
   on_hold?: boolean;
 }
 
+export type InspectionLevel = "normal" | "tightened" | "reduced";
+
 export interface Lot {
   id: number;
   project_id: number;
@@ -58,7 +60,10 @@ export interface Lot {
   sample_size: number | null;
   acceptance_number: number | null;
   accuracy_rate: number | null;
-  aql_status_snapshot: "normal" | "tightened" | "reduced" | null;
+  /** Inspection level the customer's sample was drawn under. */
+  aql_status_snapshot: InspectionLevel | null;
+  /** Inspection level the supervisor set for the lot when inspecting it. */
+  inspection_level: InspectionLevel | null;
   qc_completed_at: string | null;
   critical_defect_count: number | null;
   minor_defect_count: number | null;
@@ -78,7 +83,7 @@ export interface LotQcRound {
   sample_size: number | null;
   acceptance_number: number | null;
   accuracy_rate: number | null;
-  aql_status_snapshot: "normal" | "tightened" | "reduced" | null;
+  aql_status_snapshot: InspectionLevel | null;
   critical_defect_count: number | null;
   minor_defect_count: number | null;
   sampled_record_ids: number[];
@@ -96,7 +101,8 @@ export interface QcProjectSummary {
 }
 
 export interface AQLConfig {
-  current_status: string;
+  /** Suggested inspection level for the next lot (ISO 2859-1 switching). */
+  current_status: InspectionLevel;
   current_aql_level: number;
   consecutive_passes: number;
   consecutive_failures: number;
@@ -392,7 +398,9 @@ export interface LotInspectionSummary {
   lot_id: number;
   attempt_number: number;
   status: LotInspectionStatus;
-  aql_level: number;
+  /** Omitted from the customer's report: customers see the level only. */
+  aql_level?: number;
+  inspection_level: InspectionLevel;
   lot_size: number;
   code_letter: string;
   sample_size: number;
@@ -415,9 +423,20 @@ export interface LotInspectionDetail extends LotInspectionSummary {
   field_tally: InspectionFieldTally[];
 }
 
+export interface SamplingPlan {
+  code_letter: string;
+  sample_size: number;
+  acceptance_number: number;
+  rejection_number: number;
+}
+
 export interface LotInspectionList {
-  available_aql_levels: number[];
-  default_aql_level: number;
+  /** The project's AQL; the supervisor chooses only the level. */
+  aql_level: number;
+  /** What ISO 2859-1's switching rules suggest for this lot. */
+  suggested_level: InspectionLevel;
+  lot_size: number;
+  level_plans: Partial<Record<InspectionLevel, SamplingPlan>>;
   inspections: LotInspectionSummary[];
 }
 
@@ -430,5 +449,6 @@ export interface LotInspectionReport {
   released_at: string | null;
   standard: string;
   final_status: LotInspectionStatus | null;
+  inspection_level: InspectionLevel | null;
   inspections: LotInspectionDetail[];
 }

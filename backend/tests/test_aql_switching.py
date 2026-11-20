@@ -77,11 +77,18 @@ class TestDrivenByLots:
         assert event.new_value == {"aql_status": "tightened"}
         assert event.metadata_["lot_passed"] is False
 
-        # The next lot is sampled under tightened inspection.
+        # Tightened is now only the suggestion: the next lot is sampled
+        # under whatever level the supervisor sets when inspecting it.
+        assert await aql_service.get_suggested_level(db, seed["project"].id) == AQLStatus.tightened
         nxt, _ = await _make_lot(db, seed, num_records=2)
-        await _inspect_and_release(db, seed, nxt)
+        await _inspect_and_release(db, seed, nxt, level="tightened")
         await _customer_qc(db, seed, nxt, fail_first=False)
         assert nxt.aql_status_snapshot == AQLStatus.tightened
+
+        overridden, _ = await _make_lot(db, seed, num_records=2)
+        await _inspect_and_release(db, seed, overridden, level="normal")
+        await _customer_qc(db, seed, overridden, fail_first=False)
+        assert overridden.aql_status_snapshot == AQLStatus.normal
 
     async def test_passed_lots_count_toward_reduced(self, db: AsyncSession, seed):
         seed["aql_config"].passes_to_reduce = 2

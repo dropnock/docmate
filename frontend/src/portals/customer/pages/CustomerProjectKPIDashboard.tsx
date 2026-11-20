@@ -76,7 +76,7 @@ export default function CustomerProjectKPIDashboard({ projectId }: Props) {
       render: (v: string | null) => (v ? dayjs(v).format("YYYY-MM-DD") : "—"),
     },
     {
-      title: "AQL Status",
+      title: "Inspection Level",
       dataIndex: "aql_status_snapshot",
       render: (v: string | null) => (v ? <Tag>{AQL_STATUS_LABEL[v] ?? v.toUpperCase()}</Tag> : "—"),
     },
@@ -169,9 +169,9 @@ export default function CustomerProjectKPIDashboard({ projectId }: Props) {
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8} lg={6}>
-          <Card title="AQL Status">
-            <Tag>{aql?.current_status?.toUpperCase()}</Tag>
-            <div style={{ marginTop: 8, fontSize: 12 }}>Level: {aql?.current_aql_level}</div>
+          <Card title="Suggested Inspection Level">
+            <Tag>{aql?.current_status ? AQL_STATUS_LABEL[aql.current_status] ?? aql.current_status : "—"}</Tag>
+            <div style={{ marginTop: 8, fontSize: 12 }}>For the next lot (ISO 2859-1 switching)</div>
             <div style={{ fontSize: 12 }}>Consecutive failures: {aql?.consecutive_failures}</div>
           </Card>
         </Col>

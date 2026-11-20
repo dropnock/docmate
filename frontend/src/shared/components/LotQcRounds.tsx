@@ -1,5 +1,6 @@
 import { Table, Tag, Typography } from "antd";
 import dayjs from "dayjs";
+import InspectionLevelTag from "@shared/components/InspectionLevelTag";
 import type { LotQcRound } from "@shared/types";
 
 /** Earlier customer QC rounds of a lot (each one failed, then resubmitted
@@ -23,6 +24,11 @@ export default function LotQcRounds({ rounds, currentRound }: { rounds: LotQcRou
             title: "Result",
             dataIndex: "status",
             render: (s: string) => <Tag color={s === "passed" ? "green" : "red"}>{s === "passed" ? "Passed" : "Failed"}</Tag>,
+          },
+          {
+            title: "Level",
+            dataIndex: "aql_status_snapshot",
+            render: (v: LotQcRound["aql_status_snapshot"]) => <InspectionLevelTag level={v} />,
           },
           {
             title: "Sample",

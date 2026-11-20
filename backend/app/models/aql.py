@@ -22,18 +22,23 @@ class AQLConfig(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id"), unique=True, nullable=False)
+    # Suggested inspection level for the next lot, moved by
+    # aql_service.apply_switching; the supervisor sets each lot's level.
     current_status: Mapped[AQLStatus] = mapped_column(
         Enum(AQLStatus), default=AQLStatus.normal, nullable=False
     )
     consecutive_passes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # The project's AQL. Tightened and reduced inspection use the same AQL
+    # with ISO 2859-1's tightened / reduced tables (aql_service), so
+    # tightened_aql and reduced_aql are no longer read; kept for history.
     normal_aql: Mapped[float] = mapped_column(Float, default=1.5, nullable=False)
     tightened_aql: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     reduced_aql: Mapped[float] = mapped_column(Float, default=2.5, nullable=False)
     passes_to_reduce: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     failures_to_tighten: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     # Default "iso": the lot's sample size is computed from the ISO 2859-1
-    # table (aql_service.compute_sample_size), matching the standard exactly.
+    # table for the lot's inspection level (aql_service.compute_sample_size).
     # A customer can opt out to "manual" to keep the old supervisor-chosen
     # percentage behavior instead — see lot_service.apply_sample.
     sampling_mode: Mapped[SamplingMode] = mapped_column(

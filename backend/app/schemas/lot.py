@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -26,6 +26,7 @@ class LotOut(BaseModel):
     acceptance_number: int | None
     accuracy_rate: float | None
     aql_status_snapshot: str | None = None
+    inspection_level: str | None = None
     qc_completed_at: datetime | None = None
     critical_defect_count: int | None = None
     minor_defect_count: int | None = None
@@ -79,8 +80,8 @@ class QcFieldResultsOut(BaseModel):
 
 
 class StartInspectionRequest(BaseModel):
-    # Must be one of aql_service.AVAILABLE_AQLS — validated there.
-    aql_level: float
+    # The lot's ISO 2859-1 inspection level; the AQL is the project's.
+    inspection_level: Literal["normal", "tightened", "reduced"]
 
 
 class ReviewInspectionItemRequest(BaseModel):

@@ -28,8 +28,8 @@ ACCEPT = [FieldResultIn(field_key="surname", status="accepted"), FieldResultIn(f
 CRITICAL = [FieldResultIn(field_key="surname", status="accepted"), FieldResultIn(field_key="dob", status="defective")]
 
 
-async def _inspect_and_release(db, seed, lot):
-    inspection = await _start(db, seed, lot)
+async def _inspect_and_release(db, seed, lot, level="normal"):
+    inspection = await _start(db, seed, lot, level=level)
     await _review_all(db, seed, lot, inspection)
     await _complete(db, seed, lot, inspection)
     await _release(db, seed, lot)

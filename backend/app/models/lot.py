@@ -33,11 +33,17 @@ class Lot(Base, TimestampMixin):
     # same field name/meaning as BatchQCResult.acceptance_number.
     acceptance_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     accuracy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # Snapshot of AQLConfig.current_status (normal/tightened/reduced) at the
-    # moment this lot was sampled (see apply_sample) — the real ISO 2859-1
-    # inspection-level concept for reporting, frozen so it can't drift if the
-    # project's live status later changes. Set for both iso and manual mode.
+    # The inspection level (normal/tightened/reduced) the customer's sample
+    # was drawn under (see apply_sample: Lot.inspection_level, or the
+    # project's suggested level for lots inspected before levels were set
+    # per lot), frozen for reporting. Set for both iso and manual mode.
     aql_status_snapshot: Mapped[AQLStatus | None] = mapped_column(Enum(AQLStatus), nullable=True)
+    # The inspection level (normal / tightened / reduced) the digitizing
+    # supervisor set for this lot when starting its outgoing inspection
+    # (lot_inspection_service.start_inspection). The customer's ISO sampling
+    # (apply_sample) uses the same level; aql_status_snapshot then records
+    # the level that sample was actually drawn under.
+    inspection_level: Mapped[AQLStatus | None] = mapped_column(Enum(AQLStatus), nullable=True)
     # Set by calculate_accuracy the moment it finalizes lot.status to
     # passed/failed — NOT derivable from updated_at, which bumps on every
     # later write (e.g. send_for_remediation) and would silently drift.

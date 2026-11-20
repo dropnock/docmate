@@ -1,9 +1,12 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import check_project_access, get_current_user, require_roles
 from app.models.project import Project
+from app.models.aql import AQLStatus
 from app.schemas.aql import AQLConfigOut, AQLConfigUpdate
 from app.services import aql_service
 from app.services.aql_service import compute_sample_size, get_current_aql_level
@@ -73,7 +76,13 @@ async def update_aql_config(
 async def calc_sample_size(
     batch_size: int,
     aql_level: float = 1.5,
+    inspection_level: Literal["normal", "tightened", "reduced"] = "normal",
     current_user=Depends(get_current_user),
 ):
-    size, acceptance = compute_sample_size(batch_size, aql_level)
-    return {"sample_size": size, "acceptance_number": acceptance, "aql_level": aql_level}
+    size, acceptance = compute_sample_size(batch_size, aql_level, AQLStatus(inspection_level))
+    return {
+        "sample_size": min(size, batch_size) if batch_size > 0 else 0,
+        "acceptance_number": acceptance,
+        "aql_level": aql_level,
+        "inspection_level": inspection_level,
+    }

@@ -23,6 +23,7 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.aql import AQLStatus
 from app.models.audit_log import AuditAction, AuditEntityType
 from app.models.batch import Batch
 from app.models.document_type import DocumentType
@@ -110,10 +111,19 @@ async def start_inspection(
     db: AsyncSession,
     *,
     lot_id: int,
-    aql_level: float,
+    inspection_level: AQLStatus | str,
     user_id: int,
     tenant_id: int,
 ) -> LotInspection:
+    """The supervisor sets the lot's inspection level; the AQL is the
+    project's (AQLConfig.normal_aql). The project's switching state only
+    suggests a level — choosing another is allowed and audited as such."""
+    try:
+        inspection_level = AQLStatus(inspection_level)
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="inspection_level must be one of normal, tightened, reduced",
+        )
     lot = await _get_lot(db, lot_id, tenant_id)
     if lot.status != LotStatus.draft:
         raise HTTPException(status_code=409, detail="Only draft lots can be inspected before release")
@@ -138,7 +148,9 @@ async def start_inspection(
             detail=f"{len(not_ready)} record(s) in this lot are not qa_passed (awaiting rework): {sorted(not_ready)}",
         )
 
-    plan = aql_service.sampling_plan(len(records), aql_level)
+    aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
+    suggested_level = await aql_service.get_suggested_level(db, lot.project_id)
+    plan = aql_service.sampling_plan(len(records), aql_level, inspection_level)
     seed = secrets.token_hex(16)
     sampled_ids = random.Random(seed).sample(sorted(r.id for r in records), plan["sample_size"])
     records_by_id = {r.id: r for r in records}
@@ -155,12 +167,14 @@ async def start_inspection(
         attempt_number=(inspections[-1].attempt_number + 1) if inspections else 1,
         status=LotInspectionStatus.in_progress,
         aql_level=aql_level,
+        inspection_level=inspection_level,
         lot_size=len(records),
         random_seed=seed,
         inspected_by=user_id,
         **plan,
     )
     db.add(inspection)
+    lot.inspection_level = inspection_level
     await db.flush()
 
     for rid in sorted(sampled_ids):
@@ -180,6 +194,8 @@ async def start_inspection(
             "inspection_id": inspection.id,
             "attempt_number": inspection.attempt_number,
             "aql_level": aql_level,
+            "inspection_level": inspection_level.value,
+            "suggested_level": suggested_level.value,
             "lot_size": inspection.lot_size,
             **plan,
             "random_seed": seed,
@@ -392,7 +408,7 @@ async def list_inspections(db: AsyncSession, *, lot_id: int, tenant_id: int) -> 
     return await _serialize(db, await _list_inspections(db, lot_id), include_items=False)
 
 
-async def build_report(db: AsyncSession, *, lot: Lot) -> dict:
+async def build_report(db: AsyncSession, *, lot: Lot, include_aql: bool = True) -> dict:
     """The outgoing inspection report shared with the customer: the sampling
     plan, verdict and non-conformity tally of every attempt (cancelled ones
     included, so a re-drawn sample is never hidden), plus the per-record
@@ -403,6 +419,12 @@ async def build_report(db: AsyncSession, *, lot: Lot) -> dict:
     )).scalar_one()
     inspections = await _list_inspections(db, lot.id)
     latest = _latest_effective(inspections)
+    serialized = await _serialize(db, inspections, include_pending_items=True)
+    if not include_aql:
+        # The customer sees each attempt's inspection level, sample size and
+        # Ac/Re, not the AQL number behind them.
+        for entry in serialized:
+            entry.pop("aql_level", None)
     return {
         "lot_id": lot.id,
         "lot_name": lot.name,
@@ -412,7 +434,8 @@ async def build_report(db: AsyncSession, *, lot: Lot) -> dict:
         "released_at": lot.released_at,
         "standard": "ISO 2859-1, single sampling, general inspection level II",
         "final_status": latest.status.value if latest else None,
-        "inspections": await _serialize(db, inspections, include_pending_items=True),
+        "inspection_level": lot.inspection_level.value if lot.inspection_level else None,
+        "inspections": serialized,
     }
 
 
@@ -469,6 +492,7 @@ async def _serialize(
             "attempt_number": inspection.attempt_number,
             "status": inspection.status.value,
             "aql_level": inspection.aql_level,
+            "inspection_level": inspection.inspection_level.value,
             "lot_size": inspection.lot_size,
             "code_letter": inspection.code_letter,
             "sample_size": inspection.sample_size,

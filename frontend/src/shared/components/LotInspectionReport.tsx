@@ -3,6 +3,7 @@ import { Alert, Button, Empty, Spin } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { getInspectionReport, lotInspectionReportKey } from "@shared/api/lots";
 import { formatApiError } from "@shared/api/errors";
+import { INSPECTION_LEVEL } from "@shared/components/InspectionLevelTag";
 import type { LotInspectionDetail, LotInspectionStatus } from "@shared/types";
 
 /** The digitizing supervisor's outgoing ISO 2859-1 inspection report for a
@@ -74,7 +75,11 @@ function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
             <td style={td}><strong>Sample size code letter</strong></td><td style={td}>{inspection.code_letter}</td>
           </tr>
           <tr>
-            <td style={td}><strong>AQL</strong></td><td style={td}>{inspection.aql_level}</td>
+            <td style={td}><strong>Inspection level</strong></td>
+            <td style={td}>
+              {INSPECTION_LEVEL[inspection.inspection_level].label}
+              {inspection.aql_level !== undefined ? ` (AQL ${inspection.aql_level})` : ""}
+            </td>
             <td style={td}><strong>Sample size (n)</strong></td>
             <td style={td}>
               {inspection.sample_size}
@@ -228,8 +233,10 @@ export default function LotInspectionReport({ lotId }: { lotId: number }) {
                 <td style={td}><strong>Released to customer</strong></td><td style={td}>{fmt(report.released_at)}</td>
               </tr>
               <tr>
+                <td style={td}><strong>Inspection level</strong></td>
+                <td style={td}>{report.inspection_level ? INSPECTION_LEVEL[report.inspection_level].label : "—"}</td>
                 <td style={td}><strong>Final inspection result</strong></td>
-                <td style={td} colSpan={3}>
+                <td style={td}>
                   {report.final_status ? <StatusBadge status={report.final_status} /> : "—"}
                   {report.inspections.length > 1 && ` (after ${report.inspections.length} attempts)`}
                 </td>
