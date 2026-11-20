@@ -532,7 +532,7 @@ export default function LotManager({ projectId }: Props) {
                       <span>
                         <InspectionLevelTag level={v} />
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          AQL {i.aql_level} · GIL {i.general_level}
+                          AQL {i.aql_level} · General level {i.general_level}
                         </Typography.Text>
                       </span>
                     ),
