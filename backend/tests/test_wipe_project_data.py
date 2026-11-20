@@ -168,6 +168,54 @@ class TestDeleteDbRows:
         assert await db.get(AuditLog, world["unrelated_audit_id"]) is not None
 
 
+class TestDeletesNewerRecordTables:
+    async def test_flags_holds_notifications_qc_results_and_rounds(self, db: AsyncSession, seed):
+        from app.models.lot import LotQcRound
+        from app.models.notification import Notification
+        from app.models.qc_field_result import QcFieldResult, QcFieldStatus
+        from app.models.record_flag import FlagComment, RecordFlag
+        from app.models.record_hold import RecordHold
+
+        world = await _build_world(db, seed)
+        rec, t, u = world["converted"], seed["tenant"].id, seed["admin"].id
+        flag = RecordFlag(tenant_id=t, project_id=seed["project"].id, record_id=rec.id, reason="x", raised_by=u)
+        db.add(flag)
+        await db.flush()
+        rows = [
+            FlagComment(tenant_id=t, flag_id=flag.id, author_id=u, body="c"),
+            Notification(tenant_id=t, user_id=u, kind="flag_shared", flag_id=flag.id, record_id=rec.id, message="m"),
+            RecordHold(tenant_id=t, project_id=seed["project"].id, record_id=rec.id, reason="h", held_by=u),
+            QcFieldResult(task_id=world["task"].id, record_id=rec.id, lot_id=world["lot"].id, tenant_id=t,
+                          field_key="f", status=QcFieldStatus.accepted, is_critical=False),
+            LotQcRound(tenant_id=t, lot_id=world["lot"].id, round_number=1, status=LotStatus.passed,
+                       record_count=1, sampled_record_ids=[rec.id]),
+        ]
+        db.add_all(rows)
+        await db.commit()
+        ids = [(type(r), r.id) for r in [flag, *rows]]
+
+        scope = await wipe_project_data._gather_scope(db, seed["project"])
+        await wipe_project_data._delete_db_rows(db, scope)
+        await db.commit()
+
+        for model, row_id in ids:
+            assert await db.get(model, row_id) is None, model.__name__
+        assert await db.get(Record, rec.id) is None
+
+
+class TestPromptProject:
+    async def test_asks_until_unambiguous_and_skips_excluded(self, db: AsyncSession, seed, monkeypatch):
+        other = Project(tenant_id=seed["tenant"].id, digitizing_org_id=seed["project"].digitizing_org_id,
+                        customer_org_id=seed["project"].customer_org_id,
+                        name="Training")
+        db.add(other)
+        await db.commit()
+        answers = iter(["nope", str(seed["project"].id), "Training"])
+        monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+        chosen = await wipe_project_data._prompt_project(db, "Pick", exclude=seed["project"].id)
+        assert chosen.id == other.id
+
+
 class TestDeleteS3Objects:
     async def test_best_effort_continues_past_one_failure(self, db: AsyncSession, seed, monkeypatch):
         world = await _build_world(db, seed)
@@ -252,9 +300,9 @@ class TestResolveProject:
 
 
 class TestParseArgs:
-    def test_requires_project_id_or_name(self):
-        with pytest.raises(SystemExit):
-            wipe_project_data.parse_args([])
+    def test_project_is_optional_and_then_asked_for(self):
+        args = wipe_project_data.parse_args([])
+        assert args.project_id is None and args.project_name is None
 
     def test_rejects_both_id_and_name(self):
         with pytest.raises(SystemExit):
