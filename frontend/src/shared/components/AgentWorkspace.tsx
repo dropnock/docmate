@@ -336,9 +336,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                       type="primary"
                       style={{ width: "65%" }}
                       loading={completeMutation.isPending}
-                      onClick={() =>
-                        document.getElementById(`${formId}-submit`)?.click()
-                      }
+                      onClick={() => formRef.current?.submit()}
                     >
                       {task.task_type === "indexing" ? "Done" : "Submit & Complete"}
                     </Button>

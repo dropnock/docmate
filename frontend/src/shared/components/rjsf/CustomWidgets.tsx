@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { AutoComplete, Button, Input, Typography } from "antd";
+import { useState, useEffect, useRef } from "react";
+import { AutoComplete, Button, Input, Typography, type InputRef } from "antd";
 import type { FieldProps, WidgetProps, RJSFSchema } from "@rjsf/utils";
 import HelpTip from "@shared/components/HelpTip";
 
@@ -149,6 +149,7 @@ export function ParcelArrayField({
   const currentItems = (formData ?? []) as Record<string, string>[];
   const [volumeInput, setVolumeInput] = useState("");
   const [folioInput, setFolioInput] = useState("");
+  const folioRef = useRef<InputRef>(null);
 
   // Parse folio input — supports single values, comma-separated, and ranges (400-450).
   const parseFolios = (text: string): string[] => {
@@ -205,11 +206,15 @@ export function ParcelArrayField({
           placeholder="Volume"
           value={volumeInput}
           onChange={(e) => setVolumeInput(e.target.value)}
+          // Enter moves on to Folio (SchemaForm skips this field's Enter
+          // handling and only stops it submitting the record).
+          onPressEnter={() => folioRef.current?.focus()}
           onBlur={handleAdd}
           disabled={disabled}
           style={{ width: 110, fontFamily: "monospace" }}
         />
         <Input
+          ref={folioRef}
           placeholder="Folio — e.g. 400-450, 800"
           value={folioInput}
           onChange={(e) => setFolioInput(e.target.value)}

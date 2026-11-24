@@ -1,4 +1,5 @@
 import Form from "@rjsf/antd";
+import type RjsfForm from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
 import { getDefaultFormState, type RJSFSchema } from "@rjsf/utils";
 import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
@@ -7,6 +8,8 @@ import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
 
 export interface SchemaFormHandle {
   getValues: () => Record<string, unknown>;
+  // Validates and, if valid, calls onSubmit — the only way this form submits.
+  submit: () => void;
 }
 
 interface Props {
@@ -113,20 +116,31 @@ function initialFormData(schema: RJSFSchema, values?: Record<string, unknown>): 
 const FOCUSABLE_SELECTOR =
   'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [role="combobox"]:not([aria-disabled="true"])';
 
-// Enter moves focus to the next field instead of the browser's default
-// implicit-submit behavior (this form has a real <button type="submit">, so
-// without this every plain input would submit the whole record on Enter).
+// Enter moves focus to the next field. It never submits the record: the
+// form renders no submit button at all (see the empty children below), and
+// the workspace footer submits through the handle's submit(). Without a
+// submit button the browser has no default button to click on Enter, and
+// preventDefault here covers the one case where it would still submit
+// implicitly (a form with a single text input).
 // Fields render in schema-property order with no ui:order override anywhere
 // in this codebase, so DOM order already matches visual/schema order — a
 // plain traversal is correct without any separate ordering logic.
 function handleEnterNavigation(e: KeyboardEvent<HTMLDivElement>, root: HTMLDivElement | null) {
   if (e.key !== "Enter" || !root) return;
   const target = e.target as HTMLElement;
-  if (target.tagName === "TEXTAREA") return; // let newline happen
-  if (target.closest("[data-enter-skip]")) return; // widget handles its own Enter (e.g. ParcelArrayField)
+  // Newline in a textarea; normal activation for buttons (array add/remove,
+  // ParcelArrayField's Add/×) — preventing Enter on a button stops its click.
+  if (target.tagName === "TEXTAREA" || target.tagName === "BUTTON") return;
+  if (target.closest("[data-enter-skip]")) {
+    // The widget handles its own Enter (e.g. ParcelArrayField's onPressEnter,
+    // which already ran — React fires the input's handler before this one
+    // bubbles up), but Enter in an input must still never submit the record.
+    if (target.tagName === "INPUT") e.preventDefault();
+    return;
+  }
   e.preventDefault();
   const focusable = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => el.tabIndex !== -1 && el.offsetParent !== null // skip the hidden submit button etc.
+    (el) => el.tabIndex !== -1 && el.offsetParent !== null // skip hidden fields
   );
   const idx = focusable.indexOf(target);
   if (idx === -1 || idx === focusable.length - 1) return; // unknown target or last field: no-op
@@ -146,8 +160,13 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
   );
   const seenInitial = useRef(initialValues !== undefined);
   const formRootRef = useRef<HTMLDivElement>(null);
+  const rjsfRef = useRef<RjsfForm>(null);
 
-  useImperativeHandle(ref, () => ({ getValues: () => formData }), [formData]);
+  useImperativeHandle(
+    ref,
+    () => ({ getValues: () => formData, submit: () => rjsfRef.current?.submit() }),
+    [formData],
+  );
 
   useEffect(() => {
     // Pre-fill only once when initialValues first becomes available (rework case)
@@ -161,6 +180,8 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
     <WorkspaceErrorBoundary>
       <div ref={formRootRef} onKeyDown={(e) => handleEnterNavigation(e, formRootRef.current)}>
         <Form
+          ref={rjsfRef}
+          id={formId}
           schema={processedSchema}
           validator={validator}
           formData={formData}
@@ -174,13 +195,10 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           fields={{ RangeArray: RangeArrayField, ParcelArray: ParcelArrayField } as any}
         >
-          <button
-            id={`${formId}-submit`}
-            type="submit"
-            style={{ display: "none" }}
-            aria-hidden
-            tabIndex={-1}
-          />
+          {/* No submit button — an empty child stops RJSF rendering its
+              default one, so the browser can't submit the record on Enter.
+              Submit goes through the handle's submit() instead. */}
+          <></>
         </Form>
       </div>
     </WorkspaceErrorBoundary>
