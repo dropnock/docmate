@@ -471,10 +471,12 @@ function buildUiForProperties(props: Record<string, unknown>): Record<string, un
     ) {
       const items = field.items as RJSFSchema;
       if (["string", "integer", "number"].includes(items.type as string)) {
-        fieldUi = { "ui:field": "RangeArray" };
+        // hideError: the field renders its own rawErrors under its input;
+        // without this RJSF's wrapper shows each error a second time.
+        fieldUi = { "ui:field": "RangeArray", "ui:hideError": true };
       } else if (items.type === "object" && items.properties) {
         if (hasVolumeFolioPair(items)) {
-          fieldUi = { "ui:field": "ParcelArray" };
+          fieldUi = { "ui:field": "ParcelArray", "ui:hideError": true };
         } else {
           const itemsUi = buildUiForProperties(items.properties as Record<string, unknown>);
           if (Object.keys(itemsUi).length > 0) fieldUi = { items: itemsUi };
