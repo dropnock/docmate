@@ -12,7 +12,9 @@ from app.models.qc_field_result import QcFieldResult, QcFieldStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.schemas.task import FieldResultIn
-from app.services import aql_service, audit_service, hold_service, staff_assignment_service
+from app.services import (
+    aql_service, audit_service, hold_service, required_fields, staff_assignment_service,
+)
 from app.services.lock_service import acquire_lock, release_lock
 
 
@@ -104,6 +106,25 @@ async def start_task(
     return task
 
 
+async def _check_required_fields(db: AsyncSession, *, task: Task, indexed_data: dict) -> None:
+    """422 when a field the document type marks required has no value — the
+    same rules the form enforces (see required_fields). Submit/Done only:
+    Save Progress (PATCH /records/{id}/draft) still accepts partial data."""
+    batch = await db.get(Batch, task.batch_id)
+    doc_type = await db.get(DocumentType, batch.document_type_id) if batch else None
+    schema = (doc_type.json_schema if doc_type else None) or {}
+    missing = required_fields.find_missing_required(schema, indexed_data)
+    if missing:
+        labels = [required_fields.describe_path(schema, p) for p in missing]
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Required fields have no value: " + "; ".join(labels),
+                "missing": [".".join(str(s) for s in p) for p in missing],
+            },
+        )
+
+
 async def complete_task(
     db: AsyncSession,
     *,
@@ -124,6 +145,10 @@ async def complete_task(
 
     record = await db.get(Record, task.record_id)
     status_before_completion = record.status
+
+    if indexed_data is not None and task.task_type in (TaskType.indexing, TaskType.qa):
+        # Before anything is mutated, so a 422 leaves the task untouched.
+        await _check_required_fields(db, task=task, indexed_data=indexed_data)
 
     # Persist indexed data and version it for indexing and QA submissions
     if indexed_data is not None and task.task_type in (TaskType.indexing, TaskType.qa):

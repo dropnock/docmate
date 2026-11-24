@@ -1,0 +1,73 @@
+{
+  "_comment": "Shared by backend/tests/test_required_fields.py (app/services/required_fields.py) and the frontend's requiredRules.ts — both must give the same `missing` paths for every case.",
+  "schemas": {
+    "caveat": {
+      "type": "object",
+      "required": ["caveat_number", "registered_titles"],
+      "properties": {
+        "caveat_number": {"type": "string"},
+        "registered_titles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["volume_number", "folio_number"],
+            "properties": {"volume_number": {"type": "string"}, "folio_number": {"type": "string"}}
+          }
+        },
+        "caveators": {
+          "type": "array",
+          "items": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}, "address": {"$ref": "#/definitions/address"}}}
+        },
+        "owner": {"$ref": "#/definitions/address"},
+        "internal_code": {"type": "string", "x-hidden": true}
+      },
+      "definitions": {
+        "address": {"type": "object", "required": ["city"], "properties": {"line_1": {"type": "string"}, "city": {"type": "string"}}}
+      }
+    },
+    "kinds": {
+      "type": "object",
+      "required": ["count", "flag", "tenancy", "details", "tags", "internal_code"],
+      "properties": {
+        "count": {"type": "integer"},
+        "flag": {"type": "boolean"},
+        "tenancy": {"type": ["string", "null"], "enum": ["sole", null]},
+        "details": {"type": "object", "properties": {"note": {"type": "string"}, "pages": {"type": "integer"}}},
+        "tags": {"type": "array", "items": {"type": "string"}},
+        "internal_code": {"type": "string", "x-hidden": true}
+      }
+    }
+  },
+  "cases": [
+    {"name": "complete caveat", "schema": "caveat",
+     "data": {"caveat_number": "C1", "registered_titles": [{"volume_number": "12", "folio_number": "400"}], "caveators": []},
+     "missing": []},
+    {"name": "required list left empty (the v2 incident)", "schema": "caveat",
+     "data": {"caveat_number": "C1", "registered_titles": []},
+     "missing": ["registered_titles"]},
+    {"name": "required list key missing", "schema": "caveat",
+     "data": {"caveat_number": "C1"},
+     "missing": ["registered_titles"]},
+    {"name": "required list of blank rows", "schema": "caveat",
+     "data": {"caveat_number": "C1", "registered_titles": [{}, {"volume_number": " "}]},
+     "missing": ["registered_titles", "registered_titles.0.volume_number", "registered_titles.0.folio_number", "registered_titles.1.volume_number", "registered_titles.1.folio_number"]},
+    {"name": "item fields checked on every entry that exists", "schema": "caveat",
+     "data": {"caveat_number": "C1", "registered_titles": [{"volume_number": "12", "folio_number": "400"}, {"volume_number": "12", "folio_number": ""}]},
+     "missing": ["registered_titles.1.folio_number"]},
+    {"name": "blank string counts as missing", "schema": "caveat",
+     "data": {"caveat_number": "   ", "registered_titles": [{"volume_number": "12", "folio_number": "400"}]},
+     "missing": ["caveat_number"]},
+    {"name": "optional list may be empty but its entries are checked", "schema": "caveat",
+     "data": {"caveat_number": "C1", "registered_titles": [{"volume_number": "12", "folio_number": "400"}], "caveators": [{"name": "A", "address": {"line_1": "x"}}, {"address": {"city": "Kingston"}}]},
+     "missing": ["caveators.0.address.city", "caveators.1.name"]},
+    {"name": "optional object via $ref: once present (even {}), its required fields apply, as the form's ajv check already does", "schema": "caveat",
+     "data": {"caveat_number": "C1", "registered_titles": [{"volume_number": "1", "folio_number": "2"}], "owner": {}},
+     "missing": ["owner.city"]},
+    {"name": "zero, false and an allowed null are values; hidden field is exempt", "schema": "kinds",
+     "data": {"count": 0, "flag": false, "tenancy": null, "details": {"pages": 3}, "tags": ["a"]},
+     "missing": []},
+    {"name": "empty object, empty list, missing scalars", "schema": "kinds",
+     "data": {"details": {"note": ""}, "tags": []},
+     "missing": ["count", "flag", "tenancy", "details", "tags"]}
+  ]
+}

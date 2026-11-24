@@ -91,6 +91,9 @@ Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises
 - `project_kpis()` — completion %, projected vs proposed end date, on-track flag
 - `burnup_chart_data()` — 30-day actual cumulative + forward projection series
 
+### Required fields (`services/required_fields.py`, `shared/components/requiredRules.ts`)
+A field named in a schema `required` array (any depth) must have a value: not missing/null, text not blank, a list with at least one non-blank entry, an object with at least one value; `0`/`false` count. Item-level `required` applies to every entry that exists; `x-hidden` fields are exempt. The form enforces it via RJSF `customValidate`; `complete_task` re-checks for indexing/QA and 422s with `{message, missing}`. Save Progress is unchecked. The two implementations must agree — both run `backend/tests/fixtures/required_fields_cases.json`.
+
 ### Frontend — two portals, one codebase
 Vite multi-page build with two entry points (`index-digitizing.html`, `index-customer.html`). Portal is detected at runtime from `window.location.hostname`. Shared code lives in `src/shared/`; portal-specific pages under `src/portals/digitizing/` and `src/portals/customer/`.
 

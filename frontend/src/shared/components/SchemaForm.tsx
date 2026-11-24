@@ -1,10 +1,11 @@
 import Form from "@rjsf/antd";
 import type RjsfForm from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
-import { getDefaultFormState, type RJSFSchema } from "@rjsf/utils";
+import { getDefaultFormState, type FormValidation, type RJSFSchema } from "@rjsf/utils";
 import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
 import { RangeArrayField, ParcelArrayField, DateTextWidget, CountryWidget, buildAutoUiSchema } from "./rjsf/CustomWidgets";
 import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
+import { findMissingRequired } from "./requiredRules";
 
 export interface SchemaFormHandle {
   getValues: () => Record<string, unknown>;
@@ -147,6 +148,29 @@ function handleEnterNavigation(e: KeyboardEvent<HTMLDivElement>, root: HTMLDivEl
   focusable[idx + 1]?.focus();
 }
 
+// "required" means the field has a value (see requiredRules.ts): JSON
+// Schema's own check passes "", [] and {}, and this form pre-fills lists and
+// objects with [] / {}. Each missing field gets an inline error; a key that
+// isn't in the data at all has no error slot here, but ajv's own `required`
+// error already covers that case.
+function validateRequired(
+  schema: RJSFSchema,
+  formData: Record<string, unknown> | undefined,
+  errors: FormValidation<Record<string, unknown>>,
+) {
+  for (const path of findMissingRequired(schema, formData)) {
+    let slot: unknown = errors;
+    let value: unknown = formData;
+    for (const seg of path) {
+      slot = (slot as Record<string | number, unknown> | undefined)?.[seg];
+      value = (value as Record<string | number, unknown> | undefined)?.[seg];
+    }
+    const addError = (slot as { addError?: (m: string) => void } | undefined)?.addError;
+    addError?.call(slot, Array.isArray(value) ? "Required — add at least one entry" : "Required");
+  }
+  return errors;
+}
+
 const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
   { schema, initialValues, onSubmit, formId, readOnly }: Props,
   ref,
@@ -188,6 +212,10 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
           onChange={({ formData: fd }) => setFormData(isObjectRecord(fd) ? fd : {})}
           uiSchema={uiSchema}
           onSubmit={({ formData: fd }) => onSubmit(isObjectRecord(fd) ? fd : formData)}
+          customValidate={(fd, errors) => validateRequired(processedSchema, fd, errors)}
+          // A long form scrolls: jump to the first problem so Done doesn't
+          // look like it silently did nothing.
+          focusOnFirstError
           showErrorList={false}
           liveValidate={false}
           disabled={readOnly}
