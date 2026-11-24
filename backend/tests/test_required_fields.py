@@ -80,6 +80,32 @@ async def test_complete_accepts_filled_required_fields(db, seed):
     assert [v.indexed_data for v in versions] == [data]
 
 
+@pytest.mark.parametrize("task_type,user_key", [(TaskType.indexing, "indexer"), (TaskType.qa, "qa_staff")])
+async def test_complete_without_data_checks_what_the_record_holds(db, seed, task_type, user_key):
+    """No indexed_data in the request → the record would complete on its saved
+    (e.g. partial Save Progress) data, so that is what gets checked."""
+    user = seed[user_key]
+    task = await _caveat_task(db, seed, task_type, user)
+    record = await db.get(Record, seed["record"].id)
+    record.indexed_data = {"caveat_number": "C1", "registered_titles": []}  # a partial draft
+    await db.flush()
+
+    with pytest.raises(HTTPException) as exc:
+        await task_service.complete_task(
+            db, task_id=task.id, user_id=user.id, tenant_id=seed["tenant"].id, indexed_data=None,
+        )
+    assert exc.value.status_code == 422
+    assert exc.value.detail["missing"] == ["registered_titles"]
+    assert (await db.get(Task, task.id)).status == TaskStatus.in_progress
+
+    record.indexed_data = {"caveat_number": "C1", "registered_titles": [{"volume_number": "1", "folio_number": "2"}]}
+    await db.flush()
+    done = await task_service.complete_task(
+        db, task_id=task.id, user_id=user.id, tenant_id=seed["tenant"].id, indexed_data=None,
+    )
+    assert done.status == TaskStatus.completed
+
+
 async def test_save_progress_still_accepts_partial_data(client, db, seed):
     from tests.conftest import token
 

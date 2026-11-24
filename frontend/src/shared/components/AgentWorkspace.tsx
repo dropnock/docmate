@@ -84,7 +84,16 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
       api.patch(`/records/${task.record_id}/draft`, { indexed_data }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["record", task.record_id] });
-      message.success("Progress saved");
+      // Partial work is allowed here; Done isn't until these are filled.
+      const missing = formRef.current?.missingRequired() ?? [];
+      if (missing.length) {
+        message.warning({
+          content: `Progress saved. Still required before ${task.task_type === "indexing" ? "Done" : "Submit"}: ${missing.join("; ")}`,
+          duration: 8,
+        });
+      } else {
+        message.success("Progress saved");
+      }
     },
     onError: (e: unknown) => {
       message.error(formatApiError(e, "Save failed — please try again"));

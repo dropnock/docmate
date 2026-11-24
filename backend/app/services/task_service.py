@@ -108,8 +108,10 @@ async def start_task(
 
 async def _check_required_fields(db: AsyncSession, *, task: Task, indexed_data: dict) -> None:
     """422 when a field the document type marks required has no value — the
-    same rules the form enforces (see required_fields). Submit/Done only:
-    Save Progress (PATCH /records/{id}/draft) still accepts partial data."""
+    same rules the form enforces (see required_fields). Every indexing/QA
+    completion goes through here. Save Progress (PATCH /records/{id}/draft)
+    still accepts partial data; the form warns which required fields are
+    still empty, and the record can't complete until they're filled."""
     batch = await db.get(Batch, task.batch_id)
     doc_type = await db.get(DocumentType, batch.document_type_id) if batch else None
     schema = (doc_type.json_schema if doc_type else None) or {}
@@ -146,9 +148,14 @@ async def complete_task(
     record = await db.get(Record, task.record_id)
     status_before_completion = record.status
 
-    if indexed_data is not None and task.task_type in (TaskType.indexing, TaskType.qa):
+    if task.task_type in (TaskType.indexing, TaskType.qa):
         # Before anything is mutated, so a 422 leaves the task untouched.
-        await _check_required_fields(db, task=task, indexed_data=indexed_data)
+        # With no indexed_data in the request the record completes on what
+        # it already holds (e.g. a partial Save Progress draft) — check that.
+        await _check_required_fields(
+            db, task=task,
+            indexed_data=indexed_data if indexed_data is not None else (record.indexed_data or {}),
+        )
 
     # Persist indexed data and version it for indexing and QA submissions
     if indexed_data is not None and task.task_type in (TaskType.indexing, TaskType.qa):

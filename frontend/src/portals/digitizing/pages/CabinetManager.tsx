@@ -530,7 +530,8 @@ export default function CabinetManager({ projectId }: Props) {
                 or inside an object or a list&apos;s <code>items</code>. A required field must have a
                 value: text can&apos;t be blank, and a required list needs at least one entry (fields
                 required inside a list&apos;s items are checked on every entry). Enforced on Submit
-                &amp; Complete and by the server, not on Save Progress. Set <code>"x-hidden": true</code> on a
+                &amp; Complete and by the server; Save Progress still saves partial work but warns
+                which required fields are empty. Set <code>"x-hidden": true</code> on a
                 property to remove it from the form entirely, or <code>"x-disabled": true</code> to show
                 it read-only. Set <code>"x-multiline": true</code> on a string property for a multi-line
                 textbox (or a number, e.g. <code>"x-multiline": 6</code>, for that many rows), or{" "}

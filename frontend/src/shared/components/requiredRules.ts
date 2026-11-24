@@ -87,3 +87,29 @@ export function findMissingRequired(schema: unknown, data: Json): RequiredPath[]
   walk(schema, isNode(data) ? data : {}, [], defs, out);
   return out;
 }
+
+const humanize = (key: string) => key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+
+/** Human label for a path, e.g. "Registered Titles › 2 › Folio Number" —
+ * same format as required_fields.describe_path on the server. */
+export function describeRequiredPath(schema: unknown, path: RequiredPath): string {
+  if (!isNode(schema)) return path.join(" › ");
+  const defs = {
+    ...(isNode(schema.definitions) ? schema.definitions : {}),
+    ...(isNode(schema.$defs) ? schema.$defs : {}),
+  };
+  let node: unknown = schema;
+  const labels: string[] = [];
+  for (const seg of path) {
+    node = resolve(node, defs);
+    if (typeof seg === "number") {
+      labels.push(String(seg + 1));
+      node = isNode(node) ? node.items : undefined;
+    } else {
+      const props = isNode(node) && isNode(node.properties) ? node.properties : undefined;
+      node = resolve(props?.[seg], defs);
+      labels.push(isNode(node) && typeof node.title === "string" ? node.title : humanize(seg));
+    }
+  }
+  return labels.join(" › ");
+}

@@ -5,12 +5,15 @@ import { getDefaultFormState, type FormValidation, type RJSFSchema } from "@rjsf
 import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
 import { RangeArrayField, ParcelArrayField, DateTextWidget, CountryWidget, buildAutoUiSchema } from "./rjsf/CustomWidgets";
 import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
-import { findMissingRequired } from "./requiredRules";
+import { describeRequiredPath, findMissingRequired } from "./requiredRules";
 
 export interface SchemaFormHandle {
   getValues: () => Record<string, unknown>;
   // Validates and, if valid, calls onSubmit — the only way this form submits.
   submit: () => void;
+  // Labels of required fields still without a value (see requiredRules.ts) —
+  // Save Progress saves anyway and lists these as a warning.
+  missingRequired: () => string[];
 }
 
 interface Props {
@@ -188,8 +191,13 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
 
   useImperativeHandle(
     ref,
-    () => ({ getValues: () => formData, submit: () => rjsfRef.current?.submit() }),
-    [formData],
+    () => ({
+      getValues: () => formData,
+      submit: () => rjsfRef.current?.submit(),
+      missingRequired: () =>
+        findMissingRequired(processedSchema, formData).map((p) => describeRequiredPath(processedSchema, p)),
+    }),
+    [formData, processedSchema],
   );
 
   useEffect(() => {
