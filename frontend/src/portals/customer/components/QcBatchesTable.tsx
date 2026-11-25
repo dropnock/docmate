@@ -51,7 +51,17 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
   const open = (b: QcBatchSummary) => b.pending + b.in_progress;
 
   const columns: ColumnType<QcBatchSummary>[] = [
-    { title: "Batch", dataIndex: "name", render: (v: string) => <Typography.Text>{v}</Typography.Text> },
+    {
+      title: "Batch",
+      dataIndex: "name",
+      width: 130,
+      // "QC Batch 32 — 20261125-234709": the stamp repeats the Created column.
+      render: (v: string) => (
+        <Tooltip title={v}>
+          <Typography.Text style={{ whiteSpace: "nowrap" }}>{v.split(" — ")[0]}</Typography.Text>
+        </Tooltip>
+      ),
+    },
     ...(lotId === undefined
       ? [{ title: "Lot", dataIndex: "lot_name", render: (v: string | null) => v ?? "—" }]
       : []),
