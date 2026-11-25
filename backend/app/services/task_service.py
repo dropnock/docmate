@@ -353,11 +353,21 @@ async def reassign_task(
     task = await db.get(Task, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    # Moving a finished task would reopen work someone already did.
+    if task.status not in (TaskStatus.pending, TaskStatus.in_progress):
+        raise HTTPException(status_code=409, detail=f"Task is {task.status.value} — only open tasks can be reassigned")
 
     batch = await db.get(Batch, task.batch_id)
     await staff_assignment_service.require_shift_role_for_task_type(
         db, user_id=new_agent_id, project_id=batch.project_id, task_type=task.task_type,
     )
+    if task.task_type == TaskType.qc:
+        # Customer QC work stays with the project's own customer: its QC
+        # agents and supervisors (the same set it can be assigned to).
+        from app.services import lot_service
+        await lot_service.require_qc_assignees(
+            db, project_id=batch.project_id, user_ids=[new_agent_id], tenant_id=tenant_id,
+        )
 
     old_agent = task.assigned_to
     record = await db.get(Record, task.record_id)

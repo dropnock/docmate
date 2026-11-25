@@ -227,27 +227,20 @@ async def get_qc_agents(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("customer_supervisor", "admin")),
 ):
-    """Returns all active customer_qc_agent users belonging to this
-    project's customer organization. A tenant can have several customer
-    organizations (see check_project_access) each with their own QC agents
-    — filtering by tenant_id alone, as this used to, let a supervisor at
-    one customer org assign records to another customer org's agents."""
-    from app.models.user import UserRole
+    """Everyone QC batches can be assigned to: the active QC agents and
+    customer supervisors of this project's customer organization (role
+    tells them apart; agents first). A tenant can have several customer
+    organizations (see check_project_access) each with their own people —
+    filtering by tenant_id alone, as this used to, let a supervisor at one
+    customer org assign records to another customer org's agents."""
+    from app.services import lot_service
 
     project = await db.get(Project, project_id)
     check_project_access(project, current_user)
-
-    result = await db.execute(
-        select(User).where(
-            User.tenant_id == current_user._tenant_id,
-            User.organization_id == project.customer_org_id,
-            User.role == UserRole.customer_qc_agent,
-            User.is_active == True,  # noqa: E712
-        ).order_by(User.full_name)
-    )
+    users = await lot_service.qc_assignees(db, project_id=project_id, tenant_id=current_user._tenant_id)
     return [
         AvailableStaffOut(id=u.id, full_name=u.full_name, email=u.email, role=u.role.value)
-        for u in result.scalars().all()
+        for u in users
     ]
 
 

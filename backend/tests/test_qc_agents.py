@@ -40,9 +40,12 @@ class TestQcAgentsScoping:
             headers={"Authorization": f"Bearer {sup_token}", "X-Portal": "customer"},
         )
         assert resp.status_code == 200
-        names = {a["full_name"] for a in resp.json()}
-        assert names == {seed["qc_agent"].full_name}
-        assert other_qc_agent.full_name not in names
+        # Its own QC agents, then its own supervisors (who can take batches
+        # themselves) — never another customer org's people.
+        assert [(a["full_name"], a["role"]) for a in resp.json()] == [
+            (seed["qc_agent"].full_name, "customer_qc_agent"),
+            ("Our Supervisor", "customer_supervisor"),
+        ]
 
     async def test_supervisor_from_other_org_gets_404(self, db: AsyncSession, seed, client):
         other_org = Organization(

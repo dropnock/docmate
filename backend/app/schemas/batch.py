@@ -36,7 +36,7 @@ class BatchOut(BaseModel):
 
 
 class BatchReassignRequest(BaseModel):
-    task_type: Literal["indexing", "qa"]
+    task_type: Literal["indexing", "qa", "qc"]
     agent_id: int
 
 

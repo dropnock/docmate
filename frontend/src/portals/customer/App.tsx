@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from "react";
 import { Drawer, Layout, Menu, Spin, Result } from "antd";
-import { BarChart3, CheckCircle2, Flag, Gauge, History, List } from "lucide-react";
+import { BarChart3, CheckCircle2, Flag, Gauge, History, Layers, List } from "lucide-react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@shared/query/queryClient";
 import {
@@ -25,6 +25,7 @@ const RecordHistory = lazy(() => import("../digitizing/pages/RecordHistory"));
 const QCWorkspace = lazy(() => import("./pages/QCWorkspace"));
 const CustomerLotManager = lazy(() => import("./pages/CustomerLotManager"));
 const CustomerFlaggedRecords = lazy(() => import("./pages/CustomerFlaggedRecords"));
+const CustomerQcBatches = lazy(() => import("./pages/CustomerQcBatches"));
 
 const { Sider, Content } = Layout;
 const queryClient = createQueryClient();
@@ -36,6 +37,7 @@ const queryClient = createQueryClient();
 // convenience, not the actual access boundary.
 const SUPERVISOR_ITEMS = [
   { key: "/lots", label: "Lots", icon: <List size={16} /> },
+  { key: "/qc-batches", label: "QC Batches", icon: <Layers size={16} /> },
   { key: "/kpis", label: "Project KPIs", icon: <BarChart3 size={16} /> },
   { key: "/staff-productivity", label: "Staff Productivity", icon: <Gauge size={16} /> },
   { key: "/history", label: "Record History", icon: <History size={16} /> },
@@ -132,6 +134,16 @@ function AppInner() {
                       {(projectId) => (
                         <CustomerLotManager projectId={projectId} role={user.role} />
                       )}
+                    </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/qc-batches"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <ProjectScopedRoute>
+                      {(projectId) => <CustomerQcBatches projectId={projectId} />}
                     </ProjectScopedRoute>
                   </RequireRole>
                 }
