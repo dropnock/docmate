@@ -65,12 +65,8 @@ export default function LotAssignQcDrawer({ lotId, projectId, onClose }: Props) 
     [lotDetail],
   );
   const unassigned = useMemo(() => sampledRecords.filter(isUnassigned), [sampledRecords]);
-  const maxBatches = Math.max(1, Math.ceil(unassigned.length / Math.max(1, batchSize)));
-
-  // Keep the batch count within what the unassigned records can fill.
-  useEffect(() => {
-    if (batchCount > maxBatches) setBatchCount(maxBatches);
-  }, [batchCount, maxBatches]);
+  // How many batches of this size the unassigned records can fill.
+  const fillable = Math.ceil(unassigned.length / Math.max(1, batchSize));
 
   // Exactly the batches the supervisor asked for, filled in record order and
   // shared round-robin between the people picked; the rest stay unassigned.
@@ -158,7 +154,7 @@ export default function LotAssignQcDrawer({ lotId, projectId, onClose }: Props) 
                       <br />
                       <InputNumber
                         min={1}
-                        max={maxBatches}
+                        max={Math.max(1, unassigned.length)}
                         value={batchCount}
                         onChange={(v) => setBatchCount(v ?? 1)}
                         style={{ width: 110, marginTop: 4 }}
@@ -208,6 +204,9 @@ export default function LotAssignQcDrawer({ lotId, projectId, onClose }: Props) 
                         {unassigned.length - assigning > 0
                           ? ` — ${unassigned.length - assigning} stay unassigned for later`
                           : " — every unassigned record"}
+                        {batchCount > fillable
+                          ? ` (only ${fillable} batch${fillable === 1 ? "" : "es"} of ${batchSize} can be filled)`
+                          : ""}
                         :
                       </Typography.Text>
                       <Row gutter={[8, 8]} style={{ marginTop: 8, marginBottom: 16 }}>
