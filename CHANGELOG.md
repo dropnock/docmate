@@ -34,6 +34,12 @@ See `RELEASING.md` for how to cut a release.
   started earlier keep the old rule. Migration `b5e8c3a1d7f2`.
 - QC Batches page: filter by assignee and by progress.
 
+### Fixed
+- **Analytics access check.** The dashboard and KPI endpoints now return
+  404 for a project outside the caller's tenant or, for a customer user,
+  outside their organisation. Before, any supervisor could read any
+  project's figures by its id.
+
 ## [0.9.1] - 2026-11-26
 
 ### Added

@@ -74,3 +74,49 @@ async def test_api(db: AsyncSession, seed, client):
     )
     assert resp.status_code == 200
     assert resp.json()["batches_blocked_by_flags"] == 1 and resp.json()["records_flagged"] == 1
+
+
+class TestAnalyticsAccess:
+    """Every analytics endpoint 404s for a project outside the caller's
+    tenant or, for a customer, outside their organisation."""
+
+    ENDPOINTS = [
+        "/api/analytics/records-dashboard?project_id={pid}",
+        "/api/analytics/staff-productivity?project_id={pid}",
+        "/api/analytics/qc-staff-productivity?project_id={pid}",
+        "/api/analytics/project-kpis/{pid}",
+        "/api/analytics/project-kpis/{pid}/burnup",
+        "/api/analytics/project-kpis/{pid}/qc-summary",
+    ]
+
+    async def _other_customer_project(self, db, seed):
+        from app.models.organization import Organization, OrgType
+        from app.models.project import Project, S3BucketStatus
+        org = Organization(tenant_id=seed["tenant"].id, name="Other Customer", type=OrgType.customer)
+        db.add(org)
+        await db.flush()
+        project = Project(tenant_id=seed["tenant"].id, digitizing_org_id=seed["de_org"].id,
+                          customer_org_id=org.id, name="Not yours", s3_bucket_status=S3BucketStatus.ready)
+        db.add(project)
+        await db.commit()
+        return project
+
+    async def test_customer_gets_404_for_another_customers_project(self, db, seed, client):
+        from tests.test_aql_router import _make_customer_supervisor
+        cust = await _make_customer_supervisor(db, seed)
+        other = await self._other_customer_project(db, seed)
+        headers = {"Authorization": f"Bearer {token(cust)}", "X-Portal": "customer"}
+        for url in self.ENDPOINTS:
+            assert (await client.get(url.format(pid=other.id), headers=headers)).status_code == 404, url
+            assert (await client.get(url.format(pid=seed["project"].id), headers=headers)).status_code == 200, url
+
+    async def test_unknown_project_is_404(self, db, seed, client):
+        headers = {"Authorization": f"Bearer {token(seed['admin'])}", "X-Portal": "digitizing"}
+        for url in self.ENDPOINTS:
+            assert (await client.get(url.format(pid=99999), headers=headers)).status_code == 404, url
+
+    async def test_digitizing_supervisor_sees_any_tenant_project(self, db, seed, client):
+        other = await self._other_customer_project(db, seed)
+        headers = {"Authorization": f"Bearer {token(seed['supervisor'])}", "X-Portal": "digitizing"}
+        resp = await client.get(f"/api/analytics/records-dashboard?project_id={other.id}", headers=headers)
+        assert resp.status_code == 200
