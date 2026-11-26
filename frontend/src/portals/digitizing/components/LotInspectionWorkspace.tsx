@@ -1,5 +1,5 @@
 import {
-  Alert, Button, Card, Empty, Input, Modal, Popconfirm, Segmented, Space, Spin, Tag, Typography, message,
+  Alert, Button, Card, Empty, Input, Modal, Popconfirm, Space, Spin, Tag, Tooltip, Typography, message,
 } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,7 +15,11 @@ import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonVie
 import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
 import { INSPECTION_LEVEL } from "@shared/components/InspectionLevelTag";
-import type { DocRecord, DocumentType, FieldResult, InspectionItem, QcFieldStatus } from "@shared/types";
+import {
+  ClassResultsTable, ClassTally, FieldMarkControl, classesAccepted, countBySeverity, isEmptyValue, unclassedFields,
+  type FieldMark,
+} from "@shared/components/DefectClasses";
+import type { ClassResults, DocRecord, DocumentType, FieldResult, InspectionItem } from "@shared/types";
 
 interface Props {
   lotId: number;
@@ -23,7 +27,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Marks = Record<string, { status: QcFieldStatus; note?: string }>;
+type Marks = Record<string, FieldMark>;
 
 const ITEM_TAG: Record<InspectionItem["status"], { color: string; label: string }> = {
   pending: { color: "default", label: "To review" },
@@ -84,7 +88,9 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
     if (!item) return;
     const initial: Marks = {};
     for (const key of Object.keys(schemaProperties)) initial[key] = { status: "accepted" };
-    for (const fr of item.field_results) initial[fr.field_key] = { status: fr.status, note: fr.note ?? undefined };
+    for (const fr of item.field_results) {
+      initial[fr.field_key] = { status: fr.status, note: fr.note ?? undefined, error_type: fr.error_type ?? undefined };
+    }
     setMarks(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.record_id, item?.reviewed_at, schemaProperties]);
@@ -99,7 +105,10 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
   const saveMutation = useMutation({
     mutationFn: () => {
       const fieldResults: FieldResult[] = Object.entries(marks).map(([field_key, m]) => ({
-        field_key, status: m.status, note: m.status === "defective" ? m.note : undefined,
+        field_key,
+        status: m.status,
+        note: m.status === "defective" ? m.note : undefined,
+        error_type: m.status === "defective" ? m.error_type : undefined,
       }));
       return reviewInspectionItem(lotId, inspectionId, selectedId!, fieldResults);
     },
@@ -148,9 +157,22 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
   // Same rule complete_inspection applies server-side, previewed so the
   // supervisor sees the verdict before committing to it.
   const defectiveMarks = inspection.items.flatMap((i) => i.field_results.filter((f) => f.status === "defective"));
+  // Inspections started before defect classes have no per-class plan and
+  // keep the old rule: any critical fails, the rest against Ac.
+  const classes: ClassResults | null = inspection.classes;
+  const counts = countBySeverity(defectiveMarks.map((f) => f.severity ?? (f.is_critical ? "critical" : "major")));
   const critical = defectiveMarks.filter((f) => f.is_critical).length;
   const minor = defectiveMarks.length - critical;
-  const wouldPass = critical === 0 && minor <= inspection.acceptance_number;
+  const wouldPass = classes ? classesAccepted(classes, counts) : critical === 0 && minor <= inspection.acceptance_number;
+  const judged: ClassResults | null = classes
+    ? (Object.fromEntries(
+        (Object.keys(classes) as (keyof ClassResults)[]).map((k) => [
+          k,
+          { ...classes[k], found: counts[k], accepted: counts[k] <= classes[k].acceptance_number },
+        ]),
+      ) as ClassResults)
+    : null;
+  const unclassed = classes ? unclassedFields(marks) : [];
   const nonconformingRecords = inspection.items.filter((i) => i.status === "defective").length;
 
   return (
@@ -163,10 +185,20 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
       >
         <Button size="small" onClick={onClose}>← Back to lot</Button>
         <Typography.Text strong>Inspection #{inspection.attempt_number}</Typography.Text>
-        <Typography.Text type="secondary">
-          {INSPECTION_LEVEL[inspection.inspection_level].label} inspection · AQL {inspection.aql_level} · code {inspection.code_letter} · n={inspection.sample_size} of N=
-          {inspection.lot_size} · Ac {inspection.acceptance_number} / Re {inspection.rejection_number}
-        </Typography.Text>
+        {classes ? (
+          <>
+            <Typography.Text type="secondary">
+              {INSPECTION_LEVEL[inspection.inspection_level].label} inspection · code {inspection.code_letter} · n=
+              {inspection.sample_size} of N={inspection.lot_size}
+            </Typography.Text>
+            <ClassTally classes={classes} counts={counts} />
+          </>
+        ) : (
+          <Typography.Text type="secondary">
+            {INSPECTION_LEVEL[inspection.inspection_level].label} inspection · AQL {inspection.aql_level} · code {inspection.code_letter} · n={inspection.sample_size} of N=
+            {inspection.lot_size} · Ac {inspection.acceptance_number} / Re {inspection.rejection_number}
+          </Typography.Text>
+        )}
         <Tag color={allReviewed ? "green" : "blue"}>{reviewed} / {inspection.items.length} reviewed</Tag>
         <div style={{ flex: 1 }} />
         {inProgress && (
@@ -266,44 +298,30 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
                         {Object.keys(schemaProperties).length === 0 && (
                           <Typography.Text type="secondary">This document type has no fields to review.</Typography.Text>
                         )}
-                        {Object.entries(schemaProperties).map(([key, field]) => {
-                          const mark = marks[key] ?? { status: "accepted" as QcFieldStatus };
-                          return (
-                            <div key={key}>
-                              <Space align="center" style={{ marginBottom: 6 }}>
-                                <Typography.Text strong>{field.title || key}</Typography.Text>
-                                {field["x-critical"] && <Tag color="red">Critical</Tag>}
-                              </Space>
-                              <br />
-                              <Segmented
-                                disabled={!inProgress}
-                                value={mark.status}
-                                onChange={(status) =>
-                                  setMarks((prev) => ({ ...prev, [key]: { ...prev[key], status: status as QcFieldStatus } }))
-                                }
-                                options={[
-                                  { label: "Accepted", value: "accepted" },
-                                  { label: "Defective", value: "defective" },
-                                ]}
-                              />
-                              {mark.status === "defective" && (
-                                <Input
-                                  disabled={!inProgress}
-                                  placeholder="Describe the error (shown on the inspection report)"
-                                  style={{ marginTop: 8 }}
-                                  value={mark.note ?? ""}
-                                  onChange={(e) =>
-                                    setMarks((prev) => ({ ...prev, [key]: { ...prev[key], note: e.target.value } }))
-                                  }
-                                />
-                              )}
-                            </div>
-                          );
-                        })}
+                        {Object.entries(schemaProperties).map(([key, field]) => (
+                          <FieldMarkControl
+                            key={key}
+                            title={field.title || key}
+                            isIdentifier={!!field["x-critical"]}
+                            mark={marks[key] ?? { status: "accepted" }}
+                            onChange={(m) => setMarks((prev) => ({ ...prev, [key]: m }))}
+                            disabled={!inProgress}
+                            valueEmpty={isEmptyValue((record?.indexed_data as Record<string, unknown> | undefined)?.[key])}
+                            errorClasses={inspection.error_classes}
+                            notePlaceholder="Describe the error (shown on the inspection report)"
+                          />
+                        ))}
                         {inProgress && (
-                          <Button type="primary" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-                            {item.status === "pending" ? "Save review & next" : "Update review"}
-                          </Button>
+                          <Tooltip title={unclassed.length ? "Choose what is wrong with each defective field" : undefined}>
+                            <Button
+                              type="primary"
+                              disabled={unclassed.length > 0}
+                              loading={saveMutation.isPending}
+                              onClick={() => saveMutation.mutate()}
+                            >
+                              {item.status === "pending" ? "Save review & next" : "Update review"}
+                            </Button>
+                          </Tooltip>
                         )}
                       </Space>
                     )}
@@ -324,19 +342,33 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
         okText={wouldPass ? "Complete — accept lot" : "Complete — reject lot"}
         okButtonProps={{ danger: !wouldPass }}
       >
-        <Typography.Paragraph>
-          {critical} critical and {minor} non-critical non-conformities across {nonconformingRecords} of{" "}
-          {inspection.sample_size} sampled records (Ac {inspection.acceptance_number}, Re {inspection.rejection_number}).
-        </Typography.Paragraph>
+        {judged ? (
+          <>
+            <Typography.Paragraph>
+              {defectiveMarks.length} non-conformit{defectiveMarks.length === 1 ? "y" : "ies"} across{" "}
+              {nonconformingRecords} of {inspection.sample_size} sampled records:
+            </Typography.Paragraph>
+            <div style={{ marginBottom: 12 }}>
+              <ClassResultsTable classes={judged} />
+            </div>
+          </>
+        ) : (
+          <Typography.Paragraph>
+            {critical} critical and {minor} non-critical non-conformities across {nonconformingRecords} of{" "}
+            {inspection.sample_size} sampled records (Ac {inspection.acceptance_number}, Re {inspection.rejection_number}).
+          </Typography.Paragraph>
+        )}
         <Alert
           type={wouldPass ? "success" : "error"}
           style={{ marginBottom: 12 }}
           message={
             wouldPass
               ? "The lot will be accepted for release."
-              : critical > 0
-                ? "The lot will be rejected — critical-field defects fail it regardless of Ac."
-                : "The lot will be rejected — non-conformities reach the rejection number."
+              : judged
+                ? "The lot will be rejected — a class reaches its rejection number."
+                : critical > 0
+                  ? "The lot will be rejected — critical-field defects fail it regardless of Ac."
+                  : "The lot will be rejected — non-conformities reach the rejection number."
           }
           description={
             nonconformingRecords > 0

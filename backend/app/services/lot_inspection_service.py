@@ -11,9 +11,13 @@ Lifecycle of one attempt:
   cancel_inspection  — abandons an in-progress attempt (kept in the report)
 
 Counting follows the same rule as the customer's QC
-(lot_service.calculate_accuracy): each defective field is one
-non-conformity; any critical-field defect fails the lot outright, otherwise
-the lot passes when non-critical non-conformities <= acceptance number.
+(lot_service.calculate_accuracy), defect_class_service: each defective
+field is one non-conformity, classed critical / major / minor; the sample's
+non-conformities are added up per class and the lot passes only when every
+class is within its acceptance number (class_plan, from the project's three
+AQLs). Inspections started before classes (class_plan None) keep the old
+rule: any critical-field defect fails the lot, otherwise non-critical
+non-conformities <= acceptance number.
 """
 import random
 import secrets
@@ -115,9 +119,11 @@ async def start_inspection(
     user_id: int,
     tenant_id: int,
 ) -> LotInspection:
-    """The supervisor sets the lot's inspection level; the AQL is the
-    project's (AQLConfig.normal_aql). The project's switching state only
-    suggests a level — choosing another is allowed and audited as such."""
+    """The supervisor sets the lot's inspection level; the AQLs are the
+    project's critical / major / minor AQLs. The project's switching state
+    only suggests a level — choosing another is allowed and audited as such.
+    aql_level / acceptance_number / rejection_number hold the major class's
+    values; class_plan holds every class's."""
     try:
         inspection_level = AQLStatus(inspection_level)
     except ValueError:
@@ -151,7 +157,15 @@ async def start_inspection(
     aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
     suggested_level = await aql_service.get_suggested_level(db, lot.project_id)
     general_level = await aql_service.get_general_level(db, lot.project_id)
-    plan = aql_service.sampling_plan(len(records), aql_level, inspection_level, general_level)
+    aqls = aql_service.config_class_aqls(await aql_service.get_config(db, lot.project_id))
+    full_plan = aql_service.class_plans(len(records), aqls, inspection_level, general_level)
+    major = full_plan["classes"]["major"]
+    plan = {
+        "code_letter": full_plan["code_letter"],
+        "sample_size": full_plan["sample_size"],
+        "acceptance_number": major["acceptance_number"],
+        "rejection_number": major["rejection_number"],
+    }
     seed = secrets.token_hex(16)
     sampled_ids = random.Random(seed).sample(sorted(r.id for r in records), plan["sample_size"])
     records_by_id = {r.id: r for r in records}
@@ -173,6 +187,7 @@ async def start_inspection(
         lot_size=len(records),
         random_seed=seed,
         inspected_by=user_id,
+        class_plan=full_plan["classes"],
         **plan,
     )
     db.add(inspection)
@@ -201,6 +216,7 @@ async def start_inspection(
             "general_level": general_level.value,
             "lot_size": inspection.lot_size,
             **plan,
+            "class_plan": full_plan["classes"],
             "random_seed": seed,
         },
     )
@@ -230,6 +246,13 @@ async def review_item(
         raise HTTPException(status_code=404, detail="Record is not in this inspection's sample")
 
     properties = await _schema_properties(db, item.document_type_id)
+    if inspection.class_plan:
+        unclassed = [fr.field_key for fr in field_results if fr.status == "defective" and not fr.error_type]
+        if unclassed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Say what is wrong with each defective field (missing, typo or interpretation): {unclassed}",
+            )
     submitted = {fr.field_key for fr in field_results}
     if len(submitted) != len(field_results) or submitted != set(properties.keys()):
         missing = sorted(set(properties.keys()) - submitted)
@@ -305,27 +328,32 @@ async def complete_inspection(
         )
         .order_by(LotInspectionFieldResult.id)
     )).all()
-    critical = sum(1 for _, fr in defects if fr.is_critical)
-    minor = len(defects) - critical
     defective_items = [i for i in items if i.status == InspectionItemStatus.defective]
+    if inspection.class_plan:
+        counts = defect_class_service.tally(fr.severity or "major" for _, fr in defects)
+        critical, major, minor = counts["critical"], counts["major"], counts["minor"]
+        accepted = defect_class_service.judge(counts, inspection.class_plan)["accepted"]
+    else:  # started before defect classes
+        critical = sum(1 for _, fr in defects if fr.is_critical)
+        major, minor = None, len(defects) - critical
+        accepted = critical == 0 and minor <= inspection.acceptance_number
 
     inspection.critical_defect_count = critical
+    inspection.major_defect_count = major
     inspection.minor_defect_count = minor
     inspection.defective_record_count = len(defective_items)
     inspection.summary_note = summary_note
     inspection.completed_at = datetime.now(timezone.utc)
-    inspection.status = (
-        LotInspectionStatus.passed
-        if critical == 0 and minor <= inspection.acceptance_number
-        else LotInspectionStatus.failed
-    )
+    inspection.status = LotInspectionStatus.passed if accepted else LotInspectionStatus.failed
 
     # Defective records go back to the indexer whatever the verdict — a
     # passed lot still mustn't be handed over with known errors in it, so
     # release waits for them (assert_releasable) without a re-inspection.
     defects_by_record: dict[int, list[str]] = {}
     for record_id, fr in defects:
-        label = fr.field_key + (f" ({fr.note})" if fr.note else "")
+        what = defect_class_service.ERROR_TYPE_LABELS.get(fr.error_type.value) if fr.error_type else None
+        detail = "; ".join(x for x in (what, fr.note) if x)
+        label = fr.field_key + (f" ({detail})" if detail else "")
         defects_by_record.setdefault(record_id, []).append(label)
     for item in defective_items:
         await record_service.requeue_record(
@@ -347,6 +375,7 @@ async def complete_inspection(
             "inspection_id": inspection.id,
             "status": inspection.status.value,
             "critical_defect_count": critical,
+            "major_defect_count": major,
             "minor_defect_count": minor,
             "defective_record_count": len(defective_items),
             "acceptance_number": inspection.acceptance_number,
@@ -411,7 +440,11 @@ async def get_inspection_detail(
     """Working view for the supervisor's review screen — every sampled
     record with its current marks."""
     inspection = await _get_inspection(db, lot_id=lot_id, inspection_id=inspection_id, tenant_id=tenant_id)
-    return (await _serialize(db, [inspection], include_pending_items=True))[0]
+    entry = (await _serialize(db, [inspection], include_pending_items=True))[0]
+    lot = await db.get(Lot, lot_id)
+    # The agreement marks are classed with when saved — shown while marking.
+    entry["error_classes"] = await defect_class_service.project_error_classes(db, lot.project_id)
+    return entry
 
 
 async def list_inspections(db: AsyncSession, *, lot_id: int, tenant_id: int) -> list[dict]:
@@ -438,6 +471,8 @@ async def build_report(db: AsyncSession, *, lot: Lot, include_aql: bool = True) 
         # Ac/Re, not the AQL number behind them.
         for entry in serialized:
             entry.pop("aql_level", None)
+            for plan in (entry.get("classes") or {}).values():
+                plan.pop("aql", None)
     return {
         "lot_id": lot.id,
         "lot_name": lot.name,
@@ -453,6 +488,19 @@ async def build_report(db: AsyncSession, *, lot: Lot, include_aql: bool = True) 
         "inspection_level": lot.inspection_level.value if lot.inspection_level else None,
         "inspections": serialized,
     }
+
+
+def _class_results(inspection: LotInspection) -> dict | None:
+    if not inspection.class_plan:
+        return None
+    if inspection.completed_at is None or inspection.status == LotInspectionStatus.cancelled:
+        return {c: {**p, "found": None, "accepted": None} for c, p in inspection.class_plan.items()}
+    counts = {
+        "critical": inspection.critical_defect_count or 0,
+        "major": inspection.major_defect_count or 0,
+        "minor": inspection.minor_defect_count or 0,
+    }
+    return defect_class_service.judge(counts, inspection.class_plan)["classes"]
 
 
 async def _serialize(
@@ -517,7 +565,11 @@ async def _serialize(
             "rejection_number": inspection.rejection_number,
             "random_seed": inspection.random_seed,
             "critical_defect_count": inspection.critical_defect_count,
+            "major_defect_count": inspection.major_defect_count,
             "minor_defect_count": inspection.minor_defect_count,
+            # Per-class AQL, Ac/Re and — once complete — found / accepted
+            # (None for inspections from before defect classes).
+            "classes": _class_results(inspection),
             "defective_record_count": inspection.defective_record_count,
             "summary_note": inspection.summary_note,
             "inspected_by": inspection.inspected_by,
@@ -543,6 +595,8 @@ async def _serialize(
                         "title": titles.get(fr.field_key, fr.field_key),
                         "status": fr.status.value,
                         "is_critical": fr.is_critical,
+                        "error_type": fr.error_type.value if fr.error_type else None,
+                        "severity": fr.severity.value if fr.severity else None,
                         "note": fr.note,
                     })
                     if fr.status == QcFieldStatus.defective:
@@ -551,8 +605,10 @@ async def _serialize(
                             "title": titles.get(fr.field_key, fr.field_key),
                             "is_critical": fr.is_critical,
                             "defective_count": 0,
+                            "critical": 0, "major": 0, "minor": 0,
                         })
                         t["defective_count"] += 1
+                        t[fr.severity.value if fr.severity else ("critical" if fr.is_critical else "major")] += 1
                 item_rows.append({
                     "record_id": item.record_id,
                     "source_identifier": record.source_identifier if record else None,

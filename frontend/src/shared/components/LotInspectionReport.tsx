@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getInspectionReport, lotInspectionReportKey } from "@shared/api/lots";
 import { formatApiError } from "@shared/api/errors";
 import { INSPECTION_LEVEL } from "@shared/components/InspectionLevelTag";
-import type { LotInspectionDetail, LotInspectionStatus } from "@shared/types";
+import { ERROR_TYPE_LABEL, SEVERITIES, SEVERITY } from "@shared/components/DefectClasses";
+import type { ClassResults, LotInspectionDetail, LotInspectionStatus, Severity } from "@shared/types";
 
 /** The digitizing supervisor's outgoing ISO 2859-1 inspection report for a
  * lot, shared by both portals (the customer sees it once the lot is
@@ -53,7 +54,52 @@ function StatusBadge({ status }: { status: LotInspectionStatus }) {
   );
 }
 
+/** Per-class plan and result, as a plain table (printable). The AQL column
+ * is left out when the report omits AQLs (customer view). */
+function ClassTable({ classes, done }: { classes: ClassResults; done: boolean }) {
+  const showAql = SEVERITIES.some((s) => "aql" in classes[s]);
+  return (
+    <table style={table}>
+      <thead>
+        <tr>
+          <th style={th}>Class</th>
+          {showAql && <th style={th}>AQL</th>}
+          <th style={th}>Ac</th>
+          <th style={th}>Re</th>
+          <th style={th}>Found</th>
+          <th style={th}>Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {SEVERITIES.map((s) => {
+          const c = classes[s];
+          return (
+            <tr key={s}>
+              <td style={td}>{SEVERITY[s].label}</td>
+              {showAql && <td style={td}>{c.aql === null ? "Zero tolerance" : c.aql}</td>}
+              <td style={td}>{c.acceptance_number}</td>
+              <td style={td}>{c.rejection_number}</td>
+              <td style={td}>{done ? c.found : "—"}</td>
+              <td style={{ ...td, color: c.accepted === false ? "#B91C1C" : undefined }}>
+                {!done ? "—" : c.accepted ? "Within limit" : "Rejects lot"}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function tallyClasses(t: { critical?: number; major?: number; minor?: number }) {
+  return SEVERITIES.filter((s) => (t[s] ?? 0) > 0)
+    .map((s) => `${t[s]} ${SEVERITY[s].label.toLowerCase()}`)
+    .join(", ");
+}
+
 function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
+  const classes = inspection.classes;
+  const rejectedBy = classes ? SEVERITIES.filter((s: Severity) => classes[s].accepted === false) : [];
   const done = inspection.status === "passed" || inspection.status === "failed";
   const nonconforming = inspection.items.filter((i) => i.status === "defective");
   return (
@@ -78,7 +124,7 @@ function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
             <td style={td}><strong>Inspection level</strong></td>
             <td style={td}>
               {INSPECTION_LEVEL[inspection.inspection_level].label}, general level {inspection.general_level}
-              {inspection.aql_level !== undefined ? ` (AQL ${inspection.aql_level})` : ""}
+              {!classes && inspection.aql_level !== undefined ? ` (AQL ${inspection.aql_level})` : ""}
             </td>
             <td style={td}><strong>Sample size (n)</strong></td>
             <td style={td}>
@@ -86,15 +132,19 @@ function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
               {inspection.sample_size >= inspection.lot_size ? " (100% inspection)" : ""}
             </td>
           </tr>
-          <tr>
-            <td style={td}><strong>Acceptance number (Ac)</strong></td><td style={td}>{inspection.acceptance_number}</td>
-            <td style={td}><strong>Rejection number (Re)</strong></td><td style={td}>{inspection.rejection_number}</td>
-          </tr>
+          {!classes && (
+            <tr>
+              <td style={td}><strong>Acceptance number (Ac)</strong></td><td style={td}>{inspection.acceptance_number}</td>
+              <td style={td}><strong>Rejection number (Re)</strong></td><td style={td}>{inspection.rejection_number}</td>
+            </tr>
+          )}
           {done && (
             <tr>
               <td style={td}><strong>Non-conformities</strong></td>
               <td style={td}>
-                {inspection.critical_defect_count} critical, {inspection.minor_defect_count} non-critical
+                {classes
+                  ? `${inspection.critical_defect_count} critical, ${inspection.major_defect_count} major, ${inspection.minor_defect_count} minor`
+                  : `${inspection.critical_defect_count} critical, ${inspection.minor_defect_count} non-critical`}
               </td>
               <td style={td}><strong>Non-conforming records</strong></td>
               <td style={td}>{inspection.defective_record_count} of {inspection.sample_size}</td>
@@ -107,10 +157,16 @@ function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
         </tbody>
       </table>
 
+      {classes && <ClassTable classes={classes} done={done} />}
+
       {done && (
         <p style={{ fontSize: 13, margin: "0 0 12px" }}>
           <strong>Decision: </strong>
-          {inspection.critical_defect_count
+          {classes
+            ? inspection.status === "passed"
+              ? "Accepted — every class is within its acceptance number."
+              : `Rejected — ${rejectedBy.map((s) => SEVERITY[s].label.toLowerCase()).join(" and ")} non-conformities reached the rejection number.`
+            : inspection.critical_defect_count
             ? "Rejected — a critical-field non-conformity fails the lot regardless of the acceptance number."
             : inspection.status === "passed"
               ? `Accepted — ${inspection.minor_defect_count} non-conformit${inspection.minor_defect_count === 1 ? "y" : "ies"} ≤ Ac ${inspection.acceptance_number}.`
@@ -133,7 +189,9 @@ function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
               {inspection.field_tally.map((t) => (
                 <tr key={t.field_key}>
                   <td style={td}>{t.title}</td>
-                  <td style={td}>{t.is_critical ? "Critical" : "Non-critical"}</td>
+                  <td style={td}>
+                    {t.critical !== undefined ? tallyClasses(t) : t.is_critical ? "Critical" : "Non-critical"}
+                  </td>
                   <td style={td}>{t.defective_count}</td>
                 </tr>
               ))}
@@ -166,7 +224,11 @@ function Attempt({ inspection }: { inspection: LotInspectionDetail }) {
                     ? "—"
                     : defects.map((d) => (
                         <div key={d.field_key}>
-                          {d.title}{d.is_critical ? " (critical)" : ""}{d.note ? ` — ${d.note}` : ""}
+                          {d.title}
+                          {d.severity
+                            ? ` (${SEVERITY[d.severity].label.toLowerCase()}${d.error_type ? `: ${ERROR_TYPE_LABEL[d.error_type].toLowerCase()}` : ""})`
+                            : d.is_critical ? " (critical)" : ""}
+                          {d.note ? ` — ${d.note}` : ""}
                         </div>
                       ))}
                 </td>

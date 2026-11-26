@@ -33,16 +33,20 @@ SCHEMA = {
 DE_HEADERS = "digitizing"
 
 
-def _marks(defective: dict[str, str | None] | None = None) -> list[FieldResultIn]:
+def _marks(defective: dict[str, str | tuple | None] | None = None) -> list[FieldResultIn]:
+    """Accept every field except those in `defective`: field -> note, or
+    (note, error_type). The error type defaults to "missing", which is
+    major and judged against the major Ac (acceptance_number) as
+    non-critical defects were before classes."""
     defective = defective or {}
-    return [
-        FieldResultIn(
-            field_key=k,
-            status="defective" if k in defective else "accepted",
-            note=defective.get(k),
-        )
-        for k in SCHEMA["properties"]
-    ]
+
+    def mark(k):
+        if k not in defective:
+            return FieldResultIn(field_key=k, status="accepted")
+        note, error_type = defective[k] if isinstance(defective[k], tuple) else (defective[k], "missing")
+        return FieldResultIn(field_key=k, status="defective", note=note, error_type=error_type)
+
+    return [mark(k) for k in SCHEMA["properties"]]
 
 
 async def _make_lot(db: AsyncSession, seed, *, num_records: int) -> tuple[Lot, list[Record]]:
@@ -84,6 +88,7 @@ async def _start(db, seed, lot, aql_level=None, level="normal"):
     the inspection level."""
     if aql_level is not None:
         seed["aql_config"].normal_aql = aql_level
+        seed["aql_config"].minor_aql = aql_level
         await db.flush()
     return await lot_inspection_service.start_inspection(
         db, lot_id=lot.id, inspection_level=level,
@@ -213,11 +218,11 @@ class TestReviewAndComplete:
         # Lot of 3 at AQL 1.5 -> code letter A, n=2, Ac=0: one minor defect fails.
         lot, _ = await _make_lot(db, seed, num_records=3)
         inspection = await _start(db, seed, lot)
-        await _review_all(db, seed, lot, inspection, {0: {"surname": "misspelt"}})
+        await _review_all(db, seed, lot, inspection, {0: {"surname": ("misspelt", "typo")}})
         await _complete(db, seed, lot, inspection)
 
         assert inspection.status == LotInspectionStatus.failed
-        assert inspection.minor_defect_count == 1
+        assert (inspection.critical_defect_count, inspection.major_defect_count, inspection.minor_defect_count) == (0, 0, 1)
         assert inspection.defective_record_count == 1
         defective = next(i for i in await _items(db, inspection) if i.status == InspectionItemStatus.defective)
         record = await db.get(Record, defective.record_id)

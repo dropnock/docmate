@@ -228,3 +228,107 @@ class TestMarksStoreTheirClass:
         )).scalars()}
         assert (rows["surname"].error_type, rows["surname"].severity) == (ErrorType.typo, Severity.major)
         assert (rows["dob"].error_type, rows["dob"].severity) == (None, None)
+
+
+class TestOutgoingInspectionVerdict:
+    """20 records -> C. Major 1.0 needs E (n=13); minor 4.0 at E is Ac 1;
+    critical is zero tolerance. So: n=13, Ac critical 0 / major 0 / minor 1."""
+
+    async def _inspect(self, db, seed, defects: dict[int, dict]):
+        from tests.test_lot_inspections import _complete, _review_all
+        cfg = seed["aql_config"]
+        cfg.critical_aql, cfg.normal_aql, cfg.minor_aql = None, 1.0, 4.0
+        await db.flush()
+        lot, _ = await _make_lot(db, seed, num_records=20)
+        inspection = await _start(db, seed, lot)
+        assert inspection.sample_size == 13
+        assert {c: p["acceptance_number"] for c, p in inspection.class_plan.items()} == {
+            "critical": 0, "major": 0, "minor": 1,
+        }
+        await _review_all(db, seed, lot, inspection, defects)
+        await _complete(db, seed, lot, inspection)
+        return lot, inspection
+
+    async def test_one_typo_is_within_minor_ac(self, db: AsyncSession, seed):
+        _, insp = await self._inspect(db, seed, {0: {"surname": ("", "typo")}})
+        assert insp.status.value == "passed"
+        assert (insp.critical_defect_count, insp.major_defect_count, insp.minor_defect_count) == (0, 0, 1)
+
+    async def test_typos_add_up_across_the_sample(self, db: AsyncSession, seed):
+        _, insp = await self._inspect(db, seed, {0: {"surname": ("", "typo")}, 3: {"surname": ("", "interpretation")}})
+        assert insp.status.value == "failed" and insp.minor_defect_count == 2
+
+    async def test_one_missing_value_fails_major(self, db: AsyncSession, seed):
+        _, insp = await self._inspect(db, seed, {0: {"surname": ("", "missing")}})
+        assert insp.status.value == "failed" and insp.major_defect_count == 1
+
+    async def test_identifier_typo_is_critical(self, db: AsyncSession, seed):
+        _, insp = await self._inspect(db, seed, {0: {"dob": ("", "typo")}})
+        assert insp.status.value == "failed" and insp.critical_defect_count == 1
+
+    async def test_report_shows_classes_and_error_types(self, db: AsyncSession, seed):
+        lot, insp = await self._inspect(db, seed, {0: {"surname": ("smudged", "typo")}})
+        report = await lot_inspection_service.build_report(db, lot=lot)
+        entry = report["inspections"][0]
+        assert entry["classes"]["minor"] == {
+            "aql": 4.0, "acceptance_number": 1, "rejection_number": 2, "found": 1, "accepted": True,
+        }
+        assert entry["classes"]["critical"]["aql"] is None
+        marks = [f for i in entry["items"] for f in i["field_results"] if f["status"] == "defective"]
+        assert [(f["field_key"], f["error_type"], f["severity"], f["note"]) for f in marks] == [
+            ("surname", "typo", "minor", "smudged"),
+        ]
+        assert entry["field_tally"][0] == {
+            "field_key": "surname", "title": "Surname", "is_critical": False,
+            "defective_count": 1, "critical": 0, "major": 0, "minor": 1,
+        }
+
+    async def test_defective_mark_needs_an_error_type(self, db: AsyncSession, seed):
+        lot, _ = await _make_lot(db, seed, num_records=5)
+        inspection = await _start(db, seed, lot)
+        item = (await _items(db, inspection))[0]
+        with pytest.raises(HTTPException) as e:
+            await lot_inspection_service.review_item(
+                db, lot_id=lot.id, inspection_id=inspection.id, record_id=item.record_id,
+                tenant_id=seed["tenant"].id,
+                field_results=[
+                    FieldResultIn(field_key="surname", status="defective"),
+                    FieldResultIn(field_key="dob", status="accepted"),
+                ],
+            )
+        assert e.value.status_code == 422 and "surname" in e.value.detail
+
+    async def test_inspection_from_before_classes_keeps_the_old_rule(self, db: AsyncSession, seed):
+        from tests.test_lot_inspections import _complete, _review_all
+        lot, _ = await _make_lot(db, seed, num_records=20)
+        inspection = await _start(db, seed, lot)
+        inspection.class_plan = None  # as migrated
+        inspection.acceptance_number = 1
+        await db.flush()
+        await _review_all(db, seed, lot, inspection, {0: {"surname": ("", "typo")}, 1: {"surname": ("", "missing")}})
+        await _complete(db, seed, lot, inspection)
+        # Two non-critical defects against Ac 1, whatever their type.
+        assert inspection.status.value == "failed"
+        assert (inspection.critical_defect_count, inspection.major_defect_count, inspection.minor_defect_count) == (0, None, 2)
+        report = await lot_inspection_service.build_report(db, lot=lot)
+        assert report["inspections"][0]["classes"] is None
+
+    async def test_level_chooser_shows_class_plans(self, db: AsyncSession, seed, client):
+        cfg = seed["aql_config"]
+        cfg.critical_aql, cfg.normal_aql, cfg.minor_aql = None, 1.0, 4.0
+        await db.flush()
+        lot, _ = await _make_lot(db, seed, num_records=20)
+        await db.commit()
+        headers = {"Authorization": f"Bearer {token(seed['supervisor'])}", "X-Portal": "digitizing"}
+        body = (await client.get(f"/api/lots/{lot.id}/inspections", headers=headers)).json()
+        assert body["class_aqls"] == {"critical": None, "major": 1.0, "minor": 4.0}
+        normal = body["level_plans"]["normal"]
+        assert normal["sample_size"] == 13 and normal["acceptance_number"] == 0
+        assert normal["classes"]["minor"]["acceptance_number"] == 1
+
+    async def test_customer_report_has_no_aqls(self, db: AsyncSession, seed):
+        lot, _ = await self._inspect(db, seed, {})
+        report = await lot_inspection_service.build_report(db, lot=lot, include_aql=False)
+        classes = report["inspections"][0]["classes"]
+        assert all("aql" not in c for c in classes.values())
+        assert classes["minor"]["acceptance_number"] == 1

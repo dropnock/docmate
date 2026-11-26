@@ -145,6 +145,9 @@ async def seed(db: AsyncSession):
         project_id=project.id, current_status=AQLStatus.normal,
         consecutive_passes=0, consecutive_failures=0,
         normal_aql=1.5, tightened_aql=1.0, reduced_aql=2.5,
+        # Minor at the major AQL, so the sample is the single-AQL plan the
+        # older tests expect; tests of separate class AQLs set their own.
+        minor_aql=1.5,
         passes_to_reduce=5, failures_to_tighten=1,
     )
     db.add(aql_config)

@@ -115,14 +115,39 @@ export interface AQLConfig {
   failures_to_tighten: number;
   sampling_mode: "iso" | "manual";
   general_level: GeneralLevel;
+  /** null = zero tolerance. */
+  critical_aql: number | null;
+  /** Same value as normal_aql. */
+  major_aql: number;
+  minor_aql: number;
+  error_classes: ErrorClasses;
 }
 
 export type QcFieldStatus = "accepted" | "defective";
+
+/** What a reviewer found wrong with a field; the project's agreement with
+ * the customer (AQLConfig.error_classes) gives it a class. */
+export type ErrorType = "missing" | "typo" | "interpretation";
+/** ISO 2859-1 non-conformity class. Identifier-field errors are critical. */
+export type Severity = "critical" | "major" | "minor";
+export type ErrorClasses = Record<ErrorType, "major" | "minor">;
+
+/** One class's acceptance plan; found / accepted once the sample is judged. */
+export interface ClassResult {
+  /** null = zero tolerance (critical only). */
+  aql: number | null;
+  acceptance_number: number;
+  rejection_number: number;
+  found?: number | null;
+  accepted?: boolean | null;
+}
+export type ClassResults = Record<Severity, ClassResult>;
 
 export interface FieldResult {
   field_key: string;
   status: QcFieldStatus;
   note?: string;
+  error_type?: ErrorType;
 }
 
 export interface ContributingAgent {
@@ -400,6 +425,8 @@ export interface InspectionFieldResult {
   title: string;
   status: QcFieldStatus;
   is_critical: boolean;
+  error_type: ErrorType | null;
+  severity: Severity | null;
   note: string | null;
 }
 
@@ -419,6 +446,10 @@ export interface InspectionFieldTally {
   title: string;
   is_critical: boolean;
   defective_count: number;
+  /** Per class; absent on reports from before defect classes. */
+  critical?: number;
+  major?: number;
+  minor?: number;
 }
 
 export interface LotInspectionSummary {
@@ -437,7 +468,10 @@ export interface LotInspectionSummary {
   rejection_number: number;
   random_seed: string;
   critical_defect_count: number | null;
+  major_defect_count: number | null;
   minor_defect_count: number | null;
+  /** Per-class plan and verdict; null for inspections from before classes. */
+  classes: ClassResults | null;
   defective_record_count: number | null;
   summary_note: string | null;
   inspected_by: number;
@@ -450,6 +484,9 @@ export interface LotInspectionDetail extends LotInspectionSummary {
   reviewed_count: number;
   items: InspectionItem[];
   field_tally: InspectionFieldTally[];
+  /** The project's current agreement (working view only), to show each
+   * mark's class before it is saved. */
+  error_classes?: ErrorClasses;
 }
 
 export interface SamplingPlan {
@@ -457,6 +494,8 @@ export interface SamplingPlan {
   sample_size: number;
   acceptance_number: number;
   rejection_number: number;
+  /** Per-class Ac/Re at this sample size. */
+  classes?: ClassResults;
 }
 
 export interface LotInspectionList {
@@ -467,6 +506,8 @@ export interface LotInspectionList {
   /** What ISO 2859-1's switching rules suggest for this lot. */
   suggested_level: InspectionLevel;
   lot_size: number;
+  /** The project's critical / major / minor AQLs (critical null = zero tolerance). */
+  class_aqls?: Record<Severity, number | null>;
   level_plans: Partial<Record<InspectionLevel, SamplingPlan>>;
   inspections: LotInspectionSummary[];
 }

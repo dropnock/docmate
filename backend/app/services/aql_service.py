@@ -241,6 +241,24 @@ def config_class_aqls(config: AQLConfig | None) -> dict[str, float | None]:
     return {"critical": config.critical_aql, "major": config.normal_aql, "minor": config.minor_aql}
 
 
+def class_plans_by_level(
+    lot_size: int, aqls: dict[str, float | None], general_level: GeneralLevel = GeneralLevel.II,
+) -> dict[str, dict[str, Any]]:
+    """class_plans for each inspection level — what the supervisor chooses
+    between. Each also carries the major class's Ac/Re as
+    acceptance_number / rejection_number, the single-AQL shape."""
+    out = {}
+    for lvl in INSPECTION_LEVELS:
+        plan = class_plans(lot_size, aqls, lvl, general_level)
+        major = plan["classes"]["major"]
+        out[lvl.value] = {
+            **plan,
+            "acceptance_number": major["acceptance_number"],
+            "rejection_number": major["rejection_number"],
+        }
+    return out
+
+
 def plans_by_level(
     lot_size: int, aql_level: float, general_level: GeneralLevel = GeneralLevel.II,
 ) -> dict[str, dict[str, Any]]:

@@ -484,8 +484,14 @@ export default function LotManager({ projectId }: Props) {
                     <HelpTip>
                       Sets which ISO 2859-1 table this lot is sampled from, for your inspection and for the
                       customer's QC. The suggestion follows the standard's switching rules from the customer's
-                      recent lot results; you can choose another level. AQL {inspectionList?.aql_level} and
-                      general inspection level {inspectionList?.general_level} (project settings).
+                      recent lot results; you can choose another level. AQLs (critical / major / minor):{" "}
+                      {inspectionList?.class_aqls
+                        ? (["critical", "major", "minor"] as const)
+                            .map((c) => inspectionList.class_aqls![c] ?? "zero tolerance")
+                            .join(" / ")
+                        : inspectionList?.aql_level}
+                      ; general inspection level {inspectionList?.general_level} (project settings). One sample is
+                      drawn; each class is judged against its own Ac/Re.
                     </HelpTip>
                   </Space>
                   <Radio.Group
@@ -504,7 +510,10 @@ export default function LotManager({ projectId }: Props) {
                           </div>
                           {plan && (
                             <div style={{ fontSize: 12, opacity: 0.75 }}>
-                              n={plan.sample_size}, Ac {plan.acceptance_number}/Re {plan.rejection_number}
+                              n={plan.sample_size},{" "}
+                              {plan.classes
+                                ? `Ac ${plan.classes.critical.acceptance_number}/${plan.classes.major.acceptance_number}/${plan.classes.minor.acceptance_number}`
+                                : `Ac ${plan.acceptance_number}/Re ${plan.rejection_number}`}
                             </div>
                           )}
                         </Radio.Button>
@@ -560,7 +569,7 @@ export default function LotManager({ projectId }: Props) {
                       <span>
                         <InspectionLevelTag level={v} />
                         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                          AQL {i.aql_level} · General level {i.general_level}
+                          {i.classes ? "" : `AQL ${i.aql_level} · `}General level {i.general_level}
                         </Typography.Text>
                       </span>
                     ),
@@ -568,13 +577,20 @@ export default function LotManager({ projectId }: Props) {
                   {
                     title: "Plan",
                     key: "plan",
-                    render: (_: unknown, i) => `n=${i.sample_size}, Ac ${i.acceptance_number}/Re ${i.rejection_number}`,
+                    render: (_: unknown, i) =>
+                      i.classes
+                        ? `n=${i.sample_size}, Ac ${i.classes.critical.acceptance_number}/${i.classes.major.acceptance_number}/${i.classes.minor.acceptance_number} (crit/maj/min)`
+                        : `n=${i.sample_size}, Ac ${i.acceptance_number}/Re ${i.rejection_number}`,
                   },
                   {
                     title: "Non-conformities",
                     key: "nc",
                     render: (_: unknown, i) =>
-                      i.critical_defect_count === null ? "—" : `${i.critical_defect_count} crit / ${i.minor_defect_count} minor`,
+                      i.critical_defect_count === null
+                        ? "—"
+                        : i.major_defect_count !== null
+                          ? `${i.critical_defect_count} crit / ${i.major_defect_count} major / ${i.minor_defect_count} minor`
+                          : `${i.critical_defect_count} crit / ${i.minor_defect_count} minor`,
                   },
                   {
                     title: "",
