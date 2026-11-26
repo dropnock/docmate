@@ -60,12 +60,14 @@ async def start_task(
 @router.post("/{task_id}/heartbeat", status_code=204)
 async def heartbeat_task(
     task_id: int,
+    opened: bool = False,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     """Sent by the workspace while the agent is working on the task, so time
-    spent adds up across sessions (services/task_timing.py)."""
-    await task_service.heartbeat_task(db, task_id=task_id, user_id=current_user.id)
+    spent adds up across sessions (services/task_timing.py). opened=true when
+    the workspace has just been opened on the task."""
+    await task_service.heartbeat_task(db, task_id=task_id, user_id=current_user.id, opened=opened)
 
 
 @router.post("/{task_id}/complete", response_model=TaskOut)

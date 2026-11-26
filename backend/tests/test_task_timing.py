@@ -58,6 +58,22 @@ class TestTiming:
         task_timing.end_session(t, at(650))
         assert t.processing_time_seconds == 30 + 20
 
+    def test_resuming_an_open_task_counts_a_session(self):
+        t = _task()
+        task_timing.begin_session(t, at(0))
+        t.status = TaskStatus.in_progress
+        task_timing.heartbeat(t, at(30))
+        # Back to the batch list, then the record again later: the workspace
+        # doesn't call start on a task already in progress.
+        task_timing.heartbeat(t, at(600), opened=True)
+        task_timing.heartbeat(t, at(630))
+        assert t.sessions == 2
+        assert t.active_seconds == 60
+        # Opened right after start_task (pending → in progress): same session.
+        task_timing.heartbeat(t, at(640), opened=True)
+        assert t.sessions == 2
+        assert t.active_seconds == 70
+
     def test_reload_continues_the_session(self):
         t = _task()
         task_timing.begin_session(t, at(0))
@@ -124,6 +140,18 @@ class TestHeartbeatEndpoint:
         await db.flush()  # the test client shares this session
         await db.refresh(task)
         assert 29 <= task.active_seconds <= 32
+
+    async def test_opened_heartbeat_after_time_away_is_a_new_session(self, db: AsyncSession, seed, client):
+        task = await _started(db, seed)
+        task.last_active_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+        task.active_seconds = 50
+        await db.commit()
+        headers = {"Authorization": f"Bearer {token(seed['indexer'])}", "X-Portal": "digitizing"}
+        r = await client.post(f"/api/tasks/{task.id}/heartbeat?opened=true", headers=headers)
+        assert r.status_code == 204
+        await db.flush()
+        await db.refresh(task)
+        assert (task.sessions, task.active_seconds) == (2, 50)
 
     async def test_heartbeat_rejects_other_users_and_closed_tasks(self, db: AsyncSession, seed, client):
         task = await _started(db, seed)

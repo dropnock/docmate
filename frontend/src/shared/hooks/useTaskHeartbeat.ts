@@ -7,30 +7,38 @@ const BEAT_MS = 30_000;
 /** No mouse, key or wheel input for this long and the clock stops. */
 const IDLE_MS = 5 * 60_000;
 
-/** Tells the backend the agent is still working on a task, so the time on
- * the record adds up across sessions and leaves out time away (tab hidden,
- * idle, logged off). */
+/** Tells the backend the agent is working on a task, so the time on the
+ * record adds up across sessions and leaves out time away (tab hidden, idle,
+ * workspace closed). Beats on opening (which counts a session), every 30s
+ * while working, on coming back from idle or a hidden tab, and on leaving. */
 export function useTaskHeartbeat(taskId: number | undefined, active: boolean) {
   useEffect(() => {
     if (!taskId || !active) return;
     let lastInput = Date.now();
-    const onInput = () => {
-      lastInput = Date.now();
-    };
-    const working = () => document.visibilityState === "visible" && Date.now() - lastInput < IDLE_MS;
-    const beat = () => {
-      api.post(`/tasks/${taskId}/heartbeat`).catch(() => {
+    const recent = () => Date.now() - lastInput < IDLE_MS;
+    const working = () => document.visibilityState === "visible" && recent();
+    const beat = (opened = false) => {
+      api.post(`/tasks/${taskId}/heartbeat`, null, { params: opened ? { opened: true } : undefined }).catch(() => {
         /* finished or moved on: nothing to count */
       });
     };
+    const onInput = () => {
+      const wasIdle = !recent();
+      lastInput = Date.now();
+      if (wasIdle && document.visibilityState === "visible") beat();
+    };
     const onVisibility = () => {
-      // Count up to the moment the tab is hidden, and restart on return.
-      if (document.visibilityState === "hidden" && Date.now() - lastInput < IDLE_MS) beat();
-      if (document.visibilityState === "visible") lastInput = Date.now();
+      if (document.visibilityState === "hidden") {
+        if (recent()) beat(); // count up to the moment the tab is hidden
+      } else {
+        lastInput = Date.now();
+        beat();
+      }
     };
     const events = ["pointermove", "pointerdown", "keydown", "wheel"] as const;
     events.forEach((e) => window.addEventListener(e, onInput, { passive: true }));
     document.addEventListener("visibilitychange", onVisibility);
+    beat(true);
     const timer = window.setInterval(() => {
       if (working()) beat();
     }, BEAT_MS);
@@ -38,6 +46,7 @@ export function useTaskHeartbeat(taskId: number | undefined, active: boolean) {
       window.clearInterval(timer);
       events.forEach((e) => window.removeEventListener(e, onInput));
       document.removeEventListener("visibilitychange", onVisibility);
+      if (working()) beat();
     };
   }, [taskId, active]);
 }

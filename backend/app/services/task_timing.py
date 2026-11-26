@@ -1,7 +1,7 @@
 """Time an agent spends on a task, added up across every session.
 
-The workspace sends a heartbeat (POST /tasks/{id}/heartbeat) every
-HEARTBEAT_SECONDS while the agent is using it: tab visible and some input
+The workspace sends a heartbeat (POST /tasks/{id}/heartbeat) when it opens
+(``opened=true``), then every HEARTBEAT_SECONDS while the agent is using it: tab visible and some input
 within the client's idle limit (5 minutes). Each heartbeat adds the time
 since the previous one to ``Task.active_seconds``, unless the gap is longer
 than MAX_GAP_SECONDS: then the agent was away (tab closed, idle, logged off)
@@ -56,7 +56,13 @@ def begin_session(task: Task, now: datetime) -> None:
     task.last_active_at = now
 
 
-def heartbeat(task: Task, now: datetime) -> None:
+def heartbeat(task: Task, now: datetime, *, opened: bool = False) -> None:
+    """``opened``: the workspace has just been opened on the task. A task
+    already in progress is resumed without a new start_task, so this is
+    where its next session is counted."""
+    if opened:
+        begin_session(task, now)
+        return
     if task.last_active_at is None:
         # Opened before heartbeats existed: start counting from here.
         task.last_active_at = now

@@ -106,7 +106,7 @@ async def start_task(
     return task
 
 
-async def heartbeat_task(db: AsyncSession, *, task_id: int, user_id: int) -> Task:
+async def heartbeat_task(db: AsyncSession, *, task_id: int, user_id: int, opened: bool = False) -> Task:
     """The agent is still working on the task: count the time since the last
     beat (services/task_timing.py)."""
     task = await db.get(Task, task_id)
@@ -116,7 +116,7 @@ async def heartbeat_task(db: AsyncSession, *, task_id: int, user_id: int) -> Tas
         raise HTTPException(status_code=403, detail="Not your task")
     if task.status != TaskStatus.in_progress:
         raise HTTPException(status_code=409, detail="Task is not in progress")
-    task_timing.heartbeat(task, datetime.now(timezone.utc))
+    task_timing.heartbeat(task, datetime.now(timezone.utc), opened=opened)
     return task
 
 
