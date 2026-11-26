@@ -1,5 +1,5 @@
 import {
-  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, Modal, Popconfirm, Radio, Row,
+  Alert, Button, Col, Divider, Drawer, Empty, Form, Input, InputNumber, Modal, Popconfirm, Radio, Row,
   Select, Space, Spin, Table, Tag, Tooltip, Typography, message,
 } from "antd";
 import { useState } from "react";
@@ -76,6 +76,24 @@ export default function LotManager({ projectId }: Props) {
       api.get(`/cabinets/${cabinet!.id}/records?status=qa_passed&not_in_lot=true`).then((r) => r.data),
     enabled: !!cabinet && createOpen,
   });
+
+  // The "Records in lot" spinner: growing it adds the next unselected records
+  // in list order to whatever is already picked; shrinking it drops the
+  // selected records furthest down the list. Ticking rows moves it too.
+  const setRecordCount = (n: number) => {
+    const want = Math.max(0, Math.min(Math.floor(n), qaPassedRecords.length));
+    const picked = new Set(selectedRecordIds);
+    if (want > picked.size) {
+      for (const r of qaPassedRecords) {
+        if (picked.size >= want) break;
+        picked.add(r.id);
+      }
+    } else {
+      const inOrder = qaPassedRecords.filter((r) => picked.has(r.id)).map((r) => r.id);
+      inOrder.slice(want).forEach((id) => picked.delete(id));
+    }
+    setSelectedRecordIds(qaPassedRecords.filter((r) => picked.has(r.id)).map((r) => r.id));
+  };
 
   const { data: lotDetail } = useQuery<LotDetail>({
     queryKey: ["lot-detail", detailLotId],
@@ -305,10 +323,20 @@ export default function LotManager({ projectId }: Props) {
           <Empty description="No QA-passed records in this project's cabinet yet." />
         ) : (
           <>
-            <Row justify="space-between" style={{ marginBottom: 8 }}>
-              <Typography.Text type="secondary">
-                {qaPassedRecords.length} QA-passed records available
-              </Typography.Text>
+            <Row justify="space-between" align="middle" style={{ marginBottom: 8 }}>
+              <Space>
+                <Typography.Text>Records in lot</Typography.Text>
+                <InputNumber
+                  aria-label="Records in lot"
+                  min={0}
+                  max={qaPassedRecords.length}
+                  precision={0}
+                  value={selectedRecordIds.length}
+                  onChange={(v) => setRecordCount(v ?? 0)}
+                  style={{ width: 100 }}
+                />
+                <Typography.Text type="secondary">of {qaPassedRecords.length} QA-passed available</Typography.Text>
+              </Space>
               <Space>
                 <Button
                   size="small"
