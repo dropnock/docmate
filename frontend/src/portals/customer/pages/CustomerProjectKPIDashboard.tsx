@@ -198,7 +198,7 @@ export default function CustomerProjectKPIDashboard({ projectId }: Props) {
               rowKey="id"
               size="small"
               dataSource={processedLots}
-              pagination={{ pageSize: 20 }}
+              pagination={{ defaultPageSize: 20 }}
               columns={columns}
             />
           </>

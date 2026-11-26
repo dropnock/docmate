@@ -269,7 +269,7 @@ export default function LotManager({ projectId }: Props) {
           columns={columns}
           dataSource={lots}
           size="middle"
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20 }}
         />
       )}
 
@@ -325,7 +325,7 @@ export default function LotManager({ projectId }: Props) {
               rowKey="id"
               size="small"
               dataSource={qaPassedRecords}
-              pagination={{ pageSize: 20 }}
+              pagination={{ defaultPageSize: 20 }}
               rowSelection={{
                 selectedRowKeys: selectedRecordIds,
                 onChange: (keys) => setSelectedRecordIds(keys as number[]),
@@ -587,7 +587,7 @@ export default function LotManager({ projectId }: Props) {
               size="small"
               dataSource={lotDetail.records}
               columns={recordColumns}
-              pagination={{ pageSize: 20 }}
+              pagination={{ defaultPageSize: 20 }}
               rowSelection={lotDetail.status === "draft" && !activeInspection ? {
                 selectedRowKeys: removeSelection,
                 onChange: (keys) => setRemoveSelection(keys as number[]),

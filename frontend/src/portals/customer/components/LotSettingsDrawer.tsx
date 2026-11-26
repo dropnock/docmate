@@ -374,7 +374,7 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
               rowKey="record_id"
               size="small"
               dataSource={lotDetail.records}
-              pagination={{ pageSize: 20 }}
+              pagination={{ defaultPageSize: 20 }}
               rowClassName={(r) => (sampledRecordIds.has(r.record_id) ? "docmate-sampled-row" : "")}
               columns={[
                 { title: "Record ID", dataIndex: "record_id", width: 90 },

@@ -132,7 +132,7 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
         loading={isLoading}
         columns={columns}
         dataSource={batches}
-        pagination={{ pageSize: 20, hideOnSinglePage: true }}
+        pagination={{ defaultPageSize: 20, hideOnSinglePage: true }}
         locale={{ emptyText: <Empty description="No QC batches assigned yet" /> }}
       />
       <Modal

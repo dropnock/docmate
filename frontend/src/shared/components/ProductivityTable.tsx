@@ -59,7 +59,7 @@ export default function ProductivityTable<T extends string>({ data, loading, tas
       dataSource={rows}
       loading={loading}
       size="middle"
-      pagination={{ pageSize: 20 }}
+      pagination={{ defaultPageSize: 20 }}
     />
   );
 }
