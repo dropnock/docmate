@@ -44,7 +44,11 @@ export default function LotQcRounds({ rounds, currentRound }: { rounds: LotQcRou
             title: "Defects",
             key: "defects",
             render: (_: unknown, r: LotQcRound) =>
-              r.critical_defect_count === null ? "—" : `${r.critical_defect_count} crit / ${r.minor_defect_count} minor`,
+              r.critical_defect_count === null
+                ? "—"
+                : r.major_defect_count != null
+                  ? `${r.critical_defect_count} crit / ${r.major_defect_count} major / ${r.minor_defect_count} minor`
+                  : `${r.critical_defect_count} crit / ${r.minor_defect_count} minor`,
           },
           {
             title: "QC completed",

@@ -8,10 +8,8 @@ import {
   Input,
   List,
   Modal,
-  Segmented,
   Space,
   Spin,
-  Tag,
   Typography,
   message,
 } from "antd";
@@ -23,7 +21,8 @@ import { formatApiError } from "@shared/api/errors";
 import { aqlConfigKey, getAqlConfig } from "@shared/api/aql";
 import { completeTask, failTask } from "@shared/api/tasks";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
-import type { Batch, DocRecord, DocumentType, FieldResult, QcFieldStatus, Task, UserRecord } from "@shared/types";
+import type { Batch, DocRecord, DocumentType, FieldResult, Task, UserRecord } from "@shared/types";
+import { FieldMarkControl, isEmptyValue, unclassedFields, type FieldMark } from "@shared/components/DefectClasses";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
@@ -34,7 +33,7 @@ export default function QCWorkspace() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectForm] = Form.useForm<{ reason: string }>();
-  const [fieldMarks, setFieldMarks] = useState<Record<string, { status: QcFieldStatus; note?: string }>>({});
+  const [fieldMarks, setFieldMarks] = useState<Record<string, FieldMark>>({});
 
   // Fetch tasks assigned to me
   const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
@@ -98,7 +97,7 @@ export default function QCWorkspace() {
   // "accept" on every field of every record.
   useEffect(() => {
     if (!isIso || !docType) return;
-    const initial: Record<string, { status: QcFieldStatus; note?: string }> = {};
+    const initial: Record<string, FieldMark> = {};
     for (const key of Object.keys(schemaProperties)) {
       initial[key] = { status: "accepted" };
     }
@@ -168,7 +167,8 @@ export default function QCWorkspace() {
       const fieldResults: FieldResult[] = Object.entries(fieldMarks).map(([field_key, mark]) => ({
         field_key,
         status: mark.status,
-        note: mark.note,
+        note: mark.status === "defective" ? mark.note : undefined,
+        error_type: mark.status === "defective" ? mark.error_type : undefined,
       }));
       const defective = fieldResults.filter((f) => f.status === "defective");
       if (defective.length > 0) {
@@ -298,7 +298,8 @@ export default function QCWorkspace() {
           <Button
             type="primary"
             loading={submitReviewMutation.isPending}
-            disabled={!docType}
+            disabled={!docType || unclassedFields(fieldMarks).length > 0}
+            title={unclassedFields(fieldMarks).length > 0 ? "Choose what is wrong with each defective field" : undefined}
             onClick={() => submitReviewMutation.mutate()}
           >
             Submit Review
@@ -381,44 +382,18 @@ export default function QCWorkspace() {
                     <Typography.Text type="secondary">This document type has no fields to review.</Typography.Text>
                   ) : (
                     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-                      {Object.entries(schemaProperties).map(([key, field]) => {
-                        const mark = fieldMarks[key] ?? { status: "accepted" as QcFieldStatus };
-                        return (
-                          <div key={key}>
-                            <Space align="center" style={{ marginBottom: 6 }}>
-                              <Typography.Text strong>{field.title || key}</Typography.Text>
-                              {field["x-critical"] && <Tag color="red">Critical</Tag>}
-                            </Space>
-                            <br />
-                            <Segmented
-                              value={mark.status}
-                              onChange={(status) =>
-                                setFieldMarks((prev) => ({
-                                  ...prev,
-                                  [key]: { ...prev[key], status: status as QcFieldStatus },
-                                }))
-                              }
-                              options={[
-                                { label: "Accepted", value: "accepted" },
-                                { label: "Defective", value: "defective" },
-                              ]}
-                            />
-                            {mark.status === "defective" && (
-                              <Input
-                                placeholder="Note (optional)"
-                                style={{ marginTop: 8 }}
-                                value={mark.note ?? ""}
-                                onChange={(e) =>
-                                  setFieldMarks((prev) => ({
-                                    ...prev,
-                                    [key]: { ...prev[key], note: e.target.value },
-                                  }))
-                                }
-                              />
-                            )}
-                          </div>
-                        );
-                      })}
+                      {Object.entries(schemaProperties).map(([key, field]) => (
+                        <FieldMarkControl
+                          key={key}
+                          title={field.title || key}
+                          isIdentifier={!!field["x-critical"]}
+                          mark={fieldMarks[key] ?? { status: "accepted" }}
+                          onChange={(m) => setFieldMarks((prev) => ({ ...prev, [key]: m }))}
+                          valueEmpty={isEmptyValue((record?.indexed_data as Record<string, unknown> | undefined)?.[key])}
+                          errorClasses={aqlConfig && "error_classes" in aqlConfig ? aqlConfig.error_classes : undefined}
+                          notePlaceholder="Note (optional)"
+                        />
+                      ))}
                     </Space>
                   )}
                 </Card>

@@ -29,7 +29,10 @@ class LotOut(BaseModel):
     inspection_level: str | None = None
     qc_completed_at: datetime | None = None
     critical_defect_count: int | None = None
+    major_defect_count: int | None = None
     minor_defect_count: int | None = None
+    # Per-class Ac/Re of the customer's sample; None before defect classes.
+    class_plan: dict | None = None
     released_at: datetime | None = None
     released_by: int | None
     created_by: int | None
@@ -69,6 +72,8 @@ class FieldResultSummary(BaseModel):
     defective_count: int
     accepted_count: int
     contributing_agents: list[ContributingAgent]
+    by_class: dict[str, int] = {}
+    by_error_type: dict[str, int] = {}
 
 
 class QcFieldResultsOut(BaseModel):
@@ -76,6 +81,7 @@ class QcFieldResultsOut(BaseModel):
     any_critical_defect: bool
     non_critical_defect_total: int
     acceptance_number: int | None
+    classes: dict | None = None
     fields: list[FieldResultSummary]
 
 
@@ -113,7 +119,9 @@ class LotQcRoundOut(BaseModel):
     accuracy_rate: float | None
     aql_status_snapshot: str | None
     critical_defect_count: int | None
+    major_defect_count: int | None = None
     minor_defect_count: int | None
+    class_plan: dict | None = None
     sampled_record_ids: list[int]
     released_at: datetime | None
     qc_completed_at: datetime | None

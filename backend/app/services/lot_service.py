@@ -12,7 +12,7 @@ from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service, aql_service, lot_inspection_service
+from app.services import audit_service, aql_service, defect_class_service, lot_inspection_service
 
 
 async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
@@ -186,17 +186,23 @@ async def apply_sample(
     general_level = config.general_level if config else GeneralLevel.II
 
     acceptance_number: int | None = None
+    class_plan: dict | None = None
     if mode == SamplingMode.iso:
         if sample_rate is not None:
             raise HTTPException(
                 status_code=422,
                 detail="sample_rate must not be supplied when sampling_mode is 'iso' — the sample size is computed from the ISO 2859-1 table",
             )
-        aql_level = await aql_service.get_current_aql_level(db, lot.project_id)
-        computed_size, acceptance_number = aql_service.compute_sample_size(
-            total, aql_level, level, general_level,
-        )
-        sample_size = min(computed_size, total) if total else 0
+        # One sample sized for the project's critical / major / minor AQLs;
+        # each class is judged against its own Ac (calculate_accuracy).
+        # acceptance_number keeps the major class's Ac.
+        if total:
+            plan = aql_service.class_plans(total, aql_service.config_class_aqls(config), level, general_level)
+            class_plan = plan["classes"]
+            acceptance_number = class_plan["major"]["acceptance_number"]
+            sample_size = plan["sample_size"]
+        else:
+            sample_size = 0
         derived_rate = sample_size / total if total else 0.0
     else:
         if sample_rate is None or not 0 < sample_rate <= 1:
@@ -218,6 +224,7 @@ async def apply_sample(
     lot.sample_rate = derived_rate
     lot.sample_size = sample_size
     lot.acceptance_number = acceptance_number
+    lot.class_plan = class_plan
     lot.aql_status_snapshot = level
     lot.status = LotStatus.qc_in_progress
 
@@ -235,6 +242,7 @@ async def apply_sample(
             "sample_rate": derived_rate,
             "sample_size": sample_size,
             "acceptance_number": acceptance_number,
+            "class_plan": class_plan,
             "total": total,
         },
     )
@@ -551,9 +559,11 @@ async def resubmit_lot(
         sample_rate=lot.sample_rate,
         sample_size=lot.sample_size,
         acceptance_number=lot.acceptance_number,
+        class_plan=lot.class_plan,
         accuracy_rate=lot.accuracy_rate,
         aql_status_snapshot=lot.aql_status_snapshot,
         critical_defect_count=lot.critical_defect_count,
+        major_defect_count=lot.major_defect_count,
         minor_defect_count=lot.minor_defect_count,
         sampled_record_ids=sorted(lr.record_id for lr in lot_records if lr.is_sampled),
         released_at=lot.released_at,
@@ -584,8 +594,9 @@ async def resubmit_lot(
     superseded = await lot_inspection_service.supersede_passed(db, lot)
     old_round = lot.qc_round
     for field in (
-        "sample_rate", "sample_size", "acceptance_number", "accuracy_rate", "aql_status_snapshot",
-        "qc_completed_at", "critical_defect_count", "minor_defect_count", "released_at", "released_by",
+        "sample_rate", "sample_size", "acceptance_number", "class_plan", "accuracy_rate", "aql_status_snapshot",
+        "qc_completed_at", "critical_defect_count", "major_defect_count", "minor_defect_count",
+        "released_at", "released_by",
     ):
         setattr(lot, field, None)
     lot.qc_round = old_round + 1
@@ -657,23 +668,35 @@ async def calculate_accuracy(
         from app.models.qc_field_result import QcFieldResult, QcFieldStatus
 
         record_ids = [lr.record_id for lr in sampled]
-        defective_rows = (await db.execute(
-            select(QcFieldResult.is_critical).where(
+        defects = (await db.execute(
+            select(QcFieldResult.is_critical, QcFieldResult.severity).where(
                 QcFieldResult.lot_id == lot_id,
                 QcFieldResult.qc_round == lot.qc_round,
                 QcFieldResult.record_id.in_(record_ids),
                 QcFieldResult.status == QcFieldStatus.defective,
             )
-        )).scalars().all()
+        )).all()
+        defective_rows = [is_critical for is_critical, _ in defects]
         any_critical_defect = any(defective_rows)
         non_critical_defect_total = sum(1 for is_critical in defective_rows if not is_critical)
         lot.critical_defect_count = sum(1 for is_critical in defective_rows if is_critical)
         lot.minor_defect_count = non_critical_defect_total
 
-        # A single critical-field defect fails the lot outright, independent
-        # of the acceptance number — real ISO 2859-1 practice treats critical
-        # defects as zero-tolerance, separate from the major/minor AQL table.
-        if any_critical_defect:
+        if lot.class_plan:
+            # Non-conformities added up per class across the sample, each
+            # class against its own Ac (defect_class_service).
+            counts = defect_class_service.tally(
+                severity or ("critical" if is_critical else "major") for is_critical, severity in defects
+            )
+            lot.critical_defect_count = counts["critical"]
+            lot.major_defect_count = counts["major"]
+            lot.minor_defect_count = counts["minor"]
+            accepted = defect_class_service.judge(counts, lot.class_plan)["accepted"]
+            lot.status = LotStatus.passed if accepted else LotStatus.failed
+        # Lots sampled before defect classes: a single critical-field defect
+        # fails the lot outright, independent of the acceptance number; the
+        # other defects together against it.
+        elif any_critical_defect:
             lot.status = LotStatus.failed
         else:
             lot.status = (
@@ -704,6 +727,11 @@ async def calculate_accuracy(
             "acceptance_number": lot.acceptance_number,
             "any_critical_defect": any_critical_defect,
             "non_critical_defect_total": non_critical_defect_total,
+            "defects_by_class": {
+                "critical": lot.critical_defect_count,
+                "major": lot.major_defect_count,
+                "minor": lot.minor_defect_count,
+            } if lot.class_plan else None,
         },
     )
     return lot
@@ -752,9 +780,16 @@ async def get_field_result_tabulation(
             "defective_count": 0,
             "accepted_count": 0,
             "agent_ids": set(),
+            "by_class": {"critical": 0, "major": 0, "minor": 0},
+            "by_error_type": {},
         })
         if qfr.status == QcFieldStatus.defective:
             entry["defective_count"] += 1
+            severity = qfr.severity.value if qfr.severity else ("critical" if qfr.is_critical else "major")
+            entry["by_class"][severity] += 1
+            if qfr.error_type:
+                et = qfr.error_type.value
+                entry["by_error_type"][et] = entry["by_error_type"].get(et, 0) + 1
         else:
             entry["accepted_count"] += 1
         if assigned_to is not None:
@@ -773,6 +808,8 @@ async def get_field_result_tabulation(
             "is_critical": entry["is_critical"],
             "defective_count": entry["defective_count"],
             "accepted_count": entry["accepted_count"],
+            "by_class": entry["by_class"],
+            "by_error_type": entry["by_error_type"],
             "contributing_agents": [
                 {"id": aid, "full_name": agents_by_id[aid].full_name}
                 for aid in sorted(entry["agent_ids"]) if aid in agents_by_id
@@ -785,6 +822,14 @@ async def get_field_result_tabulation(
         "any_critical_defect": any_critical_defect,
         "non_critical_defect_total": non_critical_defect_total,
         "acceptance_number": lot.acceptance_number,
+        # Per-class plan with the current round's totals (None for lots
+        # sampled before defect classes): found / accepted per class.
+        "classes": defect_class_service.judge(
+            defect_class_service.tally(
+                s for f in field_summaries for s, n in f["by_class"].items() for _ in range(n)
+            ),
+            lot.class_plan,
+        )["classes"] if lot.class_plan else None,
         "fields": field_summaries,
     }
 

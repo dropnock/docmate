@@ -332,3 +332,123 @@ class TestOutgoingInspectionVerdict:
         classes = report["inspections"][0]["classes"]
         assert all("aql" not in c for c in classes.values())
         assert classes["minor"]["acceptance_number"] == 1
+
+
+class TestCustomerQc:
+    """Customer ISO sample of a 20-record lot with critical zero tolerance,
+    major 1.0, minor 4.0: n=13, Ac critical 0 / major 0 / minor 1."""
+
+    async def _sample(self, db, seed):
+        from tests.test_lot_resubmit import _inspect_and_release
+        from app.services import lot_service
+        cfg = seed["aql_config"]
+        cfg.critical_aql, cfg.normal_aql, cfg.minor_aql = None, 1.0, 4.0
+        await db.flush()
+        lot, records = await _make_lot(db, seed, num_records=20)
+        await _inspect_and_release(db, seed, lot)
+        await lot_service.apply_sample(
+            db, lot_id=lot.id, sample_rate=None, user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        assert lot.sample_size == 13
+        assert {c: p["acceptance_number"] for c, p in lot.class_plan.items()} == {"critical": 0, "major": 0, "minor": 1}
+        assert lot.acceptance_number == 0  # the major class's
+        return lot, records
+
+    async def _review(self, db, seed, lot, defects: dict[int, list[FieldResultIn]]):
+        """QC every sampled record: record i gets defects[i] (fail) or all accepted."""
+        from datetime import datetime, timezone
+        from app.models.batch import Batch
+        from app.models.document_type import DocumentType
+        from app.models.lot import LotRecord
+        from app.models.record import Record
+        from app.models.task import Task, TaskStatus, TaskType
+        from app.services import lot_service
+        doc_type = (await db.execute(
+            select(DocumentType).join(Batch, Batch.document_type_id == DocumentType.id)
+            .join(Record, Record.batch_id == Batch.id).join(LotRecord, LotRecord.record_id == Record.id)
+            .where(LotRecord.lot_id == lot.id).limit(1)
+        )).scalar_one()
+        sampled = sorted((await db.execute(
+            select(LotRecord.record_id).where(LotRecord.lot_id == lot.id, LotRecord.is_sampled == True)  # noqa: E712
+        )).scalars().all())
+        await lot_service.create_qc_batches(
+            db, lot_id=lot.id, project_id=lot.project_id, document_type_id=doc_type.id,
+            assignments=[{"agent_id": seed["qc_agent"].id, "record_ids": sampled}],
+            supervisor_id=seed["supervisor"].id, tenant_id=seed["tenant"].id,
+        )
+        await db.flush()
+        tasks = (await db.execute(
+            select(Task).where(Task.record_id.in_(sampled), Task.task_type == TaskType.qc).order_by(Task.record_id)
+        )).scalars().all()
+        accept = [FieldResultIn(field_key="surname", status="accepted"), FieldResultIn(field_key="dob", status="accepted")]
+        for i, task in enumerate(tasks):
+            task.status, task.started_at = TaskStatus.in_progress, datetime.now(timezone.utc)
+            await db.flush()
+            kw = dict(task_id=task.id, user_id=seed["qc_agent"].id, tenant_id=seed["tenant"].id)
+            if i in defects:
+                await task_service.fail_task(db, reason="defect", field_results=defects[i], **kw)
+            else:
+                await task_service.complete_task(db, field_results=accept, **kw)
+        await db.flush()
+        await db.refresh(lot)
+
+    @staticmethod
+    def _bad(field, error_type):
+        other = "dob" if field == "surname" else "surname"
+        return [FieldResultIn(field_key=field, status="defective", error_type=error_type),
+                FieldResultIn(field_key=other, status="accepted")]
+
+    async def test_one_typo_passes(self, db: AsyncSession, seed):
+        lot, _ = await self._sample(db, seed)
+        await self._review(db, seed, lot, {0: self._bad("surname", "typo")})
+        assert lot.status.value == "passed"
+        assert (lot.critical_defect_count, lot.major_defect_count, lot.minor_defect_count) == (0, 0, 1)
+
+    async def test_typos_add_up(self, db: AsyncSession, seed):
+        lot, _ = await self._sample(db, seed)
+        await self._review(db, seed, lot, {0: self._bad("surname", "typo"), 5: self._bad("surname", "interpretation")})
+        assert lot.status.value == "failed" and lot.minor_defect_count == 2
+
+    async def test_missing_fails_major(self, db: AsyncSession, seed):
+        lot, _ = await self._sample(db, seed)
+        await self._review(db, seed, lot, {0: self._bad("surname", "missing")})
+        assert lot.status.value == "failed" and lot.major_defect_count == 1
+
+    async def test_identifier_error_is_critical(self, db: AsyncSession, seed):
+        lot, _ = await self._sample(db, seed)
+        await self._review(db, seed, lot, {0: self._bad("dob", "typo")})
+        assert lot.status.value == "failed" and lot.critical_defect_count == 1
+
+    async def test_tabulation(self, db: AsyncSession, seed):
+        from app.services import lot_service
+        lot, _ = await self._sample(db, seed)
+        await self._review(db, seed, lot, {0: self._bad("surname", "typo")})
+        tab = await lot_service.get_field_result_tabulation(db, lot_id=lot.id, tenant_id=seed["tenant"].id)
+        assert tab["classes"]["minor"] == {
+            "aql": 4.0, "acceptance_number": 1, "rejection_number": 2, "found": 1, "accepted": True,
+        }
+        surname = next(f for f in tab["fields"] if f["field_key"] == "surname")
+        assert surname["by_class"] == {"critical": 0, "major": 0, "minor": 1}
+        assert surname["by_error_type"] == {"typo": 1}
+
+    async def test_defect_needs_error_type(self, db: AsyncSession, seed):
+        lot, _ = await self._sample(db, seed)
+        with pytest.raises(HTTPException) as e:
+            await self._review(db, seed, lot, {0: [
+                FieldResultIn(field_key="surname", status="defective"), FieldResultIn(field_key="dob", status="accepted"),
+            ]})
+        assert e.value.status_code == 422
+
+    async def test_resubmit_archives_the_class_plan(self, db: AsyncSession, seed):
+        from app.models.lot import LotQcRound
+        from app.services import lot_service
+        from tests.test_lot_resubmit import _finish_rework
+        lot, records = await self._sample(db, seed)
+        await self._review(db, seed, lot, {0: self._bad("surname", "missing")})
+        plan = lot.class_plan
+        await lot_service.send_for_remediation(db, lot_id=lot.id, user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id)
+        await _finish_rework(db, records)
+        await lot_service.resubmit_lot(db, lot_id=lot.id, user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id)
+        archived = (await db.execute(select(LotQcRound).where(LotQcRound.lot_id == lot.id))).scalar_one()
+        assert archived.class_plan == plan and archived.major_defect_count == 1
+        assert lot.class_plan is None and lot.major_defect_count is None

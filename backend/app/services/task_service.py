@@ -333,6 +333,13 @@ async def _persist_qc_field_results(
     from app.models.lot import Lot
     lot = await db.get(Lot, lot_record.lot_id)
     from app.services import defect_class_service
+    if lot.class_plan:
+        unclassed = [fr.field_key for fr in field_results if fr.status == "defective" and not fr.error_type]
+        if unclassed:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Say what is wrong with each defective field (missing, typo or interpretation): {unclassed}",
+            )
     error_classes = await defect_class_service.project_error_classes(db, lot.project_id)
     for fr in field_results:
         is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))

@@ -68,7 +68,10 @@ export interface Lot {
   inspection_level: InspectionLevel | null;
   qc_completed_at: string | null;
   critical_defect_count: number | null;
+  major_defect_count?: number | null;
   minor_defect_count: number | null;
+  /** Per-class Ac/Re of the customer's sample; null before defect classes. */
+  class_plan?: ClassResults | null;
   released_at: string | null;
   released_by: number | null;
   created_by: number | null;
@@ -87,7 +90,9 @@ export interface LotQcRound {
   accuracy_rate: number | null;
   aql_status_snapshot: InspectionLevel | null;
   critical_defect_count: number | null;
+  major_defect_count?: number | null;
   minor_defect_count: number | null;
+  class_plan?: ClassResults | null;
   sampled_record_ids: number[];
   released_at: string | null;
   qc_completed_at: string | null;
@@ -161,6 +166,8 @@ export interface FieldResultSummary {
   defective_count: number;
   accepted_count: number;
   contributing_agents: ContributingAgent[];
+  by_class?: Record<Severity, number>;
+  by_error_type?: Partial<Record<ErrorType, number>>;
 }
 
 export interface QcFieldResultsOut {
@@ -168,6 +175,8 @@ export interface QcFieldResultsOut {
   any_critical_defect: boolean;
   non_critical_defect_total: number;
   acceptance_number: number | null;
+  /** Per-class plan and current totals; null for lots sampled before classes. */
+  classes: ClassResults | null;
   fields: FieldResultSummary[];
 }
 

@@ -11,7 +11,8 @@ import LotHistory from "@shared/components/LotHistory";
 import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
 import InspectionLevelTag from "@shared/components/InspectionLevelTag";
-import type { AQLConfig } from "@shared/types";
+import type { AQLConfig, ErrorType, FieldResultSummary } from "@shared/types";
+import { ClassResultsTable, ERROR_TYPE_LABEL, SEVERITIES, SEVERITY } from "@shared/components/DefectClasses";
 
 const AQL_OPTIONS = [0.65, 1.0, 1.5, 2.5].map((v) => ({ value: v, label: `${v}%` }));
 const GENERAL_LEVEL_OPTIONS = [
@@ -145,7 +146,11 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
               type="error"
               style={{ marginBottom: 16 }}
               message={
-                isIso && fieldResults
+                isIso && fieldResults?.classes
+                  ? `Lot failed QC — ${SEVERITIES.filter((s) => fieldResults.classes![s].accepted === false)
+                      .map((s) => SEVERITY[s].label.toLowerCase())
+                      .join(" and ")} non-conformities reached the rejection number.`
+                  : isIso && fieldResults
                   ? fieldResults.any_critical_defect
                     ? "Lot failed QC — a critical field defect was found."
                     : `Lot failed QC — ${fieldResults.non_critical_defect_total} defect(s) found, exceeding the acceptance number (${fieldResults.acceptance_number}).`
@@ -324,17 +329,23 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                 <Typography.Text type="secondary">No field marks recorded yet.</Typography.Text>
               ) : (
                 <>
-                  {fieldResults.any_critical_defect && (
-                    <Alert
-                      type="error"
-                      style={{ marginBottom: 12 }}
-                      message="A critical field was marked defective — this fails the lot outright, regardless of the acceptance number."
-                    />
+                  {fieldResults.classes ? (
+                    <ClassResultsTable classes={fieldResults.classes} />
+                  ) : (
+                    <>
+                      {fieldResults.any_critical_defect && (
+                        <Alert
+                          type="error"
+                          style={{ marginBottom: 12 }}
+                          message="A critical field was marked defective — this fails the lot outright, regardless of the acceptance number."
+                        />
+                      )}
+                      <Typography.Text type="secondary">
+                        Non-critical defects: {fieldResults.non_critical_defect_total} / acceptance number{" "}
+                        {fieldResults.acceptance_number ?? "—"}
+                      </Typography.Text>
+                    </>
                   )}
-                  <Typography.Text type="secondary">
-                    Non-critical defects: {fieldResults.non_critical_defect_total} / acceptance number{" "}
-                    {fieldResults.acceptance_number ?? "—"}
-                  </Typography.Text>
                   <Table
                     style={{ marginTop: 12 }}
                     rowKey="field_key"
@@ -344,11 +355,34 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                     columns={[
                       { title: "Field", dataIndex: "field_key" },
                       {
-                        title: "Critical",
+                        title: fieldResults.classes ? "Identifier" : "Critical",
                         dataIndex: "is_critical",
-                        render: (v: boolean) => (v ? <Tag color="red">Critical</Tag> : "—"),
+                        render: (v: boolean) =>
+                          v ? <Tag color="red">{fieldResults.classes ? "Identifier" : "Critical"}</Tag> : "—",
                       },
                       { title: "Defective", dataIndex: "defective_count" },
+                      ...(fieldResults.classes
+                        ? [
+                            {
+                              title: "By class",
+                              key: "by_class",
+                              render: (_: unknown, f: FieldResultSummary) =>
+                                SEVERITIES.filter((s) => (f.by_class?.[s] ?? 0) > 0).map((s) => (
+                                  <Tag key={s} color={SEVERITY[s].color}>
+                                    {f.by_class![s]} {SEVERITY[s].label.toLowerCase()}
+                                  </Tag>
+                                )),
+                            },
+                            {
+                              title: "What was wrong",
+                              key: "by_error_type",
+                              render: (_: unknown, f: FieldResultSummary) =>
+                                Object.entries(f.by_error_type ?? {})
+                                  .map(([t, n]) => `${n} ${ERROR_TYPE_LABEL[t as ErrorType].toLowerCase()}`)
+                                  .join(", ") || "—",
+                            },
+                          ]
+                        : []),
                       { title: "Accepted", dataIndex: "accepted_count" },
                       {
                         title: "QC Agents",

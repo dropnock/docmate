@@ -103,6 +103,11 @@ export default function CustomerProjectKPIDashboard({ projectId }: Props) {
       render: (v: number | null) => v ?? "—",
     },
     {
+      title: "Major Errors",
+      dataIndex: "major_defect_count",
+      render: (v: number | null | undefined) => v ?? "—",
+    },
+    {
       title: "Minor Errors",
       dataIndex: "minor_defect_count",
       render: (v: number | null) => v ?? "—",
