@@ -237,11 +237,17 @@ export interface RecordsDashboard {
   batches_indexed: number;
   batches_qa_completed: number;
   batches_to_be_qad: number;
+  /** Live, not date-filtered: batches in indexing now, and those of them
+   * that can't go on to QA while one of their records has an open flag. */
+  batches_being_indexed: number;
+  batches_blocked_by_flags: number;
   total_records_indexed: number;
   total_records_qad: number;
   total_records_remaining: number;
   records_withdrawn: number;
   records_illegible: number;
+  /** Records with an open flag (live). */
+  records_flagged: number;
 }
 
 export interface DocRecord {

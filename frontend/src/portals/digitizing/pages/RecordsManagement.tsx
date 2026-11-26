@@ -6,6 +6,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs, { type Dayjs } from "dayjs";
+import { useNavigate } from "react-router";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import PageHeader from "@shared/components/PageHeader";
@@ -78,25 +79,63 @@ function DashboardTab({ projectId }: { projectId: number }) {
   });
   useQueryErrorToast(isError, error, "Failed to load dashboard");
 
-  const batchTiles = [
+  const navigate = useNavigate();
+  const toFlags = () => navigate("/flagged-records");
+
+  type Tile = { title: string; value?: number; alert?: boolean; onClick?: () => void; hint?: string };
+  const liveTiles: Tile[] = [
+    { title: "Batches Being Indexed", value: data?.batches_being_indexed },
+    {
+      title: "Batches Blocked by Flags",
+      value: data?.batches_blocked_by_flags,
+      alert: !!data?.batches_blocked_by_flags,
+      onClick: toFlags,
+      hint: "Batches in indexing with a flagged record. They can't go on to QA until each flag is resolved or withdrawn.",
+    },
+  ];
+  const batchTiles: Tile[] = [
     { title: "Batches Indexed", value: data?.batches_indexed },
     { title: "Batches QA'd", value: data?.batches_qa_completed },
     { title: "Batches to be QA'd", value: data?.batches_to_be_qad },
   ];
-  const recordTiles = [
+  const recordTiles: Tile[] = [
     { title: "Total Records Indexed", value: data?.total_records_indexed },
     { title: "Total Records QA'd", value: data?.total_records_qad },
     { title: "Total Records Remaining", value: data?.total_records_remaining },
     { title: "Records Withdrawn", value: data?.records_withdrawn },
     { title: "Records Illegible", value: data?.records_illegible },
+    {
+      title: "Flagged Records",
+      value: data?.records_flagged,
+      alert: !!data?.records_flagged,
+      onClick: toFlags,
+      hint: "Records with an open flag waiting for a supervisor.",
+    },
   ];
 
-  const renderTiles = (tiles: typeof batchTiles) => (
+  const renderTiles = (tiles: Tile[]) => (
     <Row gutter={[16, 16]}>
       {tiles.map((tile) => (
         <Col key={tile.title} xs={24} sm={12} md={8} lg={6}>
-          <Card>
-            <Statistic title={tile.title} value={tile.value ?? 0} />
+          <Card
+            hoverable={!!tile.onClick}
+            onClick={tile.onClick}
+            data-dashboard-tile={tile.title}
+            style={tile.alert ? { borderColor: "#faad14" } : undefined}
+          >
+            <Statistic
+              title={
+                <>
+                  {tile.title}
+                  {tile.hint && <HelpTip>{tile.hint}</HelpTip>}
+                </>
+              }
+              value={tile.value ?? 0}
+              valueStyle={tile.alert ? { color: "#d46b08" } : undefined}
+            />
+            {tile.onClick && (
+              <Typography.Link style={{ fontSize: 12 }}>View flagged records →</Typography.Link>
+            )}
           </Card>
         </Col>
       ))}
@@ -113,6 +152,12 @@ function DashboardTab({ projectId }: { projectId: number }) {
       ) : (
         <>
           <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
+            Indexing now
+            <HelpTip>Current totals — not affected by the date range.</HelpTip>
+          </Typography.Text>
+          {renderTiles(liveTiles)}
+
+          <Typography.Text type="secondary" style={{ display: "block", margin: "20px 0 8px" }}>
             Batches
             <HelpTip>Batches created in the selected date range.</HelpTip>
           </Typography.Text>

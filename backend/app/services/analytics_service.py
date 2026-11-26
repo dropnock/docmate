@@ -486,10 +486,37 @@ async def records_dashboard(
     )
     records_illegible = illegible_q.scalar() or 0
 
+    # Live, like the record counts: batches in indexing now, and those of them
+    # held there by an open flag on one of their records — complete_indexing_batch
+    # won't send such a batch on to QA until the flag is resolved or withdrawn.
+    from app.models.record_flag import FlagStatus, RecordFlag
+
+    open_flag = (
+        select(RecordFlag.id)
+        .join(Record, Record.id == RecordFlag.record_id)
+        .where(Record.batch_id == Batch.id, RecordFlag.status == FlagStatus.open.value)
+        .exists()
+    )
+    in_indexing = (Batch.project_id == project_id, Batch.status == BatchStatus.indexing)
+    batches_being_indexed = (await db.execute(
+        select(func.count(Batch.id)).where(*in_indexing)
+    )).scalar() or 0
+    batches_blocked_by_flags = (await db.execute(
+        select(func.count(Batch.id)).where(*in_indexing, open_flag)
+    )).scalar() or 0
+    records_flagged = (await db.execute(
+        select(func.count(func.distinct(RecordFlag.record_id))).where(
+            RecordFlag.project_id == project_id, RecordFlag.status == FlagStatus.open.value,
+        )
+    )).scalar() or 0
+
     return {
         "batches_indexed": batches_indexed,
         "batches_qa_completed": batches_qa_completed,
         "batches_to_be_qad": batches_to_be_qad,
+        "batches_being_indexed": batches_being_indexed,
+        "batches_blocked_by_flags": batches_blocked_by_flags,
+        "records_flagged": records_flagged,
         "total_records_indexed": total_records_indexed,
         "total_records_qad": total_records_qad,
         "total_records_remaining": total_records - total_records_qad,

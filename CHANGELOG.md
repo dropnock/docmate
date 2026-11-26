@@ -8,6 +8,12 @@ See `RELEASING.md` for how to cut a release.
 ## [Unreleased]
 
 ### Added
+- **Records Management dashboard: indexing and flags.** A new "Indexing
+  now" row shows how many batches are being indexed and how many of them
+  are blocked by flagged records (they can't go on to QA until each flag is
+  resolved or withdrawn). The Records row adds a Flagged Records count.
+  These are live counts, not filtered by the date range, and the flag tiles
+  open Flagged Records.
 - **AQLs on the project create and edit screens.** Admins and digitizing
   supervisors set the critical / major / minor AQLs when creating a project
   and can change them later. Inspections and customer samples already
