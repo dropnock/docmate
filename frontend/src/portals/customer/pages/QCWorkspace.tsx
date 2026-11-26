@@ -21,6 +21,7 @@ import { formatApiError } from "@shared/api/errors";
 import { aqlConfigKey, getAqlConfig } from "@shared/api/aql";
 import { completeTask, failTask } from "@shared/api/tasks";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
+import { useTaskHeartbeat } from "@shared/hooks/useTaskHeartbeat";
 import type { Batch, DocRecord, DocumentType, FieldResult, Task, UserRecord } from "@shared/types";
 import { FieldMarkControl, isEmptyValue, unclassedFields, type FieldMark } from "@shared/components/DefectClasses";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
@@ -51,6 +52,7 @@ export default function QCWorkspace() {
     setPage: setImagePage,
     pageCount: imagePageCount,
   } = useRecordImage(activeTask?.record_id, !!activeTask && activeTask.status === "in_progress");
+  useTaskHeartbeat(activeTask?.id, !!activeTask && activeTask.status === "in_progress");
 
   // Fetch record data
   const { data: record } = useQuery<DocRecord>({

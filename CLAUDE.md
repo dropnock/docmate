@@ -93,6 +93,10 @@ Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises
 - `staff_productivity()` — per-agent metrics, filterable by shift/date
 - `project_kpis()` — completion %, projected vs proposed end date, on-track flag
 - `burnup_chart_data()` — 30-day actual cumulative + forward projection series
+- `staff_task_times()` — one agent's time per record (`GET /api/analytics/staff-productivity/tasks`, `format=csv`), the drill-down behind Avg Time; same roles as the report it details (QC → customer supervisor/admin)
+
+### Task timing (`services/task_timing.py`)
+`processing_time_seconds` is active time, added up across sessions. The workspaces call `useTaskHeartbeat` → `POST /tasks/{id}/heartbeat` every 30s while the tab is visible and the agent has given input in the last 5 minutes; each beat adds the gap since the last one to `Task.active_seconds` unless the gap is over 90s (time away). `start_task` → `begin_session` (counts `sessions`; a start within 90s of a beat continues the session), complete/fail/skip/requeue → `end_session`, reassign → `reset`. Tasks with no `last_active_at` keep the old measure (last open → finish). Don't set `started_at` / `processing_time_seconds` directly.
 
 ### Required fields (`services/required_fields.py`, `shared/components/requiredRules.ts`)
 A field named in a schema `required` array (any depth) must have a value: not missing/null, text not blank, a list with at least one non-blank entry, an object with at least one value; `0`/`false` count. Item-level `required` applies to every entry that exists; `x-hidden` fields are exempt. The form enforces it via RJSF `customValidate`; `complete_task` re-checks every indexing/QA completion (the submitted data, or the record's saved data when none is sent) and 422s with `{message, missing}`. Save Progress saves partial data but warns which required fields are still empty. JSON import can't check: records have no document type until batched. The two implementations must agree — both run `backend/tests/fixtures/required_fields_cases.json`.

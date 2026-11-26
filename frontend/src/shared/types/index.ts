@@ -299,6 +299,8 @@ export interface Task {
   started_at: string | null;
   completed_at: string | null;
   processing_time_seconds: number | null;
+  active_seconds?: number;
+  sessions?: number;
   // Only populated by GET /tasks/mine — see that endpoint. Null everywhere else.
   batch_status: string | null;
   // Open flag for a supervisor on the task's record — also only from /tasks/mine.
@@ -311,6 +313,42 @@ export interface TaskTypeMetrics {
   avg_processing_time_seconds: number;
   error_rate: number;
   tasks_in_progress: number;
+}
+
+export type StaffTaskType = "indexing" | "qa" | "qc";
+export type StaffTaskSort = "time_desc" | "time_asc" | "finished_desc" | "finished_asc";
+
+/** One record an agent worked on, with the time spent on it
+ * (GET /analytics/staff-productivity/tasks). */
+export interface StaffTaskTime {
+  task_id: number;
+  record_id: number;
+  record_label: string;
+  batch_id: number;
+  batch_name: string;
+  status: "completed" | "failed" | "in_progress";
+  /** submitted | skipped_<status> | requeued | passed | rejected | in_progress */
+  outcome: string;
+  started_at: string | null;
+  finished_at: string | null;
+  seconds: number;
+  /** 0 = timed before sessions were counted (last open to finish). */
+  sessions: number;
+}
+
+export interface StaffTaskTimes {
+  summary: {
+    tasks: number;
+    finished: number;
+    total_seconds: number;
+    avg_seconds: number;
+    median_seconds: number;
+    fastest_seconds: number;
+    slowest_seconds: number;
+    reopened: number;
+  };
+  total: number;
+  rows: StaffTaskTime[];
 }
 
 export interface StaffMetric {

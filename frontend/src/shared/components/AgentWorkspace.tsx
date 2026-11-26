@@ -5,6 +5,7 @@ import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
+import { useTaskHeartbeat } from "@shared/hooks/useTaskHeartbeat";
 import type { DocumentType, Task, UserRecord } from "@shared/types";
 import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
 import { RecordFlagBanner, RecordFlagButton } from "./RecordFlag";
@@ -33,6 +34,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     setPage: setImagePage,
     pageCount: imagePageCount,
   } = useRecordImage(task.record_id, localStatus === "in_progress");
+  useTaskHeartbeat(task.id, localStatus === "in_progress");
 
   // Fetch record for lock info and existing indexed data
   const { data: record } = useQuery({

@@ -28,7 +28,7 @@ export default function CustomerStaffProductivityDashboard({ projectId }: Props)
       <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
         <DatePicker value={dayjs(date)} onChange={(d) => d && setDate(d.format("YYYY-MM-DD"))} />
       </div>
-      <ProductivityTable data={data ?? []} loading={isLoading} taskType="qc" />
+      <ProductivityTable data={data ?? []} loading={isLoading} projectId={projectId} date={date} taskType="qc" />
     </Card>
   );
 }

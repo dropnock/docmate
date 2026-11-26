@@ -35,6 +35,10 @@ class Task(Base, TimestampMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     processing_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Time actually spent, added up across sessions (services/task_timing.py).
+    active_seconds: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    sessions: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     record: Mapped["Record"] = relationship(back_populates="tasks")
     batch: Mapped["Batch"] = relationship(back_populates="tasks")

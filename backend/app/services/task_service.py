@@ -13,7 +13,7 @@ from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.schemas.task import FieldResultIn
 from app.services import (
-    aql_service, audit_service, hold_service, required_fields, staff_assignment_service,
+    aql_service, audit_service, hold_service, required_fields, staff_assignment_service, task_timing,
 )
 from app.services.lock_service import acquire_lock, release_lock
 
@@ -91,8 +91,8 @@ async def start_task(
     # so the status accurately reflects the workflow phase.
     if task.task_type == TaskType.indexing:
         record.status = RecordStatus.indexing
+    task_timing.begin_session(task, datetime.now(timezone.utc))
     task.status = TaskStatus.in_progress
-    task.started_at = datetime.now(timezone.utc)
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
@@ -103,6 +103,20 @@ async def start_task(
         old_value={"status": old_status.value},
         new_value={"status": "in_progress"},
     )
+    return task
+
+
+async def heartbeat_task(db: AsyncSession, *, task_id: int, user_id: int) -> Task:
+    """The agent is still working on the task: count the time since the last
+    beat (services/task_timing.py)."""
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.assigned_to != user_id:
+        raise HTTPException(status_code=403, detail="Not your task")
+    if task.status != TaskStatus.in_progress:
+        raise HTTPException(status_code=409, detail="Task is not in progress")
+    task_timing.heartbeat(task, datetime.now(timezone.utc))
     return task
 
 
@@ -214,8 +228,7 @@ async def complete_task(
     now = datetime.now(timezone.utc)
     task.status = TaskStatus.completed
     task.completed_at = now
-    if task.started_at:
-        task.processing_time_seconds = int((now - task.started_at).total_seconds())
+    task_timing.end_session(task, now)
 
     await audit_service.write_event(
         db,
@@ -391,6 +404,7 @@ async def reassign_task(
     task.assigned_to = new_agent_id
     task.assigned_by = supervisor_id
     task.status = TaskStatus.pending
+    task_timing.reset(task)
 
     await audit_service.write_event(
         db,
@@ -461,8 +475,7 @@ async def fail_task(
     now = datetime.now(timezone.utc)
     task.status = TaskStatus.failed
     task.completed_at = now
-    if task.started_at:
-        task.processing_time_seconds = int((now - task.started_at).total_seconds())
+    task_timing.end_session(task, now)
 
     if task.task_type == TaskType.qa:
         record.status = RecordStatus.qa_failed
@@ -581,8 +594,7 @@ async def skip_task(
     now = datetime.now(timezone.utc)
     task.status = TaskStatus.completed
     task.completed_at = now
-    if task.started_at:
-        task.processing_time_seconds = int((now - task.started_at).total_seconds())
+    task_timing.end_session(task, now)
 
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.record, entity_id=record.id,

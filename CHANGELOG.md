@@ -7,6 +7,26 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+### Added
+- **Productivity reports: time per record.** Click an agent's name or Avg
+  Time in Staff Productivity (indexing, QA) or QC Staff Productivity to see
+  each record they worked on, with when it was started and finished, the
+  time spent, how many sessions it took, and the outcome. The view has a
+  summary (total, average, median, fastest, slowest, reopened), a date
+  range (starting on the report's day, or all time), sorting by time or
+  finish, and a CSV download.
+
+### Changed
+- **Time on a record adds up across sessions.** The workspaces send a
+  heartbeat every 30 seconds while the agent is working (tab visible, some
+  input in the last 5 minutes). Leaving a record and coming back adds only
+  the time spent in it; idle time and time away aren't counted. Before,
+  only the last session was counted (from the last open to the finish).
+  Records finished before this change keep that older measure. A
+  reassigned task starts from zero for its new agent. Migration
+  `d4f2a8c1e6b9` adds `tasks.active_seconds`, `sessions` and
+  `last_active_at`.
+
 ## [0.9.2] - 2026-11-26
 
 ### Added

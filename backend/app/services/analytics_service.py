@@ -1,6 +1,6 @@
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.batch import Batch, BatchStatus
@@ -565,3 +565,118 @@ async def records_dashboard(
         "records_withdrawn": records_withdrawn,
         "records_illegible": records_illegible,
     }
+
+
+STAFF_TASK_SORTS = ("time_desc", "time_asc", "finished_desc", "finished_asc")
+_SKIP_STATUSES = {"withdrawn", "ineligible", "excluded", "lapsed", "illegible"}
+
+
+def _task_outcome(task_type: TaskType, status: TaskStatus, record_status: RecordStatus) -> str:
+    if status == TaskStatus.in_progress:
+        return "in_progress"
+    if status == TaskStatus.pending:
+        return "not_started"
+    if task_type == TaskType.indexing:
+        if status == TaskStatus.failed:
+            return "requeued"
+        return f"skipped_{record_status.value}" if record_status.value in _SKIP_STATUSES else "submitted"
+    return "passed" if status == TaskStatus.completed else "rejected"
+
+
+async def staff_task_times(
+    db: AsyncSession,
+    *,
+    project_id: int,
+    user_id: int,
+    task_type: TaskType,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    sort: str = "time_desc",
+    offset: int = 0,
+    limit: int | None = 50,
+) -> dict:
+    """One agent's time on each record they worked: the per-record detail
+    behind staff_productivity's average. Finished tasks (and ones still in
+    progress) on the project, dated by when they finished (or were last
+    worked on); time is processing_time_seconds once finished, the running
+    total so far while open (services/task_timing.py)."""
+    seconds = case(
+        (Task.status == TaskStatus.in_progress, Task.active_seconds),
+        else_=func.coalesce(Task.processing_time_seconds, Task.active_seconds),
+    )
+    worked_at = func.coalesce(Task.completed_at, Task.last_active_at, Task.started_at)
+    conds = [
+        Batch.project_id == project_id,
+        Task.assigned_to == user_id,
+        Task.task_type == task_type,
+        Task.status.in_([TaskStatus.completed, TaskStatus.failed, TaskStatus.in_progress]),
+    ]
+    if date_from:
+        conds.append(worked_at >= datetime.combine(date_from, datetime.min.time()))
+    if date_to:
+        conds.append(worked_at < datetime.combine(date_to + timedelta(days=1), datetime.min.time()))
+
+    times = [
+        t for (t,) in (await db.execute(
+            select(seconds).select_from(Task).join(Batch, Task.batch_id == Batch.id)
+            .where(*conds, Task.status != TaskStatus.in_progress)
+        )).all()
+        if t is not None
+    ]
+    count_all = (await db.execute(
+        select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(*conds)
+    )).scalar() or 0
+    reopened = (await db.execute(
+        select(func.count(Task.id)).join(Batch, Task.batch_id == Batch.id).where(*conds, Task.sessions > 1)
+    )).scalar() or 0
+
+    timed = sorted(t for t in times if t)
+    summary = {
+        "tasks": count_all,
+        "finished": len(times),
+        "total_seconds": sum(timed),
+        "avg_seconds": round(sum(timed) / len(timed)) if timed else 0,
+        "median_seconds": (
+            0 if not timed else
+            timed[len(timed) // 2] if len(timed) % 2 else round((timed[len(timed) // 2 - 1] + timed[len(timed) // 2]) / 2)
+        ),
+        "fastest_seconds": timed[0] if timed else 0,
+        "slowest_seconds": timed[-1] if timed else 0,
+        "reopened": reopened,
+    }
+
+    order = {
+        "time_desc": (seconds.desc(), Task.id.desc()),
+        "time_asc": (seconds.asc(), Task.id.asc()),
+        "finished_desc": (worked_at.desc(), Task.id.desc()),
+        "finished_asc": (worked_at.asc(), Task.id.asc()),
+    }[sort]
+    q = (
+        select(Task, Record, Batch.name)
+        .join(Batch, Task.batch_id == Batch.id)
+        .join(Record, Task.record_id == Record.id)
+        .where(*conds)
+        .order_by(*order)
+        .offset(offset)
+    )
+    if limit is not None:
+        q = q.limit(limit)
+    rows = []
+    for task, record, batch_name in (await db.execute(q)).all():
+        rows.append({
+            "task_id": task.id,
+            "record_id": record.id,
+            "record_label": record.source_identifier or record.original_filename or f"Record {record.id}",
+            "batch_id": task.batch_id,
+            "batch_name": batch_name,
+            "status": task.status.value,
+            "outcome": _task_outcome(task.task_type, task.status, record.status),
+            "started_at": task.started_at,
+            "finished_at": task.completed_at if task.status != TaskStatus.in_progress else None,
+            "seconds": (
+                task.active_seconds if task.status == TaskStatus.in_progress or task.processing_time_seconds is None
+                else task.processing_time_seconds
+            ),
+            "sessions": task.sessions,
+        })
+    return {"summary": summary, "total": count_all, "rows": rows}

@@ -15,7 +15,7 @@ from app.models.record import Record, RecordStatus
 from app.models.record_version import RecordVersion, VersionReason
 from app.models.task import Task, TaskStatus, TaskType
 from app.models.user import User
-from app.services import audit_service
+from app.services import audit_service, task_timing
 from app.services.lock_service import release_lock
 from app.services.version_service import create_version
 
@@ -222,8 +222,7 @@ async def requeue_record(
         prior = t.status.value
         t.status = TaskStatus.failed
         t.completed_at = now
-        if t.started_at:
-            t.processing_time_seconds = int((now - t.started_at).total_seconds())
+        task_timing.end_session(t, now)
         await audit_service.write_event(
             db, tenant_id=tenant_id, entity_type=AuditEntityType.task, entity_id=t.id,
             action=AuditAction.status_changed, performed_by=supervisor_id,

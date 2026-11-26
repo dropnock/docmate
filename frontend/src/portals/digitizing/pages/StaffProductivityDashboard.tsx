@@ -47,12 +47,12 @@ export default function StaffProductivityDashboard({ projectId }: Props) {
           {
             key: "indexing",
             label: "Indexing",
-            children: <ProductivityTable data={data ?? []} loading={isLoading} taskType="indexing" />,
+            children: <ProductivityTable data={data ?? []} loading={isLoading} projectId={projectId} date={date} taskType="indexing" />,
           },
           {
             key: "qa",
             label: "QA",
-            children: <ProductivityTable data={data ?? []} loading={isLoading} taskType="qa" />,
+            children: <ProductivityTable data={data ?? []} loading={isLoading} projectId={projectId} date={date} taskType="qa" />,
           },
         ]}
       />
