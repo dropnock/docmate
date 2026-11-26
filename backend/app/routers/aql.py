@@ -8,7 +8,7 @@ from app.core.security import check_project_access, get_current_user, require_ro
 from app.models.project import Project
 from app.models.aql import AQLStatus, GeneralLevel
 from app.schemas.aql import AQLConfigOut, AQLConfigUpdate
-from app.services import aql_service
+from app.services import aql_service, defect_class_service
 from app.services.aql_service import compute_sample_size, get_current_aql_level
 
 router = APIRouter(prefix="/api", tags=["aql"])
@@ -38,6 +38,10 @@ async def get_aql_status(
         failures_to_tighten=config.failures_to_tighten,
         sampling_mode=config.sampling_mode.value,
         general_level=config.general_level.value,
+        critical_aql=config.critical_aql,
+        major_aql=config.normal_aql,
+        minor_aql=config.minor_aql,
+        error_classes=defect_class_service.error_classes_of(config),
     )
 
 
@@ -71,6 +75,10 @@ async def update_aql_config(
         failures_to_tighten=config.failures_to_tighten,
         sampling_mode=config.sampling_mode.value,
         general_level=config.general_level.value,
+        critical_aql=config.critical_aql,
+        major_aql=config.normal_aql,
+        minor_aql=config.minor_aql,
+        error_classes=defect_class_service.error_classes_of(config),
     )
 
 
@@ -92,3 +100,26 @@ async def calc_sample_size(
         "inspection_level": inspection_level,
         "general_level": general_level,
     }
+
+
+@router.get("/aql/class-plan")
+async def calc_class_plan(
+    lot_size: int,
+    major_aql: float,
+    minor_aql: float,
+    critical_aql: float | None = None,
+    inspection_level: Literal["normal", "tightened", "reduced"] = "normal",
+    general_level: Literal["I", "II", "III"] = "II",
+    current_user=Depends(get_current_user),
+):
+    """Preview of the single sample and per-class Ac/Re a lot of lot_size
+    would get (aql_service.class_plans); omit critical_aql for zero
+    tolerance."""
+    if lot_size < 1:
+        return {"sample_size": 0, "classes": {}}
+    return aql_service.class_plans(
+        lot_size,
+        {"critical": critical_aql, "major": major_aql, "minor": minor_aql},
+        AQLStatus(inspection_level),
+        GeneralLevel(general_level),
+    )

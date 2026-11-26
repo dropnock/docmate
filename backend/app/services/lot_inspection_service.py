@@ -40,7 +40,7 @@ from app.models.qc_field_result import QcFieldStatus
 from app.models.record import Record, RecordStatus
 from app.models.user import User
 from app.schemas.task import FieldResultIn
-from app.services import aql_service, audit_service, record_service
+from app.services import aql_service, audit_service, defect_class_service, record_service
 
 
 async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
@@ -246,13 +246,21 @@ async def review_item(
     for fr in existing:
         await db.delete(fr)
 
+    lot = await db.get(Lot, lot_id)
+    error_classes = await defect_class_service.project_error_classes(db, lot.project_id)
     for fr in field_results:
+        is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))
+        error_type, severity = defect_class_service.mark_class(
+            fr, is_identifier=is_critical, error_classes=error_classes,
+        )
         db.add(LotInspectionFieldResult(
             item_id=item.id,
             field_key=fr.field_key,
             status=QcFieldStatus(fr.status),
-            is_critical=bool(properties.get(fr.field_key, {}).get("x-critical", False)),
+            is_critical=is_critical,
             note=fr.note,
+            error_type=error_type,
+            severity=severity,
         ))
     item.status = (
         InspectionItemStatus.defective

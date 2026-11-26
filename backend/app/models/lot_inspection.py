@@ -1,11 +1,12 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.aql import AQLStatus, GeneralLevel
 from app.models.base import Base, TimestampMixin
+from app.models.defect import ErrorType, Severity
 from app.models.qc_field_result import QcFieldStatus
 
 
@@ -70,6 +71,12 @@ class LotInspection(Base, TimestampMixin):
     acceptance_number: Mapped[int] = mapped_column(Integer, nullable=False)
     rejection_number: Mapped[int] = mapped_column(Integer, nullable=False)
     random_seed: Mapped[str] = mapped_column(String(64), nullable=False)
+    # Per-class plan (aql_service.class_plans()["classes"]): {"critical" |
+    # "major" | "minor": {aql, acceptance_number, rejection_number}}. None
+    # for inspections started before defect classes, judged by the old rule (any
+    # critical fails; other defects against acceptance_number).
+    class_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    major_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Populated by complete_inspection.
     critical_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minor_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -127,5 +134,12 @@ class LotInspectionFieldResult(Base, TimestampMixin):
     status: Mapped[QcFieldStatus] = mapped_column(Enum(QcFieldStatus), nullable=False)
     is_critical: Mapped[bool] = mapped_column(Boolean, nullable=False)
     note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Same as QcFieldResult.error_type / severity.
+    error_type: Mapped[ErrorType | None] = mapped_column(
+        Enum(ErrorType, native_enum=False, length=20, validate_strings=True), nullable=True,
+    )
+    severity: Mapped[Severity | None] = mapped_column(
+        Enum(Severity, native_enum=False, length=10, validate_strings=True), nullable=True,
+    )
 
     item = relationship("LotInspectionItem", back_populates="field_results")

@@ -35,7 +35,7 @@ _LETTERS = "ABCDEFGHJKLMNPQRS"
 # below, "^" = use the first plan above — the sample size then comes from
 # the row the arrow lands on, not the lot's own code letter. Reduced
 # inspection uses the 1999 edition's plans (Re = Ac + 1, no gap).
-AVAILABLE_AQLS: tuple[float, ...] = (0.65, 1.0, 1.5, 2.5)
+AVAILABLE_AQLS: tuple[float, ...] = (0.65, 1.0, 1.5, 2.5, 4.0, 6.5)
 
 _SAMPLE_SIZES: dict[AQLStatus, dict[str, int]] = {
     AQLStatus.normal: dict(zip(_LETTERS, (2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800, 1250, 2000))),
@@ -43,45 +43,45 @@ _SAMPLE_SIZES: dict[AQLStatus, dict[str, int]] = {
     AQLStatus.reduced: dict(zip(_LETTERS, (2, 2, 2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800))),
 }
 
-#                 AQL:  0.65   1.0   1.5   2.5
+#                 AQL:  0.65   1.0   1.5   2.5   4.0   6.5
 _NORMAL_AC: dict[str, tuple] = {
-    "A": ("v", "v", "v", "v"),
-    "B": ("v", "v", "v", "v"),
-    "C": ("v", "v", "v", 0),
-    "D": ("v", "v", 0, "^"),
-    "E": ("v", 0, "^", "v"),
-    "F": (0, "^", "v", 1),
-    "G": ("^", "v", 1, 2),
-    "H": ("v", 1, 2, 3),
-    "J": (1, 2, 3, 5),
-    "K": (2, 3, 5, 7),
-    "L": (3, 5, 7, 10),
-    "M": (5, 7, 10, 14),
-    "N": (7, 10, 14, 21),
-    "P": (10, 14, 21, "^"),
-    "Q": (14, 21, "^", "^"),
-    "R": (21, "^", "^", "^"),
+    "A": ("v", "v", "v", "v", "v", 0),
+    "B": ("v", "v", "v", "v", 0, "^"),
+    "C": ("v", "v", "v", 0, "^", "v"),
+    "D": ("v", "v", 0, "^", "v", 1),
+    "E": ("v", 0, "^", "v", 1, 2),
+    "F": (0, "^", "v", 1, 2, 3),
+    "G": ("^", "v", 1, 2, 3, 5),
+    "H": ("v", 1, 2, 3, 5, 7),
+    "J": (1, 2, 3, 5, 7, 10),
+    "K": (2, 3, 5, 7, 10, 14),
+    "L": (3, 5, 7, 10, 14, 21),
+    "M": (5, 7, 10, 14, 21, "^"),
+    "N": (7, 10, 14, 21, "^", "^"),
+    "P": (10, 14, 21, "^", "^", "^"),
+    "Q": (14, 21, "^", "^", "^", "^"),
+    "R": (21, "^", "^", "^", "^", "^"),
 }
 
-#                 AQL:  0.65   1.0   1.5   2.5
+#                 AQL:  0.65   1.0   1.5   2.5   4.0   6.5
 _TIGHTENED_AC: dict[str, tuple] = {
-    "A": ("v", "v", "v", "v"),
-    "B": ("v", "v", "v", "v"),
-    "C": ("v", "v", "v", "v"),
-    "D": ("v", "v", "v", "v"),
-    "E": ("v", "v", "v", 0),
-    "F": ("v", "v", 0, "v"),
-    "G": ("v", 0, "v", 1),
-    "H": (0, "v", 1, 2),
-    "J": ("v", 1, 2, 3),
-    "K": (1, 2, 3, 5),
-    "L": (2, 3, 5, 8),
-    "M": (3, 5, 8, 12),
-    "N": (5, 8, 12, 18),
-    "P": (8, 12, 18, "^"),
-    "Q": (12, 18, "^", "^"),
-    "R": (18, "^", "^", "^"),
-    "S": ("^", "^", "^", "^"),
+    "A": ("v", "v", "v", "v", "v", "v"),
+    "B": ("v", "v", "v", "v", "v", "v"),
+    "C": ("v", "v", "v", "v", "v", 0),
+    "D": ("v", "v", "v", "v", 0, "v"),
+    "E": ("v", "v", "v", 0, "v", 1),
+    "F": ("v", "v", 0, "v", 1, 2),
+    "G": ("v", 0, "v", 1, 2, 3),
+    "H": (0, "v", 1, 2, 3, 5),
+    "J": ("v", 1, 2, 3, 5, 8),
+    "K": (1, 2, 3, 5, 8, 12),
+    "L": (2, 3, 5, 8, 12, 18),
+    "M": (3, 5, 8, 12, 18, "^"),
+    "N": (5, 8, 12, 18, "^", "^"),
+    "P": (8, 12, 18, "^", "^", "^"),
+    "Q": (12, 18, "^", "^", "^", "^"),
+    "R": (18, "^", "^", "^", "^", "^"),
+    "S": ("^", "^", "^", "^", "^", "^"),
 }
 
 # Reduced: each code letter takes the normal-inspection cell of the letter
@@ -171,6 +171,76 @@ def sampling_plan(
     }
 
 
+DEFECT_CLASSES: tuple[str, ...] = ("critical", "major", "minor")
+
+
+def _ac_at(level: AQLStatus, letter: str, aql: float) -> int:
+    """Acceptance number for `aql` at a sample of `letter`'s size: the cell
+    in that row, or — when the row has an arrow (no plan for this AQL at
+    exactly that size) — the nearest plan above it, i.e. the largest plan
+    for this AQL whose sample is no bigger. Never more lenient than the
+    AQL's own plan, since that plan is at or above this row."""
+    table = _AC_TABLES[level]
+    col = AVAILABLE_AQLS.index(aql)
+    for i in range(_LETTERS.index(letter), -1, -1):
+        cell = table[_LETTERS[i]][col]
+        if isinstance(cell, int):
+            return cell
+    return 0
+
+
+def class_plans(
+    lot_size: int,
+    aqls: dict[str, float | None],
+    inspection_level: AQLStatus = AQLStatus.normal,
+    general_level: GeneralLevel = GeneralLevel.II,
+) -> dict[str, Any]:
+    """One sampling plan for a lot inspected against separate AQLs for
+    critical, major and minor non-conformities (ISO 2859-1 classes).
+
+    Each class's own plan can call for a different sample size (the
+    table's arrows); the lot gets a single sample at the largest of them,
+    and each class's Ac comes from its AQL column at that sample size
+    (_ac_at). A class whose AQL is None is zero tolerance: Ac 0, Re 1, and
+    it doesn't affect the sample size. With every class zero tolerance the
+    sample is the lot's own code letter's. The sample is capped at the lot
+    size, as in sampling_plan."""
+    level = AQLStatus(inspection_level)
+    letter = _code_letter(lot_size, general_level)
+    own_letters = []
+    for cls in DEFECT_CLASSES:
+        aql = aqls.get(cls)
+        if aql is None:
+            continue
+        if aql not in AVAILABLE_AQLS:
+            raise HTTPException(
+                status_code=422, detail=f"{cls} AQL must be one of {list(AVAILABLE_AQLS)} or zero tolerance",
+            )
+        own_letters.append(_resolve(level, letter, aql)[0])
+    # The largest of the classes' own plans, so a single AQL gives exactly
+    # sampling_plan's sample.
+    plan_letter = max(own_letters, key=_LETTERS.index) if own_letters else letter
+    classes = {}
+    for cls in DEFECT_CLASSES:
+        aql = aqls.get(cls)
+        ac = 0 if aql is None else _ac_at(level, plan_letter, aql)
+        classes[cls] = {"aql": aql, "acceptance_number": ac, "rejection_number": ac + 1}
+    return {
+        "code_letter": letter,
+        "plan_letter": plan_letter,
+        "sample_size": min(_SAMPLE_SIZES[level][plan_letter], lot_size),
+        "classes": classes,
+    }
+
+
+def config_class_aqls(config: AQLConfig | None) -> dict[str, float | None]:
+    """The project's critical / major / minor AQLs (critical None = zero
+    tolerance). Unconfigured projects get the defaults."""
+    if config is None:
+        return {"critical": None, "major": 1.5, "minor": 4.0}
+    return {"critical": config.critical_aql, "major": config.normal_aql, "minor": config.minor_aql}
+
+
 def plans_by_level(
     lot_size: int, aql_level: float, general_level: GeneralLevel = GeneralLevel.II,
 ) -> dict[str, dict[str, Any]]:
@@ -192,7 +262,7 @@ async def get_config(db: AsyncSession, project_id: int) -> AQLConfig | None:
 async def get_current_aql_level(db: AsyncSession, project_id: int) -> float:
     """The project's AQL, as tabulated. The inspection level (normal /
     tightened / reduced) no longer changes the AQL — it picks the table the
-    plan comes from — so this is always the project's configured AQL
+    plan comes from — so this is always the project's configured major AQL
     (AQLConfig.normal_aql), snapped to the nearest tabulated column."""
     config = await get_config(db, project_id)
     if config is None:
@@ -230,10 +300,20 @@ async def update_config(
     if config is None:
         raise HTTPException(status_code=404, detail="No AQL config for project")
 
-    if updates.get("normal_aql") is not None and updates["normal_aql"] not in AVAILABLE_AQLS:
-        raise HTTPException(
-            status_code=422, detail=f"normal_aql must be one of {list(AVAILABLE_AQLS)}",
-        )
+    for field in ("normal_aql", "major_aql", "minor_aql", "critical_aql"):
+        if updates.get(field) is not None and updates[field] not in AVAILABLE_AQLS:
+            raise HTTPException(
+                status_code=422, detail=f"{field} must be one of {list(AVAILABLE_AQLS)}",
+            )
+    for field in ("normal_aql", "major_aql", "minor_aql"):
+        if field in updates and updates[field] is None:
+            raise HTTPException(status_code=422, detail=f"{field} can't be zero tolerance")
+    if "error_classes" in updates:
+        from app.services import defect_class_service
+        updates["error_classes"] = defect_class_service.validate_error_classes(updates["error_classes"])
+    # The major AQL is stored as normal_aql (its name from before classes).
+    if "major_aql" in updates:
+        updates["normal_aql"] = updates.pop("major_aql")
 
     old_value: dict[str, Any] = {}
     new_value: dict[str, Any] = {}

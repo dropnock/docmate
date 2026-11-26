@@ -1,6 +1,6 @@
 import enum
 
-from sqlalchemy import Enum, Float, ForeignKey, Integer
+from sqlalchemy import JSON, Enum, Float, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -41,6 +41,17 @@ class AQLConfig(Base, TimestampMixin):
     # with ISO 2859-1's tightened / reduced tables (aql_service), so
     # tightened_aql and reduced_aql are no longer read; kept for history.
     normal_aql: Mapped[float] = mapped_column(Float, default=1.5, nullable=False)
+    # Per-class AQLs (ISO 2859-1 classes of non-conformity; see
+    # defect_class_service). normal_aql above is the MAJOR AQL (the API
+    # calls it major_aql); critical_aql None = zero tolerance (Ac 0).
+    critical_aql: Mapped[float | None] = mapped_column(Float, nullable=True)
+    minor_aql: Mapped[float] = mapped_column(Float, default=4.0, nullable=False)
+    # The agreement with the customer: error type -> "major" / "minor".
+    # Identifier-field errors are always critical.
+    error_classes: Mapped[dict] = mapped_column(
+        JSON, nullable=False,
+        default=lambda: {"missing": "major", "typo": "minor", "interpretation": "minor"},
+    )
     tightened_aql: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
     reduced_aql: Mapped[float] = mapped_column(Float, default=2.5, nullable=False)
     # General inspection level I / II / III for every lot of the project —

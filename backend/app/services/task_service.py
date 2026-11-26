@@ -332,12 +332,17 @@ async def _persist_qc_field_results(
 
     from app.models.lot import Lot
     lot = await db.get(Lot, lot_record.lot_id)
+    from app.services import defect_class_service
+    error_classes = await defect_class_service.project_error_classes(db, lot.project_id)
     for fr in field_results:
         is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))
+        error_type, severity = defect_class_service.mark_class(
+            fr, is_identifier=is_critical, error_classes=error_classes,
+        )
         db.add(QcFieldResult(
             task_id=task.id, record_id=record.id, lot_id=lot_record.lot_id, tenant_id=tenant_id,
             field_key=fr.field_key, status=QcFieldStatus(fr.status), is_critical=is_critical, note=fr.note,
-            qc_round=lot.qc_round,
+            qc_round=lot.qc_round, error_type=error_type, severity=severity,
         ))
     await db.flush()
 

@@ -15,6 +15,12 @@ class AQLConfigOut(BaseModel):
     failures_to_tighten: int
     sampling_mode: str
     general_level: str
+    # Per-class AQLs (critical None = zero tolerance) and the error type ->
+    # class agreement; see defect_class_service.
+    critical_aql: float | None = None
+    major_aql: float
+    minor_aql: float
+    error_classes: dict[str, str]
 
 
 class AQLConfigUpdate(BaseModel):
@@ -26,3 +32,8 @@ class AQLConfigUpdate(BaseModel):
     sampling_mode: Literal["iso", "manual"] | None = None
     # ISO 2859-1 general inspection level (Table 1 column); II by default.
     general_level: Literal["I", "II", "III"] | None = None
+    # Send critical_aql: null for zero tolerance.
+    critical_aql: float | None = None
+    major_aql: float | None = None
+    minor_aql: float | None = None
+    error_classes: dict[str, Literal["major", "minor"]] | None = None

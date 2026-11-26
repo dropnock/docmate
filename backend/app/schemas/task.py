@@ -45,6 +45,9 @@ class FieldResultIn(BaseModel):
     field_key: str
     status: Literal["accepted", "defective"]
     note: str | None = None
+    # What was wrong with a defective field; the project's agreement turns
+    # it into critical / major / minor (defect_class_service.classify).
+    error_type: Literal["missing", "typo", "interpretation"] | None = None
 
 
 class CompleteTaskRequest(BaseModel):

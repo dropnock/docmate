@@ -4,6 +4,7 @@ from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+from app.models.defect import ErrorType, Severity
 
 
 class QcFieldStatus(str, enum.Enum):
@@ -36,6 +37,17 @@ class QcFieldResult(Base, TimestampMixin):
     status: Mapped[QcFieldStatus] = mapped_column(Enum(QcFieldStatus), nullable=False)
     is_critical: Mapped[bool] = mapped_column(Boolean, nullable=False)
     note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Error type the reviewer chose and the class it was given
+    # (defect_class_service.classify), both frozen at marking time so a later
+    # change to the agreement or the schema doesn't change past verdicts.
+    # Accepted fields have neither; marks made before error types existed
+    # have a severity but no error type.
+    error_type: Mapped[ErrorType | None] = mapped_column(
+        Enum(ErrorType, native_enum=False, length=20, validate_strings=True), nullable=True,
+    )
+    severity: Mapped[Severity | None] = mapped_column(
+        Enum(Severity, native_enum=False, length=10, validate_strings=True), nullable=True,
+    )
     # The lot's customer QC round this mark belongs to (Lot.qc_round at
     # write time) — tabulation and the lot verdict only count the current one.
     qc_round: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)

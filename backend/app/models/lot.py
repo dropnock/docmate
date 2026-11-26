@@ -32,6 +32,11 @@ class Lot(Base, TimestampMixin):
     # == "iso" — the ISO 2859-1 acceptance number that goes with sample_size,
     # same field name/meaning as BatchQCResult.acceptance_number.
     acceptance_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Per-class plan of the customer's ISO sample (aql_service.class_plans()
+    # ["classes"]); None for lots sampled before defect classes, judged by
+    # the old rule (any critical fails; other defects against
+    # acceptance_number). acceptance_number then holds the major Ac.
+    class_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     accuracy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     # The inspection level (normal/tightened/reduced) the customer's sample
     # was drawn under (see apply_sample: Lot.inspection_level, or the
@@ -52,6 +57,7 @@ class Lot(Base, TimestampMixin):
     # QcFieldResult data exists for manual-mode lots to derive these from.
     critical_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minor_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    major_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Which customer QC round the live sample/result fields above describe.
     # Starts at 1; resubmit_lot archives a failed round into LotQcRound and
     # bumps this. QcFieldResult rows carry the round they were marked in.
@@ -100,10 +106,12 @@ class LotQcRound(Base, TimestampMixin):
     sample_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
     acceptance_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    class_plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     accuracy_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     aql_status_snapshot: Mapped[AQLStatus | None] = mapped_column(Enum(AQLStatus), nullable=True)
     critical_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     minor_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    major_defect_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sampled_record_ids: Mapped[list] = mapped_column(JSON, nullable=False)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     qc_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
