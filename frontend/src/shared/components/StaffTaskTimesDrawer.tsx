@@ -88,19 +88,24 @@ function Body({ projectId, userId, taskType, date }: { projectId: number; userId
 
   const columns: ColumnType<StaffTaskTime>[] = [
     { title: "Record", dataIndex: "record_label", render: (v: string, r) => <Tooltip title={`Record #${r.record_id}`}>{v}</Tooltip> },
-    { title: "Batch", dataIndex: "batch_name", ellipsis: true },
+    {
+      title: "Batch",
+      dataIndex: "batch_name",
+      // "Batch 18 — 20261122-152538": the stamp only repeats the dates.
+      render: (v: string) => <Tooltip title={v}><span style={{ whiteSpace: "nowrap" }}>{v.split(" — ")[0]}</span></Tooltip>,
+    },
     { title: "Started", dataIndex: "started_at", width: 140, render: fmtWhen },
     { title: "Finished", key: "finished", dataIndex: "finished_at", width: 140, render: fmtWhen, sorter: true, sortDirections: flip, sortOrder: sortOrder("finished") },
     {
       title: "Time",
       key: "time",
       dataIndex: "seconds",
-      width: 100,
+      width: 130,
       sorter: true,
       sortDirections: flip,
       sortOrder: sortOrder("time"),
       render: (v: number, r) => (
-        <span data-task-seconds={v}>
+        <span data-task-seconds={v} style={{ whiteSpace: "nowrap" }}>
           {fmtDuration(v)}
           {r.status === "in_progress" && <Typography.Text type="secondary"> so far</Typography.Text>}
         </span>
