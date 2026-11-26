@@ -221,7 +221,7 @@ class TestUpdateConfig:
         )
         events = result.scalars().all()
         assert len(events) == 1
-        assert events[0].action == AuditAction.status_changed
+        assert events[0].action == AuditAction.settings_changed
         assert events[0].new_value == {"normal_aql": 2.5, "sampling_mode": "manual"}
         assert events[0].old_value == {"normal_aql": 1.5, "sampling_mode": "iso"}
 

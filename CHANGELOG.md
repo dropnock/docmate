@@ -8,6 +8,12 @@ See `RELEASING.md` for how to cut a release.
 ## [Unreleased]
 
 ### Added
+- **AQLs on the project create and edit screens.** Admins and digitizing
+  supervisors set the critical / major / minor AQLs when creating a project
+  and can change them later. Inspections and customer samples already
+  started keep the AQLs they began with. Every change to a project's details
+  or AQLs is recorded in its audit trail, shown under the project's new
+  **History** button.
 - **Critical / major / minor defect classes, each with its own AQL**, for
   the digitizing supervisor's inspection and the customer's QC. Errors in
   identifier fields are critical; other errors are classed by the project's

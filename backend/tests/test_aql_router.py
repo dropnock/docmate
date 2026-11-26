@@ -40,7 +40,7 @@ class TestUpdateAqlConfig:
         )
         events = result.scalars().all()
         assert len(events) == 1
-        assert events[0].action == AuditAction.status_changed
+        assert events[0].action == AuditAction.settings_changed
         assert events[0].performed_by == supervisor.id
 
     async def test_qc_agent_forbidden(self, db: AsyncSession, seed, client):

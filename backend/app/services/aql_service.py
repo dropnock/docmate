@@ -354,12 +354,24 @@ async def update_config(
             tenant_id=tenant_id,
             entity_type=AuditEntityType.project,
             entity_id=project_id,
-            action=AuditAction.status_changed,
+            action=AuditAction.settings_changed,
             performed_by=user_id,
             old_value=old_value,
             new_value=new_value,
         )
     return config
+
+
+def validate_class_aqls(critical: float | None, major: float, minor: float) -> None:
+    """422 unless each AQL is a table column; critical may be None (zero
+    tolerance), major and minor may not."""
+    for name, value in (("critical_aql", critical), ("major_aql", major), ("minor_aql", minor)):
+        if value is None:
+            if name != "critical_aql":
+                raise HTTPException(status_code=422, detail=f"{name} can't be zero tolerance")
+            continue
+        if value not in AVAILABLE_AQLS:
+            raise HTTPException(status_code=422, detail=f"{name} must be one of {list(AVAILABLE_AQLS)}")
 
 
 def apply_switching(config: AQLConfig, *, rejected: bool) -> tuple[AQLStatus, AQLStatus]:

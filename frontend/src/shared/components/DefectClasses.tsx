@@ -26,6 +26,14 @@ export const ERROR_TYPE_LABEL: Record<ErrorType, string> = {
   interpretation: "Interpretation error",
 };
 
+/** The AQL columns of the ISO 2859-1 tables (aql_service.AVAILABLE_AQLS). */
+export const AQLS = [0.65, 1.0, 1.5, 2.5, 4.0, 6.5];
+export const AQL_OPTIONS = AQLS.map((v) => ({ value: v, label: `${v}%` }));
+/** A form's stand-in for critical_aql null (Ac 0) — Select can't hold null. */
+export const ZERO_TOLERANCE = "zero";
+export const CRITICAL_AQL_OPTIONS = [{ value: ZERO_TOLERANCE, label: "Zero tolerance" }, ...AQL_OPTIONS];
+export const DEFAULT_CLASS_AQLS = { critical: null, major: 1.5, minor: 4.0 } as const;
+
 export const DEFAULT_ERROR_CLASSES: ErrorClasses = { missing: "major", typo: "minor", interpretation: "minor" };
 
 export function classifyMark(isIdentifier: boolean, errorType: ErrorType | undefined | null, errorClasses?: ErrorClasses): Severity | undefined {

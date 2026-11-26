@@ -13,14 +13,9 @@ import StatusDot from "@shared/components/StatusDot";
 import InspectionLevelTag from "@shared/components/InspectionLevelTag";
 import type { AQLConfig, ErrorType, FieldResultSummary } from "@shared/types";
 import {
-  ClassResultsTable, DEFAULT_ERROR_CLASSES, ERROR_TYPES, ERROR_TYPE_LABEL, SEVERITIES, SEVERITY,
+  AQL_OPTIONS, CRITICAL_AQL_OPTIONS as CRITICAL_OPTIONS, ClassResultsTable, DEFAULT_ERROR_CLASSES, ERROR_TYPES,
+  ERROR_TYPE_LABEL, SEVERITIES, SEVERITY, ZERO_TOLERANCE as ZERO,
 } from "@shared/components/DefectClasses";
-
-const AQLS = [0.65, 1.0, 1.5, 2.5, 4.0, 6.5];
-const AQL_OPTIONS = AQLS.map((v) => ({ value: v, label: `${v}%` }));
-// The form can't hold null in a Select, so zero tolerance is "zero" there.
-const ZERO = "zero";
-const CRITICAL_OPTIONS = [{ value: ZERO, label: "Zero tolerance" }, ...AQL_OPTIONS];
 
 type ConfigForm = Omit<AQLConfig, "critical_aql"> & { critical_aql: number | typeof ZERO };
 

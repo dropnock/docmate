@@ -125,7 +125,7 @@ async def create_project(
     current_user=Depends(require_roles("admin")),
 ):
     from app.models.aql import AQLConfig
-    from app.services import s3_service
+    from app.services import aql_service, project_service, s3_service
 
     tenant_id = current_user._tenant_id
 
@@ -152,9 +152,19 @@ async def create_project(
     db.add(project)
     await db.flush()
 
-    # Default AQL config
-    aql_config = AQLConfig(project_id=project.id)
+    # The project's AQLs for critical / major / minor non-conformities
+    # (major is stored as normal_aql).
+    aql_service.validate_class_aqls(body.critical_aql, body.major_aql, body.minor_aql)
+    aql_config = AQLConfig(
+        project_id=project.id,
+        critical_aql=body.critical_aql,
+        normal_aql=body.major_aql,
+        minor_aql=body.minor_aql,
+    )
     db.add(aql_config)
+    await project_service.log_created(
+        db, project=project, config=aql_config, user_id=current_user.id, tenant_id=tenant_id,
+    )
 
     # Auto-create the project cabinet, tied to the digitizing organisation
     from app.models.cabinet import Cabinet
@@ -215,9 +225,51 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("admin", "de_supervisor")),
 ):
+    from app.services import project_service
+
     project = await db.get(Project, project_id)
     if not project or project.tenant_id != current_user._tenant_id:
         raise HTTPException(status_code=404, detail="Project not found")
-    for field, value in body.model_dump(exclude_none=True).items():
-        setattr(project, field, value)
+    sent = body.model_dump(exclude_unset=True)
+    fields = {k: v for k, v in sent.items() if k in project_service.PROJECT_FIELDS and v is not None}
+    # null is only meaningful for critical_aql (zero tolerance); a null major
+    # or minor AQL is refused by aql_service.update_config.
+    aql_updates = {k: v for k, v in sent.items() if k in project_service.AQL_FIELDS}
+    await project_service.update_project(
+        db, project=project, fields=fields, aql_updates=aql_updates,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
     return project
+
+
+@router.get("/projects/{project_id}/history")
+async def get_project_history(
+    project_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin", "de_supervisor")),
+):
+    """The project's audit trail, newest first: creation, edits to its
+    details and AQLs, inspection-level switches."""
+    from app.services import audit_service
+
+    project = await db.get(Project, project_id)
+    if not project or project.tenant_id != current_user._tenant_id:
+        raise HTTPException(status_code=404, detail="Project not found")
+    events = await audit_service.get_project_history(
+        db, tenant_id=current_user._tenant_id, project_id=project_id,
+    )
+    return [
+        {
+            "id": e.id,
+            "entity_type": e.entity_type.value,
+            "entity_id": e.entity_id,
+            "action": e.action.value,
+            "performed_by": e.performed_by,
+            "actor_name": e.actor.full_name if e.actor else None,
+            "performed_at": e.performed_at.isoformat(),
+            "old_value": e.old_value,
+            "new_value": e.new_value,
+            "metadata": e.metadata_,
+        }
+        for e in events
+    ]

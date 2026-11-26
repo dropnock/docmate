@@ -50,6 +50,8 @@ class AuditAction(str, enum.Enum):
     flag_shared = "flag_shared"
     flag_unshared = "flag_unshared"
     flag_comment_added = "flag_comment_added"
+    # A project's details or quality settings (AQLs, agreement) were edited.
+    settings_changed = "settings_changed"
 
 
 class AuditLog(Base):

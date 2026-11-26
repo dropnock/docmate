@@ -96,3 +96,27 @@ async def get_lot_history(
         None,
     )
     return [] if first_release is None else events[first_release:]
+
+
+async def get_project_history(
+    db: AsyncSession,
+    *,
+    tenant_id: int,
+    project_id: int,
+) -> list[AuditLog]:
+    """The project's own audit events (creation, edits, AQL changes, level
+    switches, flag exports), newest first."""
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    result = await db.execute(
+        select(AuditLog)
+        .where(
+            AuditLog.tenant_id == tenant_id,
+            AuditLog.entity_type == AuditEntityType.project,
+            AuditLog.entity_id == project_id,
+        )
+        .options(selectinload(AuditLog.actor))
+        .order_by(AuditLog.performed_at.desc(), AuditLog.id.desc())
+    )
+    return list(result.scalars().all())

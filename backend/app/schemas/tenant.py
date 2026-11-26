@@ -35,12 +35,20 @@ class ProjectCreate(BaseModel):
     name: str
     description: str | None = None
     proposed_end_date: date | None = None
+    # AQL per class of non-conformity; critical None = zero tolerance.
+    critical_aql: float | None = None
+    major_aql: float = 1.5
+    minor_aql: float = 4.0
 
 
 class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     proposed_end_date: date | None = None
+    # Only the AQLs sent are changed; critical_aql null = zero tolerance.
+    critical_aql: float | None = None
+    major_aql: float | None = None
+    minor_aql: float | None = None
 
 
 class ProjectOut(BaseModel):

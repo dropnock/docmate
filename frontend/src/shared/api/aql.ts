@@ -1,5 +1,5 @@
 import api from "@shared/api/client";
-import type { AQLConfig, ClassResults, GeneralLevel, InspectionLevel, Severity } from "@shared/types";
+import type { AQLConfig, AuditEvent, ClassResults, GeneralLevel, InspectionLevel, Severity } from "@shared/types";
 
 export const aqlConfigKey = (projectId?: number) => ["aql-config", projectId] as const;
 
@@ -44,4 +44,11 @@ export function getSampleSizePreview(
       params: { batch_size: batchSize, aql_level: aqlLevel, inspection_level: inspectionLevel, general_level: generalLevel },
     })
     .then((r) => r.data);
+}
+
+export const projectHistoryKey = (projectId?: number) => ["project-history", projectId] as const;
+
+/** The project's audit trail, newest first (digitizing admins and supervisors). */
+export function getProjectHistory(projectId: number) {
+  return api.get<AuditEvent[]>(`/projects/${projectId}/history`).then((r) => r.data);
 }
