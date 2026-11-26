@@ -408,6 +408,45 @@ _BATCHES_TO_BE_QA_STATUSES = (BatchStatus.qa_review,)
 _RECORDS_QAD_STATUSES = (RecordStatus.qa_passed, RecordStatus.qc_pending, RecordStatus.qc_passed)
 
 
+async def _lot_counts(db: AsyncSession, project_id: int) -> dict:
+    """Live lot counts for the Records Management dashboard: draft lots by
+    how far they are from handover (lot_inspection_service.lot_stage), the
+    lots with the customer by status, and the QA-passed records not yet in a
+    lot (what the Create Lot picker offers)."""
+    from app.models.cabinet import Cabinet
+    from app.models.lot import Lot, LotRecord, LotStatus
+    from app.services import lot_inspection_service
+
+    by_status = dict((await db.execute(
+        select(Lot.status, func.count(Lot.id)).where(Lot.project_id == project_id).group_by(Lot.status)
+    )).all())
+    stages = {"preparing": 0, "inspecting": 0, "ready": 0}
+    drafts = (await db.execute(
+        select(Lot).where(Lot.project_id == project_id, Lot.status == LotStatus.draft)
+    )).scalars().all()
+    for lot in drafts:
+        stages[await lot_inspection_service.lot_stage(db, lot)] += 1
+    not_in_lot = (await db.execute(
+        select(func.count(Record.id))
+        .join(Cabinet, Record.cabinet_id == Cabinet.id)
+        .where(
+            Cabinet.project_id == project_id,
+            Record.status == RecordStatus.qa_passed,
+            ~select(LotRecord.id).where(LotRecord.record_id == Record.id).exists(),
+        )
+    )).scalar() or 0
+    return {
+        "preparing": stages["preparing"],
+        "inspecting": stages["inspecting"],
+        "ready_to_release": stages["ready"],
+        "released": by_status.get(LotStatus.released, 0),
+        "in_customer_qc": by_status.get(LotStatus.qc_in_progress, 0),
+        "passed": by_status.get(LotStatus.passed, 0),
+        "rejected": by_status.get(LotStatus.failed, 0) + by_status.get(LotStatus.remediation, 0),
+        "records_not_in_lot": not_in_lot,
+    }
+
+
 async def records_dashboard(
     db: AsyncSession,
     *,
@@ -510,7 +549,10 @@ async def records_dashboard(
         )
     )).scalar() or 0
 
+    lots = await _lot_counts(db, project_id)
+
     return {
+        "lots": lots,
         "batches_indexed": batches_indexed,
         "batches_qa_completed": batches_qa_completed,
         "batches_to_be_qad": batches_to_be_qad,

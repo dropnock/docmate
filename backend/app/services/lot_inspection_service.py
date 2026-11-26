@@ -430,6 +430,20 @@ async def assert_releasable(db: AsyncSession, lot: Lot) -> None:
         )
 
 
+async def lot_stage(db: AsyncSession, lot: Lot) -> str:
+    """Where a draft lot stands before handover: "inspecting" (an attempt is
+    in progress), "ready" (release_lot would accept it) or "preparing"
+    (not inspected yet, failed and waiting for rework, or superseded)."""
+    latest = _latest_effective(await _list_inspections(db, lot.id))
+    if latest is not None and latest.status == LotInspectionStatus.in_progress:
+        return "inspecting"
+    try:
+        await assert_releasable(db, lot)
+    except HTTPException:
+        return "preparing"
+    return "ready"
+
+
 async def get_inspection_detail(
     db: AsyncSession,
     *,

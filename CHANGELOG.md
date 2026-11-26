@@ -8,6 +8,11 @@ See `RELEASING.md` for how to cut a release.
 ## [Unreleased]
 
 ### Added
+- **Records Management dashboard: lots.** A Lots row shows draft lots
+  being prepared, under inspection and ready to release; lots released to
+  the customer, in customer QC, passed and rejected (including
+  remediation); and QA-passed records not yet in a lot. These are live
+  counts, and each tile opens Lots.
 - **Records Management dashboard: indexing and flags.** A new "Indexing
   now" row shows how many batches are being indexed and how many of them
   are blocked by flagged records (they can't go on to QA until each flag is

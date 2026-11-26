@@ -234,6 +234,17 @@ export interface Batch {
 }
 
 export interface RecordsDashboard {
+  /** Live lot counts. Draft lots are split by how far they are from handover. */
+  lots: {
+    preparing: number;
+    inspecting: number;
+    ready_to_release: number;
+    released: number;
+    in_customer_qc: number;
+    passed: number;
+    rejected: number;
+    records_not_in_lot: number;
+  };
   batches_indexed: number;
   batches_qa_completed: number;
   batches_to_be_qad: number;

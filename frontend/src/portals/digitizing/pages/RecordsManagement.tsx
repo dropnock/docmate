@@ -81,8 +81,39 @@ function DashboardTab({ projectId }: { projectId: number }) {
 
   const navigate = useNavigate();
   const toFlags = () => navigate("/flagged-records");
+  const toLots = () => navigate("/lots");
 
-  type Tile = { title: string; value?: number; alert?: boolean; onClick?: () => void; hint?: string };
+  type Tile = {
+    title: string; value?: number; alert?: boolean; onClick?: () => void; hint?: string; link?: string;
+  };
+  const lots = data?.lots;
+  const lotTiles: Tile[] = [
+    {
+      title: "Lots Being Prepared",
+      value: lots?.preparing,
+      hint: "Draft lots not yet inspected, or waiting for rework after a failed inspection.",
+    },
+    { title: "Lots Under Inspection", value: lots?.inspecting, hint: "Draft lots with an outgoing inspection in progress." },
+    {
+      title: "Lots Ready to Release",
+      value: lots?.ready_to_release,
+      hint: "Passed the outgoing inspection with every record back through QA — ready to hand to the customer.",
+    },
+    { title: "Released to Customer", value: lots?.released, hint: "Released, waiting for the customer to sample." },
+    { title: "Lots in Customer QC", value: lots?.in_customer_qc },
+    { title: "Lots Passed", value: lots?.passed },
+    {
+      title: "Lots Rejected",
+      value: lots?.rejected,
+      alert: !!lots?.rejected,
+      hint: "Rejected by the customer's QC, including lots in remediation.",
+    },
+    {
+      title: "QA-passed Records Not in a Lot",
+      value: lots?.records_not_in_lot,
+      hint: "Records ready to be put into a lot.",
+    },
+  ].map((t) => ({ ...t, onClick: toLots, link: "Open Lots →" }));
   const liveTiles: Tile[] = [
     { title: "Batches Being Indexed", value: data?.batches_being_indexed },
     {
@@ -90,6 +121,7 @@ function DashboardTab({ projectId }: { projectId: number }) {
       value: data?.batches_blocked_by_flags,
       alert: !!data?.batches_blocked_by_flags,
       onClick: toFlags,
+      link: "View flagged records →",
       hint: "Batches in indexing with a flagged record. They can't go on to QA until each flag is resolved or withdrawn.",
     },
   ];
@@ -109,6 +141,7 @@ function DashboardTab({ projectId }: { projectId: number }) {
       value: data?.records_flagged,
       alert: !!data?.records_flagged,
       onClick: toFlags,
+      link: "View flagged records →",
       hint: "Records with an open flag waiting for a supervisor.",
     },
   ];
@@ -133,9 +166,7 @@ function DashboardTab({ projectId }: { projectId: number }) {
               value={tile.value ?? 0}
               valueStyle={tile.alert ? { color: "#d46b08" } : undefined}
             />
-            {tile.onClick && (
-              <Typography.Link style={{ fontSize: 12 }}>View flagged records →</Typography.Link>
-            )}
+            {tile.link && <Typography.Link style={{ fontSize: 12 }}>{tile.link}</Typography.Link>}
           </Card>
         </Col>
       ))}
@@ -148,7 +179,7 @@ function DashboardTab({ projectId }: { projectId: number }) {
         <RangePicker value={range as never} onChange={(v) => setRange(v as DateRange)} allowClear />
       </Space>
       {isLoading ? (
-        <PageSkeleton variant="cards" count={8} />
+        <PageSkeleton variant="cards" count={16} />
       ) : (
         <>
           <Typography.Text type="secondary" style={{ display: "block", marginBottom: 8 }}>
@@ -168,6 +199,12 @@ function DashboardTab({ projectId }: { projectId: number }) {
             <HelpTip>Current totals — not affected by the date range.</HelpTip>
           </Typography.Text>
           {renderTiles(recordTiles)}
+
+          <Typography.Text type="secondary" style={{ display: "block", margin: "20px 0 8px" }}>
+            Lots
+            <HelpTip>Current totals — not affected by the date range.</HelpTip>
+          </Typography.Text>
+          {renderTiles(lotTiles)}
         </>
       )}
     </div>

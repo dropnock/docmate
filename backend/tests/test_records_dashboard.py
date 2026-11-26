@@ -120,3 +120,43 @@ class TestAnalyticsAccess:
         headers = {"Authorization": f"Bearer {token(seed['supervisor'])}", "X-Portal": "digitizing"}
         resp = await client.get(f"/api/analytics/records-dashboard?project_id={other.id}", headers=headers)
         assert resp.status_code == 200
+
+
+class TestLots:
+    async def test_lot_counts(self, db: AsyncSession, seed):
+        from app.models.lot import LotStatus
+        from tests.test_lot_inspections import _complete, _make_lot, _review_all, _start
+        from tests.test_lot_resubmit import _inspect_and_release
+
+        preparing, _ = await _make_lot(db, seed, num_records=3)
+        inspecting, _ = await _make_lot(db, seed, num_records=3)
+        await _start(db, seed, inspecting)
+        ready, _ = await _make_lot(db, seed, num_records=3)
+        insp = await _start(db, seed, ready)
+        await _review_all(db, seed, ready, insp)
+        await _complete(db, seed, ready, insp)
+        failed_inspection, _ = await _make_lot(db, seed, num_records=3)
+        insp = await _start(db, seed, failed_inspection)
+        await _review_all(db, seed, failed_inspection, insp, {0: {"surname": ("", "missing")}})
+        await _complete(db, seed, failed_inspection, insp)  # back to preparing: rework first
+        released, _ = await _make_lot(db, seed, num_records=3)
+        await _inspect_and_release(db, seed, released)
+        for status in (LotStatus.qc_in_progress, LotStatus.passed, LotStatus.passed,
+                       LotStatus.failed, LotStatus.remediation):
+            lot, _ = await _make_lot(db, seed, num_records=1)
+            lot.status = status
+        # QA-passed records outside any lot.
+        from app.models.cabinet import Cabinet
+        cab = Cabinet(tenant_id=seed["tenant"].id, project_id=seed["project"].id, name="Loose")
+        db.add(cab)
+        await db.flush()
+        db.add_all([Record(cabinet_id=cab.id, status=RecordStatus.qa_passed, current_version=1) for _ in range(4)]
+                   + [Record(cabinet_id=cab.id, status=RecordStatus.indexed, current_version=1)])
+        await db.flush()
+
+        d = await records_dashboard(db, project_id=seed["project"].id)
+        assert d["lots"] == {
+            "preparing": 2, "inspecting": 1, "ready_to_release": 1,
+            "released": 1, "in_customer_qc": 1, "passed": 2, "rejected": 2,
+            "records_not_in_lot": 4,
+        }
