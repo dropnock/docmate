@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.add_column("aql_configs", sa.Column("minor_aql", sa.Float(), nullable=True))
     op.add_column("aql_configs", sa.Column("error_classes", sa.JSON(), nullable=True))
     op.execute(
-        sa.text("UPDATE aql_configs SET minor_aql = normal_aql, error_classes = :ec")
+        sa.text("UPDATE aql_configs SET minor_aql = normal_aql, error_classes = CAST(:ec AS JSON)")
         .bindparams(ec=json.dumps(DEFAULT_ERROR_CLASSES))
     )
     op.alter_column("aql_configs", "minor_aql", nullable=False)
