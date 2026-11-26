@@ -7,6 +7,31 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-26
+
+### Added
+- **QC supervisors control customer QC batches.** The supervisor chooses how
+  many batches to hand out and how many records go in each; the rest of the
+  sample stays unassigned for later. Batches can go to QC agents, other
+  supervisors or the supervisor themselves. A new **QC Batches** page (and a
+  table in the Assign to QC drawer) shows every QC batch, who holds it and
+  its progress, with **Reassign** to move a batch's open records to another
+  agent or supervisor.
+- **Records in lot spinner** on Create Lot: enter how many QA-passed records
+  the lot should hold and that many are selected from the top of the list
+  (up to the number available); it stays in step with the checkboxes.
+- Scripts: `refresh_training_project` (copy `qa_passed` or indexed records
+  into a training project), `reset_training_qc` (undo a training project's
+  customer QC so lots can be reassigned), `mark_lot_inspected` (give a draft
+  lot a passed outgoing inspection so it can be released).
+
+### Fixed
+- Required fields must have a value, and are checked on every save path;
+  list-field errors show once.
+- Pressing Enter in a field no longer submits the record.
+- Table page-size selectors now change the number of rows shown (they were
+  stuck at the default, e.g. 20 on Create Lot).
+
 ## [0.9.0] - 2026-11-20
 
 ### Added
