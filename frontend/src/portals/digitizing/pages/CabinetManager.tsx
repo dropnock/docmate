@@ -1,5 +1,5 @@
 import {
-  Button, Card, Col, Empty, Form, Input, Modal, Progress, Row, Segmented, Spin,
+  Button, Card, Checkbox, Col, Empty, Form, Input, Modal, Progress, Row, Segmented, Spin,
   Table, Tabs, Tag, Typography, Upload, message,
 } from "antd";
 import { UploadCloud, Plus, Pencil, Eye, Image as ImageIcon } from "lucide-react";
@@ -536,10 +536,10 @@ export default function CabinetManager({ projectId }: Props) {
                 it read-only. Set <code>"x-multiline": true</code> on a string property for a multi-line
                 textbox (or a number, e.g. <code>"x-multiline": 6</code>, for that many rows), or{" "}
                 <code>"x-multiline": false</code> to keep a field like <code>land_description</code>{" "}
-                single-line. Set <code>"x-critical": true</code> on a property to flag it as an ISO
-                2859-1 critical field — for projects using ISO sampling, a single critical-field defect
-                found during customer QC review fails the whole lot outright, independent of the
-                acceptance number.
+                single-line. <code>"x-critical": true</code> marks an identifier field (tick it under
+                Identifier fields below): any error in it is a critical non-conformity in the supervisor&apos;s
+                inspection and the customer&apos;s QC. Errors in other fields are classed by the project&apos;s
+                agreement (missing data major; typographic and interpretation errors minor by default).
               </>
             )}
             required
@@ -551,6 +551,34 @@ export default function CabinetManager({ projectId }: Props) {
               placeholder={'{\n  "type": "object",\n  "properties": {\n    "surname": { "type": "string", "title": "Surname" },\n    "internal_code": { "type": "string", "x-hidden": true }\n  },\n  "required": ["surname"]\n}'}
               style={{ fontFamily: "monospace", fontSize: 13 }}
             />
+          </Form.Item>
+          <Form.Item
+            label="Identifier fields"
+            tooltip="Any error in an identifier field is a critical non-conformity, whatever kind of error it is. Sets x-critical in the schema above."
+          >
+            {(() => {
+              let schema: { properties?: Record<string, { title?: string; "x-critical"?: boolean }> } | null = null;
+              try { schema = JSON.parse(dtSchemaText); } catch { schema = null; }
+              const props = schema?.properties;
+              if (!props || typeof props !== "object" || !Object.keys(props).length) {
+                return <Typography.Text type="secondary">Add properties to the schema (as valid JSON) to choose identifier fields.</Typography.Text>;
+              }
+              return (
+                <Checkbox.Group
+                  value={Object.keys(props).filter((k) => props[k]?.["x-critical"])}
+                  onChange={(keys) => {
+                    // Rewrite only the flags; JSON.stringify keeps key order, so the form's field order is unchanged.
+                    const next = JSON.parse(dtSchemaText);
+                    for (const k of Object.keys(next.properties)) {
+                      if (keys.includes(k)) next.properties[k]["x-critical"] = true;
+                      else delete next.properties[k]["x-critical"];
+                    }
+                    setDtSchemaText(JSON.stringify(next, null, 2));
+                  }}
+                  options={Object.entries(props).map(([k, v]) => ({ label: v?.title || k, value: k }))}
+                />
+              );
+            })()}
           </Form.Item>
         </Form>
       </Modal>

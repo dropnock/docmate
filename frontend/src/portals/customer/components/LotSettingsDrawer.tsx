@@ -1,20 +1,35 @@
 import { useEffect, useState } from "react";
 import {
   Alert, Button, Card, Col, Descriptions, Drawer, Form, InputNumber, Row,
-  Segmented, Select, Slider, Spin, Table, Tag, Typography, message,
+  Segmented, Select, Slider, Space, Spin, Table, Tag, Typography, message,
 } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@shared/api/errors";
-import { aqlConfigKey, getAqlConfig, getSampleSizePreview, updateAqlConfig } from "@shared/api/aql";
+import { aqlConfigKey, getAqlConfig, getClassPlanPreview, updateAqlConfig } from "@shared/api/aql";
 import { applySample, getQcFieldResults, lotDetailKey, getLot, sendForRemediation } from "@shared/api/lots";
 import LotHistory from "@shared/components/LotHistory";
 import LotQcRounds from "@shared/components/LotQcRounds";
 import StatusDot from "@shared/components/StatusDot";
 import InspectionLevelTag from "@shared/components/InspectionLevelTag";
 import type { AQLConfig, ErrorType, FieldResultSummary } from "@shared/types";
-import { ClassResultsTable, ERROR_TYPE_LABEL, SEVERITIES, SEVERITY } from "@shared/components/DefectClasses";
+import {
+  ClassResultsTable, DEFAULT_ERROR_CLASSES, ERROR_TYPES, ERROR_TYPE_LABEL, SEVERITIES, SEVERITY,
+} from "@shared/components/DefectClasses";
 
-const AQL_OPTIONS = [0.65, 1.0, 1.5, 2.5].map((v) => ({ value: v, label: `${v}%` }));
+const AQLS = [0.65, 1.0, 1.5, 2.5, 4.0, 6.5];
+const AQL_OPTIONS = AQLS.map((v) => ({ value: v, label: `${v}%` }));
+// The form can't hold null in a Select, so zero tolerance is "zero" there.
+const ZERO = "zero";
+const CRITICAL_OPTIONS = [{ value: ZERO, label: "Zero tolerance (reject on 1)" }, ...AQL_OPTIONS];
+
+type ConfigForm = Omit<AQLConfig, "critical_aql"> & { critical_aql: number | typeof ZERO };
+
+const toForm = (c: AQLConfig): ConfigForm => ({ ...c, critical_aql: c.critical_aql ?? ZERO });
+const fromForm = (v: Partial<ConfigForm>): Partial<AQLConfig> => {
+  const { critical_aql, normal_aql: _legacy, ...rest } = v;
+  void _legacy;
+  return { ...rest, ...(critical_aql === undefined ? {} : { critical_aql: critical_aql === ZERO ? null : critical_aql }) };
+};
 const GENERAL_LEVEL_OPTIONS = [
   { value: "I", label: "I (smaller samples)" },
   { value: "II", label: "II (standard)" },
@@ -41,7 +56,7 @@ const LOT_STATUS_FILLED = new Set(["passed"]);
 
 export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onClose }: Props) {
   const qc = useQueryClient();
-  const [configForm] = Form.useForm<AQLConfig>();
+  const [configForm] = Form.useForm<ConfigForm>();
   const [manualRate, setManualRate] = useState<number>(10);
 
   const { data: lotDetail } = useQuery({
@@ -58,7 +73,7 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
   });
 
   useEffect(() => {
-    if (aqlConfig) configForm.setFieldsValue(aqlConfig);
+    if (aqlConfig) configForm.setFieldsValue(toForm({ ...aqlConfig, error_classes: { ...DEFAULT_ERROR_CLASSES, ...aqlConfig.error_classes } }));
   }, [aqlConfig, configForm]);
 
   const totalRecords = lotDetail?.records.length ?? 0;
@@ -69,11 +84,13 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
   // before levels were set per lot fall back to the project's suggestion.
   const lotLevel = lotDetail?.inspection_level ?? aqlConfig?.current_status ?? "normal";
 
+  const classAqls = aqlConfig
+    ? { critical: aqlConfig.critical_aql, major: aqlConfig.major_aql, minor: aqlConfig.minor_aql }
+    : undefined;
   const { data: preview } = useQuery({
-    queryKey: ["sample-size-preview", totalRecords, aqlConfig?.current_aql_level, lotLevel, aqlConfig?.general_level],
-    queryFn: () =>
-      getSampleSizePreview(totalRecords, aqlConfig!.current_aql_level, lotLevel, aqlConfig!.general_level),
-    enabled: !!lotDetail && notYetSampled && isIso && totalRecords > 0,
+    queryKey: ["class-plan-preview", totalRecords, classAqls, lotLevel, aqlConfig?.general_level],
+    queryFn: () => getClassPlanPreview(totalRecords, classAqls!, lotLevel, aqlConfig!.general_level),
+    enabled: !!lotDetail && notYetSampled && isIso && totalRecords > 0 && !!classAqls,
   });
 
   const { data: fieldResults } = useQuery({
@@ -188,7 +205,7 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                   form={configForm}
                   layout="vertical"
                   disabled={!isSupervisor}
-                  onFinish={(values) => saveConfigMutation.mutate(values)}
+                  onFinish={(values) => saveConfigMutation.mutate(fromForm(values))}
                 >
                   <Form.Item name="sampling_mode" label="Sampling Method">
                     <Segmented
@@ -198,12 +215,56 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                       ]}
                     />
                   </Form.Item>
+                  <Typography.Text strong>Quality requirement per class (AQL %)</Typography.Text>
+                  <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+                    Each defective field is one non-conformity of a class. One sample is drawn per lot, at the size
+                    the strictest class needs; the lot is accepted only when every class stays within its
+                    acceptance number. Used for the digitizing supervisor's inspection and for your QC.
+                  </Typography.Paragraph>
+                  <Row gutter={12}>
+                    <Col span={8}>
+                      <Form.Item
+                        name="critical_aql"
+                        label={<span><Tag color={SEVERITY.critical.color}>Critical</Tag></span>}
+                        tooltip="Errors in identifier fields. Zero tolerance rejects the lot on any one. A very small AQL can make the sample much larger."
+                      >
+                        <Select options={CRITICAL_OPTIONS} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="major_aql" label={<Tag color={SEVERITY.major.color}>Major</Tag>}>
+                        <Select options={AQL_OPTIONS} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="minor_aql" label={<Tag color={SEVERITY.minor.color}>Minor</Tag>}>
+                        <Select options={AQL_OPTIONS} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
                   <Form.Item
-                    name="normal_aql"
-                    label="Quality requirement (AQL %)"
-                    tooltip="The project's acceptance quality limit. Normal, tightened and reduced inspection all use it, with ISO 2859-1's own sample sizes and acceptance numbers for each level."
+                    label="Classification agreement"
+                    tooltip="How each kind of error on an ordinary field is classed. Any error on an identifier field is critical."
                   >
-                    <Select options={AQL_OPTIONS} style={{ width: 160 }} />
+                    <Space direction="vertical" size={6}>
+                      {ERROR_TYPES.map((t) => (
+                        <Space key={t.value}>
+                          <Typography.Text style={{ display: "inline-block", width: 150 }}>
+                            {ERROR_TYPE_LABEL[t.value]}
+                          </Typography.Text>
+                          <Form.Item name={["error_classes", t.value]} noStyle>
+                            <Segmented
+                              size="small"
+                              options={[
+                                { label: "Major", value: "major" },
+                                { label: "Minor", value: "minor" },
+                              ]}
+                            />
+                          </Form.Item>
+                        </Space>
+                      ))}
+                      <Typography.Text type="secondary">Identifier fields: any error is critical.</Typography.Text>
+                    </Space>
                   </Form.Item>
                   <Form.Item
                     name="general_level"
@@ -247,11 +308,15 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                       <Descriptions.Item label="Inspection level" span={2}>
                         <InspectionLevelTag level={lotLevel} />
                       </Descriptions.Item>
-                      <Descriptions.Item label="ISO Sample Size">{preview.sample_size}</Descriptions.Item>
-                      <Descriptions.Item label="Acceptance Number">{preview.acceptance_number}</Descriptions.Item>
+                      <Descriptions.Item label="ISO Sample Size" span={2}>{preview.sample_size}</Descriptions.Item>
                     </Descriptions>
                   ) : (
                     <Spin size="small" />
+                  )}
+                  {preview && (
+                    <div style={{ marginTop: 12 }}>
+                      <ClassResultsTable classes={preview.classes} />
+                    </div>
                   )}
                   <div style={{ marginTop: 12 }}>
                     <Button
@@ -312,12 +377,17 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                   {lotDetail.sample_rate !== null ? `${(lotDetail.sample_rate * 100).toFixed(1)}%` : "—"}
                 </Descriptions.Item>
                 <Descriptions.Item label="Sample Size">{lotDetail.sample_size ?? "—"}</Descriptions.Item>
-                {lotDetail.acceptance_number !== null && (
+                {lotDetail.acceptance_number !== null && !lotDetail.class_plan && (
                   <Descriptions.Item label="Acceptance Number" span={2}>
                     {lotDetail.acceptance_number}
                   </Descriptions.Item>
                 )}
               </Descriptions>
+            )}
+            {!notYetSampled && lotDetail.class_plan && (
+              <div style={{ marginTop: 12 }}>
+                <ClassResultsTable classes={lotDetail.class_plan} />
+              </div>
             )}
           </Card>
 
