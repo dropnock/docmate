@@ -7,6 +7,21 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+### Added
+- **Critical / major / minor defect classes, each with its own AQL**, for
+  the digitizing supervisor's inspection and the customer's QC. Errors in
+  identifier fields are critical; other errors are classed by the project's
+  agreement with the customer (missing data major, typographic and
+  interpretation errors minor by default). Reviewers say what is wrong with
+  each defective field (Missing / Typo / Interpretation). One sample is
+  drawn at the size the three AQLs need; the lot is accepted only when every
+  class is within its acceptance number. Lot Settings sets the three AQLs
+  (critical can be zero tolerance) and the agreement; the document-type
+  editor ticks identifier fields. Reports, the tabulation, QC rounds and
+  KPIs show per-class results. AQLs 4.0 and 6.5 added. Lots and inspections
+  started earlier keep the old rule. Migration `b5e8c3a1d7f2`.
+- QC Batches page: filter by assignee and by progress.
+
 ## [0.9.1] - 2026-11-26
 
 ### Added

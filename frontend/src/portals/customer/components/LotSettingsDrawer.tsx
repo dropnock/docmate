@@ -20,7 +20,7 @@ const AQLS = [0.65, 1.0, 1.5, 2.5, 4.0, 6.5];
 const AQL_OPTIONS = AQLS.map((v) => ({ value: v, label: `${v}%` }));
 // The form can't hold null in a Select, so zero tolerance is "zero" there.
 const ZERO = "zero";
-const CRITICAL_OPTIONS = [{ value: ZERO, label: "Zero tolerance (reject on 1)" }, ...AQL_OPTIONS];
+const CRITICAL_OPTIONS = [{ value: ZERO, label: "Zero tolerance" }, ...AQL_OPTIONS];
 
 type ConfigForm = Omit<AQLConfig, "critical_aql"> & { critical_aql: number | typeof ZERO };
 
