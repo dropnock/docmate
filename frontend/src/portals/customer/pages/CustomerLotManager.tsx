@@ -117,7 +117,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
           columns={columns}
           dataSource={visibleLots}
           size="middle"
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20 }}
         />
       )}
 

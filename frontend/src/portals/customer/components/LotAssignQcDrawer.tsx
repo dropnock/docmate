@@ -161,7 +161,7 @@ export default function LotAssignQcDrawer({ lotId, projectId, onClose }: Props) 
           </Card>
 
           <Card title="Sampled Records">
-            <Table rowKey="record_id" size="small" dataSource={sampledRecords} pagination={{ pageSize: 20 }} columns={columns} />
+            <Table rowKey="record_id" size="small" dataSource={sampledRecords} pagination={{ defaultPageSize: 20 }} columns={columns} />
           </Card>
         </>
       )}

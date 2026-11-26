@@ -281,7 +281,7 @@ function BatchDetailDrawer({
         loading={isLoading}
         columns={columns}
         dataSource={records}
-        pagination={{ pageSize: 10 }}
+        pagination={{ defaultPageSize: 10 }}
       />
 
       {recordId && (
@@ -401,7 +401,7 @@ function HistoryTab({ projectId }: { projectId: number }) {
           dataSource={batches}
           loading={isLoading}
           size="small"
-          pagination={{ pageSize: 20 }}
+          pagination={{ defaultPageSize: 20 }}
         />
       )}
 

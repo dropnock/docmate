@@ -294,7 +294,7 @@ export default function CabinetManager({ projectId }: Props) {
                       columns={recordColumns}
                       dataSource={filteredRecords}
                       size="small"
-                      pagination={{ pageSize: 50 }}
+                      pagination={{ defaultPageSize: 50 }}
                     />
                   </>
                 ),
