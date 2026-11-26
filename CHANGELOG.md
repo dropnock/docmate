@@ -7,6 +7,8 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-11-26
+
 ### Added
 - **Records Management dashboard: lots.** A Lots row shows draft lots
   being prepared, under inspection and ready to release; lots released to
@@ -24,7 +26,7 @@ See `RELEASING.md` for how to cut a release.
   and can change them later. Inspections and customer samples already
   started keep the AQLs they began with. Every change to a project's details
   or AQLs is recorded in its audit trail, shown under the project's new
-  **History** button.
+  **History** button. Migration `c7d1e9f3a2b4`.
 - **Critical / major / minor defect classes, each with its own AQL**, for
   the digitizing supervisor's inspection and the customer's QC. Errors in
   identifier fields are critical; other errors are classed by the project's
