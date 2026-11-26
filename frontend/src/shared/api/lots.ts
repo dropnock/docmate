@@ -1,7 +1,7 @@
 import api from "@shared/api/client";
 import type {
   AuditEvent, AvailableStaff, FieldResult, InspectionLevel, Lot, LotDetail, LotInspectionDetail,
-  LotInspectionList, LotInspectionReport, QcFieldResultsOut,
+  LotInspectionList, LotInspectionReport, QcBatchSummary, QcFieldResultsOut,
 } from "@shared/types";
 
 /** Shared across CustomerLotManager, LotSettingsDrawer, and LotAssignQcDrawer
@@ -13,8 +13,24 @@ export function getLot(lotId: number) {
   return api.get<LotDetail>(`/lots/${lotId}`).then((r) => r.data);
 }
 
+/** Everyone QC batches can go to: the customer's QC agents, then its
+ * supervisors (role "customer_supervisor"), who can take batches too. */
 export function getQcAgents(projectId: number) {
   return api.get<AvailableStaff[]>(`/projects/${projectId}/qc-agents`).then((r) => r.data);
+}
+
+export const qcBatchesKey = (projectId: number, lotId?: number) => ["qc-batches", projectId, lotId ?? null] as const;
+
+export function listQcBatches(projectId: number, lotId?: number) {
+  return api
+    .get<QcBatchSummary[]>(`/lots/project/${projectId}/qc-batches`, { params: lotId ? { lot_id: lotId } : {} })
+    .then((r) => r.data);
+}
+
+/** Moves every open (pending / in-progress) task of a QC batch to one
+ * person; finished records stay with whoever reviewed them. */
+export function reassignQcBatch(batchId: number, agentId: number) {
+  return api.post(`/batches/${batchId}/reassign`, { task_type: "qc", agent_id: agentId }).then((r) => r.data);
 }
 
 /** sampleRate is only meaningful when the project's AQLConfig.sampling_mode

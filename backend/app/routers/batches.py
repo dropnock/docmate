@@ -169,6 +169,11 @@ async def reassign_batch(
         raise HTTPException(status_code=404, detail="Batch not found")
     project = await db.get(Project, batch.project_id)
     check_project_access(project, current_user)
+    # Customer QC work is the customer supervisor's to move; indexing and QA
+    # work the digitizing supervisor's.
+    role = getattr(current_user.role, "value", current_user.role)
+    if role != "admin" and (body.task_type == "qc") != (role == "customer_supervisor"):
+        raise HTTPException(status_code=403, detail=f"{role} cannot reassign {body.task_type} tasks")
     return await batch_service.reassign_batch(
         db,
         batch_id=batch_id,

@@ -153,12 +153,18 @@ async def qc_staff_productivity(
     day_start = datetime.combine(today, datetime.min.time())
     day_end = day_start + timedelta(days=1)
 
+    # QC agents, plus customer supervisors who have taken QC batches on this
+    # project themselves (a supervisor with none would only be a row of zeros).
+    supervisor_with_qc = select(Task.id).join(Batch, Batch.id == Task.batch_id).where(
+        Task.assigned_to == User.id, Task.task_type == TaskType.qc, Batch.project_id == project_id,
+    ).exists()
     staff_result = await db.execute(
         select(User).where(
             User.tenant_id == project.tenant_id,
             User.organization_id == project.customer_org_id,
-            User.role == UserRole.customer_qc_agent,
             User.is_active == True,  # noqa: E712
+            (User.role == UserRole.customer_qc_agent)
+            | ((User.role == UserRole.customer_supervisor) & supervisor_with_qc),
         ).order_by(User.full_name)
     )
     staff = list(staff_result.scalars().all())

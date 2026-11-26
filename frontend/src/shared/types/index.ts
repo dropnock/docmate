@@ -153,8 +153,33 @@ export interface LotDetail extends Lot {
     original_filename: string | null;
     status: string;
     is_sampled: boolean;
+    /** The record's current customer QC task, once it has been assigned. */
+    qc_task: {
+      task_id: number;
+      batch_id: number;
+      status: "pending" | "in_progress" | "completed" | "failed";
+      assigned_to: number | null;
+      assigned_to_name: string | null;
+    } | null;
   }[];
   qc_rounds: LotQcRound[];
+}
+
+/** A customer QC batch as the customer supervisor sees it (GET
+ * /lots/project/{id}/qc-batches): who holds its tasks and how far it got. */
+export interface QcBatchSummary {
+  id: number;
+  name: string;
+  document_type_id: number;
+  created_at: string;
+  lot_id: number | null;
+  lot_name: string | null;
+  total: number;
+  pending: number;
+  in_progress: number;
+  completed: number;
+  failed: number;
+  assignees: { id: number; full_name: string; role: string | null; tasks: number; open: number }[];
 }
 
 export interface Batch {

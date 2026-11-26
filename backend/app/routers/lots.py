@@ -71,6 +71,24 @@ async def list_lots(
     return [LotOut.model_validate(lot) for lot in lots]
 
 
+@router.get("/project/{project_id}/qc-batches")
+async def list_qc_batches(
+    project_id: int,
+    lot_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("customer_supervisor", "admin")),
+):
+    """Every customer QC batch of the project (or one lot): who holds its
+    tasks and how far it has got — the customer supervisor's view of the
+    work handed out, and where they reassign it from."""
+    check_project_access(await db.get(Project, project_id), current_user)
+    if lot_id is not None:
+        lot = await _get_authorized_lot(db, lot_id, current_user)
+        if lot.project_id != project_id:
+            raise HTTPException(status_code=404, detail="Lot not found")
+    return await lot_service.list_qc_batches(db, project_id=project_id, lot_id=lot_id)
+
+
 @router.get("/{lot_id}")
 async def get_lot(
     lot_id: int,
@@ -87,16 +105,32 @@ async def get_lot(
     )
     lot_records = list(lot_records_result.scalars().all())
 
+    from app.models.user import User
+
+    qc_tasks = await lot_service.latest_qc_tasks(db, [lr.record_id for lr in lot_records])
+    holder_ids = {t.assigned_to for t in qc_tasks.values() if t.assigned_to}
+    holders = {u.id: u for u in (await db.execute(
+        select(User).where(User.id.in_(holder_ids))
+    )).scalars()} if holder_ids else {}
+
     records_out = []
     for lr in lot_records:
         record = await db.get(Record, lr.record_id)
         if record:
+            task = qc_tasks.get(record.id)
+            holder = holders.get(task.assigned_to) if task else None
             records_out.append({
                 "record_id": record.id,
                 "source_identifier": record.source_identifier,
                 "original_filename": record.original_filename,
                 "status": record.status,
                 "is_sampled": lr.is_sampled,
+                # The record's current customer QC task, if it has one.
+                "qc_task": {
+                    "task_id": task.id, "batch_id": task.batch_id, "status": task.status.value,
+                    "assigned_to": task.assigned_to,
+                    "assigned_to_name": holder.full_name if holder else None,
+                } if task else None,
             })
 
     rounds = await lot_service.list_qc_rounds(db, lot_id=lot.id)

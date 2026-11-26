@@ -339,6 +339,43 @@ async def create_qc_batches(
     return batches
 
 
+# Who can be given customer QC work: the project's customer QC agents, and
+# its customer supervisors (assigning batches to themselves or each other).
+QC_ASSIGNEE_ROLES = ("customer_qc_agent", "customer_supervisor")
+
+
+async def qc_assignees(db: AsyncSession, *, project_id: int, tenant_id: int) -> list:
+    """Active users of the project's customer organisation who can be given
+    QC batches, agents first, each group by name."""
+    from app.models.project import Project
+    from app.models.user import User, UserRole
+
+    project = await db.get(Project, project_id)
+    if project is None:
+        return []
+    users = (await db.execute(
+        select(User).where(
+            User.tenant_id == tenant_id,
+            User.organization_id == project.customer_org_id,
+            User.role.in_([UserRole(r) for r in QC_ASSIGNEE_ROLES]),
+            User.is_active == True,  # noqa: E712
+        )
+    )).scalars().all()
+    return sorted(users, key=lambda u: (u.role != UserRole.customer_qc_agent, u.full_name.lower()))
+
+
+async def require_qc_assignees(db: AsyncSession, *, project_id: int, user_ids, tenant_id: int) -> None:
+    """422 unless every id is an active QC agent or customer supervisor of
+    the project's customer organisation."""
+    valid = {u.id for u in await qc_assignees(db, project_id=project_id, tenant_id=tenant_id)}
+    invalid = sorted(set(user_ids) - valid)
+    if invalid:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Not active QC agents or supervisors of this project's customer organisation: {invalid}",
+        )
+
+
 async def _check_qc_batch_targets(
     db: AsyncSession,
     *,
@@ -350,34 +387,18 @@ async def _check_qc_batch_targets(
 ) -> None:
     """project_id, document_type_id and the agent ids all come from the
     request body. The QC batches must land in the lot's own project, under
-    one of its document types, assigned to active QC agents of that
-    project's customer organisation (the same set GET /projects/{id}/qc-agents
-    offers) — not another customer's project or agents."""
+    one of its document types, assigned to active QC agents or supervisors
+    of that project's customer organisation (the same set GET
+    /projects/{id}/qc-agents offers) — not another customer's project or
+    people."""
     from app.models.document_type import DocumentType
-    from app.models.project import Project
-    from app.models.user import User, UserRole
 
     if project_id != lot.project_id:
         raise HTTPException(status_code=422, detail="project_id does not match the lot's project")
     doc_type = await db.get(DocumentType, document_type_id)
     if not doc_type or doc_type.project_id != lot.project_id:
         raise HTTPException(status_code=422, detail="document_type_id is not a document type of the lot's project")
-    project = await db.get(Project, lot.project_id)
-    valid = set((await db.execute(
-        select(User.id).where(
-            User.id.in_(set(agent_ids)),
-            User.tenant_id == tenant_id,
-            User.organization_id == project.customer_org_id,
-            User.role == UserRole.customer_qc_agent,
-            User.is_active == True,  # noqa: E712
-        )
-    )).scalars().all())
-    invalid = sorted(set(agent_ids) - valid)
-    if invalid:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Not active QC agents of this project's customer organisation: {invalid}",
-        )
+    await require_qc_assignees(db, project_id=lot.project_id, user_ids=agent_ids, tenant_id=tenant_id)
 
 
 async def recall_lot(
@@ -790,3 +811,72 @@ async def send_for_remediation(
         new_value={"status": "remediation"},
     )
     return lot
+
+
+async def latest_qc_tasks(db: AsyncSession, record_ids: list[int]) -> dict[int, Task]:
+    """Each record's most recent QC task (the current round's), by record id."""
+    if not record_ids:
+        return {}
+    tasks = (await db.execute(
+        select(Task).where(Task.record_id.in_(record_ids), Task.task_type == TaskType.qc).order_by(Task.id)
+    )).scalars().all()
+    return {t.record_id: t for t in tasks}
+
+
+async def list_qc_batches(db: AsyncSession, *, project_id: int, lot_id: int | None = None) -> list[dict]:
+    """Every customer QC batch of the project (or of one lot), newest first,
+    with who holds its tasks and how far it has got."""
+    from app.models.user import User
+
+    batches = list((await db.execute(
+        select(Batch).where(Batch.project_id == project_id, Batch.batch_type == BatchType.qc)
+        .order_by(Batch.id.desc())
+    )).scalars().all())
+    if not batches:
+        return []
+    tasks = list((await db.execute(
+        select(Task).where(Task.batch_id.in_([b.id for b in batches]), Task.task_type == TaskType.qc)
+    )).scalars().all())
+    lot_of_record = dict((await db.execute(
+        select(LotRecord.record_id, LotRecord.lot_id).where(LotRecord.record_id.in_({t.record_id for t in tasks}))
+    )).all()) if tasks else {}
+    lots = {lot.id: lot for lot in (await db.execute(
+        select(Lot).where(Lot.id.in_(set(lot_of_record.values())))
+    )).scalars()} if lot_of_record else {}
+    users = {u.id: u for u in (await db.execute(
+        select(User).where(User.id.in_({t.assigned_to for t in tasks if t.assigned_to}))
+    )).scalars()} if tasks else {}
+
+    by_batch: dict[int, list[Task]] = {}
+    for t in tasks:
+        by_batch.setdefault(t.batch_id, []).append(t)
+
+    out = []
+    for b in batches:
+        btasks = by_batch.get(b.id, [])
+        lot_ids = {lot_of_record.get(t.record_id) for t in btasks} - {None}
+        batch_lot = lots.get(min(lot_ids)) if lot_ids else None
+        if lot_id is not None and (batch_lot is None or batch_lot.id != lot_id):
+            continue
+        counts = {s.value: 0 for s in TaskStatus}
+        holders: dict[int, dict] = {}
+        for t in btasks:
+            counts[t.status.value] += 1
+            if t.assigned_to is None:
+                continue
+            u = users.get(t.assigned_to)
+            h = holders.setdefault(t.assigned_to, {
+                "id": t.assigned_to, "full_name": u.full_name if u else str(t.assigned_to),
+                "role": u.role.value if u else None, "tasks": 0, "open": 0,
+            })
+            h["tasks"] += 1
+            if t.status in (TaskStatus.pending, TaskStatus.in_progress):
+                h["open"] += 1
+        out.append({
+            "id": b.id, "name": b.name, "document_type_id": b.document_type_id, "created_at": b.created_at,
+            "lot_id": batch_lot.id if batch_lot else None, "lot_name": batch_lot.name if batch_lot else None,
+            "total": len(btasks), "pending": counts["pending"], "in_progress": counts["in_progress"],
+            "completed": counts["completed"], "failed": counts["failed"],
+            "assignees": sorted(holders.values(), key=lambda h: (-h["open"], h["full_name"].lower())),
+        })
+    return out
