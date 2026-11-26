@@ -81,6 +81,8 @@ function Body({ projectId, userId, taskType, date }: { projectId: number; userId
   const s = data?.summary;
   const legacy = data?.rows.some((r) => r.sessions === 0 && r.status !== "in_progress");
 
+  // Never back to unsorted: antd steps to the entry after the current one.
+  const flip = ["descend", "ascend", "descend"] as ("descend" | "ascend")[];
   const sortOrder = (col: "time" | "finished") =>
     sort === `${col}_desc` ? ("descend" as const) : sort === `${col}_asc` ? ("ascend" as const) : null;
 
@@ -88,13 +90,14 @@ function Body({ projectId, userId, taskType, date }: { projectId: number; userId
     { title: "Record", dataIndex: "record_label", render: (v: string, r) => <Tooltip title={`Record #${r.record_id}`}>{v}</Tooltip> },
     { title: "Batch", dataIndex: "batch_name", ellipsis: true },
     { title: "Started", dataIndex: "started_at", width: 140, render: fmtWhen },
-    { title: "Finished", key: "finished", dataIndex: "finished_at", width: 140, render: fmtWhen, sorter: true, sortOrder: sortOrder("finished") },
+    { title: "Finished", key: "finished", dataIndex: "finished_at", width: 140, render: fmtWhen, sorter: true, sortDirections: flip, sortOrder: sortOrder("finished") },
     {
       title: "Time",
       key: "time",
       dataIndex: "seconds",
       width: 100,
       sorter: true,
+      sortDirections: flip,
       sortOrder: sortOrder("time"),
       render: (v: number, r) => (
         <span data-task-seconds={v}>
