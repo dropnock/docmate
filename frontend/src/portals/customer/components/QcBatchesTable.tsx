@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button, Empty, Modal, Progress, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
@@ -7,6 +7,16 @@ import { formatApiError } from "@shared/api/errors";
 import { getQcAgents, listQcBatches, lotDetailKey, qcBatchesKey, reassignQcBatch } from "@shared/api/lots";
 import type { QcBatchSummary, UserRecord } from "@shared/types";
 import { qcAssigneeOptions } from "./qcAssignees";
+
+type Stage = "not_started" | "in_progress" | "finished";
+const STAGE_LABEL: Record<Stage, string> = {
+  not_started: "Not started",
+  in_progress: "In progress",
+  finished: "Finished",
+};
+/** Finished: nothing left open. Not started: nobody has opened a record yet. */
+const stage = (b: QcBatchSummary): Stage =>
+  b.pending + b.in_progress === 0 ? "finished" : b.pending === b.total ? "not_started" : "in_progress";
 
 interface Props {
   projectId: number;
@@ -50,6 +60,15 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
 
   const open = (b: QcBatchSummary) => b.pending + b.in_progress;
 
+  // Everyone holding a batch in the list, for the Assigned to filter.
+  const assigneeFilters = useMemo(() => {
+    const seen = new Map<number, string>();
+    for (const b of batches) for (const a of b.assignees) seen.set(a.id, a.full_name);
+    return [...seen.entries()]
+      .sort((x, y) => x[1].localeCompare(y[1]))
+      .map(([id, name]) => ({ text: `${name}${id === me?.id ? " (you)" : ""}`, value: id }));
+  }, [batches, me?.id]);
+
   const columns: ColumnType<QcBatchSummary>[] = [
     {
       title: "Batch",
@@ -68,6 +87,9 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
     {
       title: "Assigned to",
       key: "assignees",
+      filters: assigneeFilters,
+      filterSearch: true,
+      onFilter: (value, b) => b.assignees.some((a) => a.id === value),
       render: (_: unknown, b: QcBatchSummary) =>
         b.assignees.length === 0 ? (
           "—"
@@ -89,6 +111,8 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
       title: "Progress",
       key: "progress",
       width: 220,
+      filters: (Object.keys(STAGE_LABEL) as Stage[]).map((k) => ({ text: STAGE_LABEL[k], value: k })),
+      onFilter: (value, b) => stage(b) === value,
       render: (_: unknown, b: QcBatchSummary) => {
         const done = b.completed + b.failed;
         return (
