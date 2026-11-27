@@ -17,6 +17,11 @@
 {% endif %}
 <link rel="stylesheet" href="assets/brand.css">
 <link rel="stylesheet" href="assets/{{ 'print' if mode == 'print' else 'manual' }}.css">
+{% if mode == "web" %}
+{#- Inside the app's Help frame the app header already names the product and
+    manual, so the page drops its own top bar. -#}
+<script>if (window.self !== window.top) document.documentElement.classList.add("embedded");</script>
+{% endif %}
 </head>
 <body class="kind-{{ manual.kind }} mode-{{ mode }}">
 {%- macro wordmark() -%}

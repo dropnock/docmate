@@ -35,6 +35,11 @@ body {
 }
 .version { color: var(--text-secondary); font-size: 12px; }
 
+/* Shown in the app's Help frame (class set by base.html.j2). */
+html.embedded { scroll-padding-top: 16px; }
+.embedded .topbar { display: none; }
+.embedded .toc { top: 0; max-height: 100vh; }
+
 /* ---- Layout ----------------------------------------------------------- */
 .layout {
   display: grid;
