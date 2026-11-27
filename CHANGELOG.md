@@ -16,6 +16,8 @@ See `RELEASING.md` for how to cut a release.
 - The manuals' sources now live in the repo (`manuals/`). One brand file
   (`manuals/brand/brand.yaml`) and one template set the look of the HTML pages, the
   PDFs and the Word copies.
+- **The DocMate logo** in both portals' header and as the browser-tab icon, and on the
+  manuals' pages, PDF covers and Word copies.
 
 ### Fixed
 - The Word copies of the manuals showed "v0.9.0" in their footer whatever the

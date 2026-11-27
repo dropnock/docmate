@@ -5,9 +5,11 @@
 product: DocMate
 portal: Customer Portal
 
-# Optional logo (SVG or PNG, path relative to this folder). Leave empty to use
-# the product name as a wordmark in the primary colour, as the app header does.
-logo: ""
+# Logo (SVG or PNG, path relative to this folder), shown in the manuals'
+# header, PDF cover and Word copies. Leave empty to show the product name as a
+# wordmark instead. logo.png is made from source/docmate-logo-original.png by
+# tools/make_logo_assets.py, which also writes the app's copies.
+logo: logo.png
 
 # Colours mirror frontend/src/shared/theme/theme.ts.
 colors:

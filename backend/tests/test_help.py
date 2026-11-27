@@ -80,6 +80,11 @@ class TestBuild:
         assert "--primary: #1E40AF;" in css
         assert "font-family: 'Inter'" in css
 
+    def test_logo_is_used_in_web_and_print(self, built):
+        assert (built / "web" / "assets" / "logo.png").is_file()
+        assert 'class="logo" src="assets/logo.png"' in (built / "web" / "reviewer-manual.html").read_text()
+        assert 'class="logo" src="assets/logo.png"' in (built / "print" / "reviewer-manual.html").read_text()
+
     def test_page_has_version_toc_and_no_duplicate_title(self, built):
         page = (built / "web" / "supervisor-manual.html").read_text()
         assert "v9.9.9" in page

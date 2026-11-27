@@ -30,13 +30,14 @@ body {
 .cover {
   page: cover;
   break-after: page;
-  display: flex; flex-direction: column;
   padding-top: 2.2in;
 }
-.cover-brand { display: flex; align-items: baseline; gap: 10px; }
+/* Plain blocks, not flexbox: WeasyPrint's flex layout misplaces the logo. */
+.cover-brand { display: block; }
 .cover .wordmark { color: var(--primary); font-weight: 700; font-size: 28pt; }
-.cover .logo { height: 40pt; }
-.cover-portal { color: var(--text-secondary); font-weight: 600; font-size: 14pt; }
+.cover .logo { display: block; height: 52pt; }
+.cover-portal { display: block; margin-top: 8pt; color: var(--text-secondary); font-weight: 600; font-size: 14pt; }
+.cover .wordmark + .cover-portal { display: inline; margin-left: 8pt; }
 .cover-title {
   margin: 28pt 0 8pt; padding-top: 20pt;
   border-top: 3pt solid var(--primary);

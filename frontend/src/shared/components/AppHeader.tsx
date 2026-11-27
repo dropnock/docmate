@@ -1,6 +1,7 @@
 import { Button, Layout, Space, Typography } from "antd";
 import { LogOut, Menu as MenuIcon, X } from "lucide-react";
 import NotificationBell from "./NotificationBell";
+import docmateLogo from "@shared/assets/docmate-logo.png";
 
 const { Header } = Layout;
 
@@ -65,8 +66,13 @@ export default function AppHeader({
             )}
           </button>
         )}
-        <Typography.Title level={4} style={{ margin: 0, lineHeight: "normal" }}>
-          <span style={{ color: "#1E40AF", fontWeight: 700 }}>DocMate</span>{" "}
+        <Typography.Title
+          level={4}
+          style={{ margin: 0, lineHeight: "normal", display: "flex", alignItems: "center", gap: 10 }}
+        >
+          {/* Logo files are made from the original artwork by
+              manuals/tools/make_logo_assets.py. */}
+          <img src={docmateLogo} alt="DocMate" height={30} style={{ display: "block" }} />
           <span style={{ color: "#64748B", fontWeight: 500, fontSize: 15 }}>
             {portalLabel}
           </span>

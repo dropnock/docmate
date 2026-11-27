@@ -23,9 +23,9 @@ body {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
-.brand { display: flex; align-items: baseline; gap: 8px; text-decoration: none; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
 .wordmark { color: var(--primary); font-weight: 700; font-size: 20px; }
-.logo { height: 28px; align-self: center; }
+.logo { display: block; height: 30px; align-self: center; }
 .portal { color: var(--text-secondary); font-weight: 600; font-size: 14px; }
 .doc-title {
   flex: 1; min-width: 0;

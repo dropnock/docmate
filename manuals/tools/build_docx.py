@@ -229,12 +229,37 @@ def build(md_name: str, out: Path, ref: Path):
     _build(SRC / md_name, out, ref, "workbook" in md_name)
 
 
+LOGO_WIDTH_IN = 2.0
+
+
+def _logo_for_word(tmpdir: Path) -> Path | None:
+    """The brand logo with its DPI set so pandoc places it LOGO_WIDTH_IN wide."""
+    if not BRAND.get("logo"):
+        return None
+    from PIL import Image
+
+    im = Image.open(HERE.parent / "brand" / BRAND["logo"])
+    im.thumbnail((640, 640))  # plenty for 2 in; keeps the .docx small
+    dpi = im.width / LOGO_WIDTH_IN
+    path = tmpdir / "docx-logo.png"
+    im.save(path, dpi=(dpi, dpi))
+    return path
+
+
 def _build(src: Path, out: Path, ref: Path, workbook: bool):
-    # Image alt text doubles as the caption; pandoc puts it under each picture.
-    subprocess.run([
-        "pandoc", str(src), "-f", "gfm+implicit_figures", "-t", "docx",
-        "--reference-doc", str(ref), "--resource-path", str(SRC), "-o", str(out),
-    ], check=True, cwd=SRC)
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        md = src.read_text(encoding="utf-8")
+        logo = _logo_for_word(Path(tmp))
+        if logo:
+            # Empty alt text, so no caption under it.
+            md = f"![]({logo})\n\n" + md
+        # Image alt text doubles as the caption; pandoc puts it under each picture.
+        subprocess.run([
+            "pandoc", "-", "-f", "gfm+implicit_figures", "-t", "docx",
+            "--reference-doc", str(ref), "--resource-path", str(SRC), "-o", str(out),
+        ], check=True, cwd=SRC, input=md, text=True)
     # Tidy pandoc 2.17 output: pStyle must come before numPr inside pPr, and
     # declare png as a Default type (pandoc only adds per-file Overrides).
     with zipfile.ZipFile(out) as z:
