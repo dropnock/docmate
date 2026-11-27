@@ -8,6 +8,9 @@ and the `backend`/`frontend` Dockerfiles).
 1. Update `CHANGELOG.md`: move the `[Unreleased]` entries under a new
    `## [X.Y.Z] - YYYY-MM-DD` heading, leaving `[Unreleased]` empty above it.
 2. Bump the `VERSION` file to `X.Y.Z`.
+   If the UI changed, update the manuals in `manuals/content/` (text and
+   screenshots) in the same release. They are built into the backend image, so
+   Help always matches the version that's running (see `manuals/build.py`).
 3. Commit: `git commit -am "chore(release): vX.Y.Z"`.
 4. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`.
 5. Build with the version stamped into the images (falls back to `dev`/`unknown`

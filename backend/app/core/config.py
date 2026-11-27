@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     seed_default_password: str = "changeme123"
 
     log_level: str = "INFO"
+
+    # Built manuals (manuals/build.py output). Empty = /app/manuals_dist in
+    # the image, else <repo>/manuals/dist.
+    manuals_dir: str = ""
     environment: str = "development"
 
     @property

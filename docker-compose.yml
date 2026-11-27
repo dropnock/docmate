@@ -79,6 +79,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # The manuals' sources, built into the image (see manuals/build.py).
+      additional_contexts:
+        manuals: ./manuals
       args:
         # See RELEASING.md — unset (dev/unknown defaults) for everyday local use.
         APP_VERSION: ${APP_VERSION:-dev}
