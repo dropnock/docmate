@@ -66,6 +66,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
+      # DocMate sign-in theme (loginTheme "docmate"; see keycloak/themes).
+      - ./keycloak/themes/docmate:/opt/keycloak/themes/docmate:ro
     ports:
       - "8180:8080"
     healthcheck:

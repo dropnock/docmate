@@ -18,6 +18,13 @@ See `RELEASING.md` for how to cut a release.
   PDFs and the Word copies.
 - **The DocMate logo** in both portals' header and as the browser-tab icon, and on the
   manuals' pages, PDF covers and Word copies.
+- **Branded sign-in pages**: the Keycloak sign-in, password-change and error pages
+  for staff and every customer show the DocMate logo and colours, with the
+  organisation's name under the logo. Existing realms switch over at startup.
+
+### Changed
+- **The app uses the logo's colours**: navy for buttons, selected menu items and
+  other primary accents, teal for links and hover highlights. The manuals follow.
 
 ### Fixed
 - The Word copies of the manuals showed "v0.9.0" in their footer whatever the

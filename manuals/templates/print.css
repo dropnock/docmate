@@ -40,7 +40,7 @@ body {
 .cover .wordmark + .cover-portal { display: inline; margin-left: 8pt; }
 .cover-title {
   margin: 28pt 0 8pt; padding-top: 20pt;
-  border-top: 3pt solid var(--primary);
+  border-top: 3pt solid var(--accent);
   font-size: 30pt; line-height: 1.15; color: var(--text);
 }
 .cover-subtitle { margin: 0 0 0; color: var(--text-secondary); font-size: 12pt; }
@@ -68,13 +68,13 @@ h4 { margin: 14pt 0 4pt; font-size: 11pt; }
 h2, h3, h4 { font-weight: 700; break-after: avoid; }
 p, li { orphans: 3; widows: 3; }
 
-a { color: var(--primary); text-decoration: none; }
+a { color: var(--link); text-decoration: none; }
 hr { display: none; }
 
 blockquote {
   margin: 12pt 0; padding: 8pt 12pt;
-  background: var(--primary-bg);
-  border-left: 3pt solid var(--primary);
+  background: var(--accent-bg);
+  border-left: 3pt solid var(--accent);
   break-inside: avoid;
 }
 blockquote > :first-child { margin-top: 0; }

@@ -1,6 +1,7 @@
 {
   "realm": "doc",
   "displayName": "DOC — Digitizing Operations Centre",
+  "loginTheme": "docmate",
   "enabled": true,
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,

@@ -64,7 +64,7 @@ html.embedded { scroll-padding-top: 16px; }
   display: block; padding: 6px 8px; border-radius: 6px;
   color: var(--text); text-decoration: none; line-height: 1.35;
 }
-.toc a:hover { background: var(--primary-bg); color: var(--primary); }
+.toc a:hover { background: var(--accent-bg); color: var(--link); }
 .toc a.active { background: var(--primary); color: var(--surface); }
 
 .content {
@@ -96,8 +96,8 @@ h3 { margin: 32px 0 12px; font-size: 18px; }
 h4 { margin: 24px 0 8px; font-size: 16px; }
 h2, h3, h4 { font-weight: 700; }
 
-a { color: var(--primary); }
-a:hover { color: var(--primary-dark); }
+a { color: var(--link); }
+a:hover { color: var(--link-hover); }
 
 hr { border: 0; border-top: 1px solid var(--border); margin: 32px 0; }
 
@@ -106,8 +106,8 @@ code { font-size: .92em; background: var(--background); padding: 1px 5px; border
 /* ---- Call-outs (Markdown block quotes) -------------------------------- */
 blockquote {
   margin: 20px 0; padding: 12px 18px;
-  background: var(--primary-bg);
-  border-left: 4px solid var(--primary);
+  background: var(--accent-bg);
+  border-left: 4px solid var(--accent);
   border-radius: 0 8px 8px 0;
 }
 blockquote > :first-child { margin-top: 0; }

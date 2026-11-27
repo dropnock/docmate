@@ -365,7 +365,7 @@ export default function MyTasks() {
                         Record #{task.record_id}
                         <Badge
                           count={TASK_TYPE_LABEL[task.task_type] ?? task.task_type}
-                          style={{ background: "#1E40AF", marginLeft: 8 }}
+                          style={{ background: "#092B59", marginLeft: 8 }}
                         />
                         {task.flagged && <span style={{ marginLeft: 8 }}><FlaggedTag /></span>}
                       </Typography.Text>

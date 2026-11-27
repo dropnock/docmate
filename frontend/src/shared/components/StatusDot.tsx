@@ -16,8 +16,8 @@ export default function StatusDot({ filled, label }: Props) {
           width: 8,
           height: 8,
           borderRadius: "50%",
-          background: filled ? "#1E40AF" : "#FFFFFF",
-          border: "1.5px solid #1E40AF",
+          background: filled ? "#092B59" : "#FFFFFF",
+          border: "1.5px solid #092B59",
         }}
       />
       <span style={{ color: "#0F172A", fontSize: 13 }}>{label}</span>

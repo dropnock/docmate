@@ -1,106 +1,153 @@
-"""Make the logo files the app and manuals use from the original artwork.
+"""Make every logo file the app, the manuals and the sign-in page use from
+the source artwork.
 
-    python manuals/tools/make_logo_assets.py [original.png]
+    python manuals/tools/make_logo_assets.py
 
-The original (brand/source/docmate-logo-original.png) is a raster on white.
-This trims it and makes the white background transparent, including inside
-the wordmark's letters; the white inside the document mark stays. Writes:
+Source: manuals/brand/source/docmate-logo-source.svg. Its wordmark is live
+<text> in Inter, which an <img> can't load (it falls back to Arial), so this
+outlines the text with the bundled Inter ExtraBold (the weight a browser
+picks for the source's 750), keeping its letter-spacing and Inter's kerning,
+and sets "Mate" directly after "Doc" so they don't collide.
+It also drops the white background box and crops to the artwork. Writes:
 
-    manuals/brand/logo.png                       full lockup for the manuals
-    frontend/src/shared/assets/docmate-logo.png  full lockup for the app header
-    frontend/src/shared/assets/docmate-icon.png  the document mark (favicon)
+    manuals/brand/logo.svg, logo.png                 manuals (PNG for Word)
+    frontend/src/shared/assets/docmate-logo.svg      app header
+    frontend/src/shared/assets/docmate-icon.svg/.png favicon (the document mark)
+    keycloak/themes/docmate/login/resources/img/     sign-in page logo + favicon.ico
+
+Needs: fonttools, brotli, uharfbuzz, cairosvg, Pillow (dev only; the outputs
+are committed).
 """
-import sys
-from collections import deque
+import copy
+import io
+import re
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
+import cairosvg
+import uharfbuzz as hb
+from fontTools.pens.boundsPen import BoundsPen
+from fontTools.pens.svgPathPen import SVGPathPen
+from fontTools.pens.transformPen import TransformPen
+from fontTools.ttLib import TTFont
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "manuals/brand/source/docmate-logo-original.png"
-WHITE = 238  # a pixel with every channel at or above this counts as background
+SRC = ROOT / "manuals/brand/source/docmate-logo-source.svg"
+FONT = ROOT / "manuals/brand/fonts/inter-latin-800-normal.woff2"
+SVG_NS = "http://www.w3.org/2000/svg"
+ET.register_namespace("", SVG_NS)
+q = lambda tag: f"{{{SVG_NS}}}{tag}"
+
+# The document mark's extent in the source's coordinates: the outer path
+# (x 38..238, y 8..244, stroke 18) inside <g transform="translate(54 40)">.
+MARK_BOX = (54 + 38 - 9, 40 + 8 - 9, 54 + 238 + 9, 40 + 244 + 9)
+PAD = 6
 
 
-def transparent_outside(im: Image.Image) -> Image.Image:
-    im = im.convert("RGBA")
-    w, h = im.size
-    px = im.load()
-    is_bg = lambda x, y: min(px[x, y][:3]) >= WHITE
-    outside = bytearray(w * h)
-    q = deque((x, y) for x in range(w) for y in (0, h - 1))
-    q.extend((x, y) for y in range(h) for x in (0, w - 1))
-    while q:
-        x, y = q.popleft()
-        i = y * w + x
-        if outside[i] or not is_bg(x, y):
-            continue
-        outside[i] = 1
-        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
-            if 0 <= nx < w and 0 <= ny < h and not outside[ny * w + nx]:
-                q.append((nx, ny))
-    # The wordmark starts at the first all-background column after the mark;
-    # its letters' white counters (D, o, a, e) aren't reached by the flood, so
-    # the whole wordmark is un-matted from white instead.
-    split = next(
-        x for x in range(w // 8, w)
-        if any(not outside[y * w + x] for y in range(h)) is False
-        or all(outside[y * w + x] for y in range(h))
-    )
-    unmat = lambda c, a: max(0, min(255, round((c - 255 * (1 - a / 255)) * 255 / a)))
-    for y in range(h):
-        for x in range(w):
-            i = y * w + x
-            r, g, b, _ = px[x, y]
-            if outside[i]:
-                px[x, y] = (255, 255, 255, 0)
-                continue
-            if x > split:
-                a = 255 - min(r, g, b)
-                px[x, y] = (unmat(r, a), unmat(g, a), unmat(b, a), a) if a else (255, 255, 255, 0)
-                continue
-            # Soften the anti-aliased rim next to the background: alpha from
-            # how far the pixel is from white, colour un-blended from white.
-            near = any(
-                0 <= x + dx < w and 0 <= y + dy < h and outside[(y + dy) * w + x + dx]
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
-            )
-            if near:
-                a = max(1, 255 - min(r, g, b))
-                px[x, y] = (unmat(r, a), unmat(g, a), unmat(b, a), a)
-    return im
+def load_font():
+    tt = TTFont(str(FONT))
+    tt.flavor = None
+    buf = io.BytesIO()
+    tt.save(buf)
+    data = buf.getvalue()
+    return TTFont(io.BytesIO(data)), hb.Font(hb.Face(data))
 
 
-def trimmed(im: Image.Image, pad: int) -> Image.Image:
-    box = im.getchannel("A").getbbox()
-    im = im.crop(box)
-    out = Image.new("RGBA", (im.width + 2 * pad, im.height + 2 * pad), (255, 255, 255, 0))
-    out.paste(im, (pad, pad))
-    return out
+def outline_text(el, tt, hbfont, start_x=None):
+    """A <text> element → (<path> element, bounds, end x). start_x overrides
+    the element's x (to continue the previous run)."""
+    size = float(el.get("font-size"))
+    spacing = float(el.get("letter-spacing", "0"))
+    x, y = (start_x if start_x is not None else float(el.get("x"))), float(el.get("y"))
+    upem = tt["head"].unitsPerEm
+    scale = size / upem
+    buf = hb.Buffer()
+    buf.add_str(el.text)
+    buf.guess_segment_properties()
+    hb.shape(hbfont, buf, {"kern": True, "liga": True})
+    glyphset = tt.getGlyphSet()
+    order = tt.getGlyphOrder()
+    pen = SVGPathPen(glyphset)
+    bounds = BoundsPen(glyphset)
+    for info, pos in zip(buf.glyph_infos, buf.glyph_positions):
+        name = order[info.codepoint]
+        t = (scale, 0, 0, -scale, x + pos.x_offset * scale, y - pos.y_offset * scale)
+        glyphset[name].draw(TransformPen(pen, t))
+        glyphset[name].draw(TransformPen(bounds, t))
+        x += pos.x_advance * scale + spacing
+    path = ET.Element(q("path"), {"d": pen.getCommands(), "fill": el.get("fill")})
+    return path, bounds.bounds, x
 
 
-def save(im: Image.Image, path: Path, width: int | None = None, size: int | None = None):
-    if width:
-        im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
-    if size:
-        side = max(im.size)
-        sq = Image.new("RGBA", (side, side), (255, 255, 255, 0))
-        sq.paste(im, ((side - im.width) // 2, (side - im.height) // 2))
-        im = sq.resize((size, size), Image.LANCZOS)
+def build_svgs():
+    tree = ET.parse(SRC)
+    root = tree.getroot()
+    tt, hbfont = load_font()
+    # Drop the full-size white background box.
+    for rect in root.findall(q("rect")):
+        if rect.get("fill", "").lower() in ("#fff", "#ffffff", "white"):
+            root.remove(rect)
+    x0, y0, x1, y1 = MARK_BOX
+    # "Doc" and "Mate" are separate <text>s at fixed x positions chosen for a
+    # narrower rendering; with Inter ExtraBold "Doc" would run into the "M".
+    # Set each later word straight after the previous one on the same
+    # baseline, as one run of text would be.
+    run_end = None
+    for i, el in enumerate(list(root)):
+        if el.tag == q("text"):
+            path, (bx0, by0, bx1, by1), run_end = outline_text(el, tt, hbfont, run_end)
+            root.remove(el)
+            root.insert(i, path)
+            x0, y0, x1, y1 = min(x0, bx0), min(y0, by0), max(x1, bx1), max(y1, by1)
+    for k in ("width", "height"):
+        root.attrib.pop(k, None)
+
+    full = copy.deepcopy(root)
+    full.set("viewBox", f"{x0 - PAD:.0f} {y0 - PAD:.0f} {x1 - x0 + 2 * PAD:.0f} {y1 - y0 + 2 * PAD:.0f}")
+
+    icon = copy.deepcopy(root)
+    for el in list(icon):
+        if el.tag == q("path"):  # the outlined wordmark
+            icon.remove(el)
+    mx0, my0, mx1, my1 = MARK_BOX
+    side = max(mx1 - mx0, my1 - my0) + 2 * 4
+    cx, cy = (mx0 + mx1) / 2, (my0 + my1) / 2
+    icon.set("viewBox", f"{cx - side / 2:.0f} {cy - side / 2:.0f} {side:.0f} {side:.0f}")
+    desc = icon.find(q("desc"))
+    if desc is not None:
+        icon.remove(desc)
+
+    def text(el):
+        s = ET.tostring(el, encoding="unicode")
+        s = re.sub(r">\s+<", "><", s)  # compact; paths are long anyway
+        return '<?xml version="1.0" encoding="UTF-8"?>\n' + s + "\n"
+
+    return text(full), text(icon)
+
+
+def write(path: Path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    im.save(path, optimize=True)
-    print(path.relative_to(ROOT), im.size, path.stat().st_size)
+    (path.write_bytes if isinstance(data, bytes) else path.write_text)(data)
+    print(path.relative_to(ROOT), path.stat().st_size)
+
+
+def png(svg: str, width: int) -> bytes:
+    return cairosvg.svg2png(bytestring=svg.encode(), output_width=width)
 
 
 def main():
-    full = trimmed(transparent_outside(Image.open(SRC)), pad=4)
-    save(full, ROOT / "manuals/brand/logo.png", width=1200)
-    save(full, ROOT / "frontend/src/shared/assets/docmate-logo.png", width=480)
-    # The document mark is the artwork left of the wordmark's gap.
-    alpha = full.getchannel("A")
-    cols = [any(alpha.getpixel((x, y)) for y in range(0, full.height, 2)) for x in range(full.width)]
-    x = next(i for i in range(full.width // 8, full.width) if not cols[i])  # first empty column
-    icon = trimmed(full.crop((0, 0, x, full.height)), pad=2)
-    save(icon, ROOT / "frontend/src/shared/assets/docmate-icon.png", size=192)
+    full, icon = build_svgs()
+    write(ROOT / "manuals/brand/logo.svg", full)
+    write(ROOT / "manuals/brand/logo.png", png(full, 1200))
+    write(ROOT / "frontend/src/shared/assets/docmate-logo.svg", full)
+    write(ROOT / "frontend/src/shared/assets/docmate-icon.svg", icon)
+    write(ROOT / "frontend/src/shared/assets/docmate-icon.png", png(icon, 192))
+    kc = ROOT / "keycloak/themes/docmate/login/resources/img"
+    write(kc / "docmate-logo.svg", full)
+    ico = io.BytesIO()
+    Image.open(io.BytesIO(png(icon, 256))).save(ico, format="ICO", sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+    write(kc / "favicon.ico", ico.getvalue())
 
 
 if __name__ == "__main__":

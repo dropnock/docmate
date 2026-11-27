@@ -136,6 +136,11 @@ async def sync_de_client() -> None:
     async with AsyncSessionLocal() as db:
         await db.execute(text("SELECT pg_advisory_lock(:key)"), {"key": _DE_CLIENT_SYNC_LOCK_KEY})
         try:
+            try:
+                if ensure_login_theme(DE_REALM):
+                    logger.info("Set login theme %s on realm %s", settings.keycloak_login_theme, DE_REALM)
+            except Exception:
+                logger.exception("Could not set the login theme on realm %s", DE_REALM)
             admin = _make_admin("master")
             admin.connection.realm_name = DE_REALM
             clients = admin.get_clients()
@@ -300,6 +305,21 @@ def ensure_customer_required_actions(realm_slug: str) -> list[str]:
     return changed
 
 
+def ensure_login_theme(realm: str) -> bool:
+    """Point the realm's sign-in pages at settings.keycloak_login_theme.
+    --import-realm only applies doc-realm.json to a new realm, and customer
+    realms made before the theme existed have none, so this runs at startup.
+    Idempotent; returns whether it changed anything."""
+    theme = settings.keycloak_login_theme
+    if not theme:
+        return False
+    admin = _make_admin("master")
+    if admin.get_realm(realm).get("loginTheme") == theme:
+        return False
+    admin.update_realm(realm, {"loginTheme": theme})
+    return True
+
+
 _CUSTOMER_REALM_SYNC_LOCK_KEY = 8_791_234_002_518
 
 
@@ -324,6 +344,11 @@ async def sync_customer_realms() -> None:
                         logger.info("Enabled required actions %s in customer realm %s", changed, slug)
                 except Exception:
                     logger.exception("Could not check required actions in customer realm %s", slug)
+                try:
+                    if ensure_login_theme(slug):
+                        logger.info("Set login theme %s on customer realm %s", settings.keycloak_login_theme, slug)
+                except Exception:
+                    logger.exception("Could not set the login theme on customer realm %s", slug)
         finally:
             await db.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": _CUSTOMER_REALM_SYNC_LOCK_KEY})
 
@@ -348,6 +373,7 @@ def create_customer_realm(realm_slug: str, display_name: str) -> None:
             "otpPolicyDigits": 6,
             "otpPolicyPeriod": 30,
             "requiredActions": CUSTOMER_REQUIRED_ACTIONS,
+            **({"loginTheme": settings.keycloak_login_theme} if settings.keycloak_login_theme else {}),
         },
         skip_exists=True,
     )

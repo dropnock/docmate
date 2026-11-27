@@ -287,7 +287,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                 </Typography.Text>
                 <Badge
                   count={`v${record?.current_version ?? 1}`}
-                  style={{ background: "#1E40AF" }}
+                  style={{ background: "#092B59" }}
                 />
               </div>
 

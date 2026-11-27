@@ -46,7 +46,7 @@ export default function Help() {
         }}
       >
         <Space size={8} align="center">
-          <BookOpen size={18} color="#1E40AF" />
+          <BookOpen size={18} color="#092B59" />
           <Typography.Text strong>Help</Typography.Text>
         </Space>
         <Select

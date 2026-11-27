@@ -1,0 +1,88 @@
+/* DocMate branding over Keycloak's login theme (css/login.css). Colours are
+   the logo's: navy #092B59, teal #078F82 (#06776C for text). */
+@font-face { font-family: "Inter"; font-weight: 400; src: url("../fonts/inter-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 600; src: url("../fonts/inter-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 700; src: url("../fonts/inter-latin-700-normal.woff2") format("woff2"); }
+
+:root {
+  --docmate-navy: #092B59;
+  --docmate-navy-hover: #173F75;
+  --docmate-teal: #078F82;
+  --docmate-teal-text: #06776C;
+  --docmate-slate: #0F172A;
+  --docmate-muted: #64748B;
+  --docmate-border: #E2E8F0;
+  --docmate-bg: #F8FAFC;
+}
+
+/* Light page instead of Keycloak's dark photo. */
+.login-pf body,
+body.login-pf,
+.login-pf-page {
+  background: var(--docmate-bg) !important;
+}
+body, .login-pf body, .pf-c-form-control, .pf-c-button, h1, h2, label {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* Header: the DocMate logo, then the realm's display name (the customer's
+   organisation, or the digitizing centre) in small text below it. */
+#kc-header { color: var(--docmate-slate); padding-top: 48px; }
+#kc-header-wrapper {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--docmate-muted);
+  padding: 0 0 20px;
+  white-space: normal;
+}
+#kc-header-wrapper::before {
+  content: "";
+  display: block;
+  height: 64px;
+  margin: 0 auto 14px;
+  background: url("../img/docmate-logo.svg") no-repeat center / contain;
+}
+
+/* Card */
+.card-pf {
+  border-top: 4px solid var(--docmate-teal);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.06);
+  padding: 8px 32px 16px;
+}
+h1#kc-page-title { color: var(--docmate-slate); font-weight: 700; font-size: 22px; }
+
+/* Buttons and links */
+.pf-c-button.pf-m-primary,
+.btn-primary {
+  background-color: var(--docmate-navy) !important;
+  border-color: var(--docmate-navy) !important;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.pf-c-button.pf-m-primary:hover,
+.pf-c-button.pf-m-primary:focus,
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--docmate-navy-hover) !important;
+  border-color: var(--docmate-navy-hover) !important;
+}
+a, a:visited { color: var(--docmate-teal-text); }
+a:hover, a:focus { color: #055C54; }
+
+/* Inputs */
+.pf-c-form-control { border-radius: 6px; }
+.pf-c-form-control:focus,
+.pf-c-form-control:hover { border-bottom-color: var(--docmate-teal) !important; }
+input:focus-visible, .pf-c-button:focus-visible {
+  outline: 2px solid var(--docmate-navy);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  #kc-header { padding-top: 24px; text-align: center; }
+  #kc-header-wrapper { padding: 0 0 12px; }
+  #kc-header-wrapper::before { height: 48px; }
+}

@@ -229,7 +229,7 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
               onClick={() => setSelectedId(i.record_id)}
               style={{
                 padding: "10px 12px", cursor: "pointer", borderBottom: "1px solid #E2E8F0",
-                background: i.record_id === selectedId ? "#DBEAFE" : undefined,
+                background: i.record_id === selectedId ? "#CFDCEC" : undefined,
               }}
             >
               <div style={{ fontWeight: 500 }}>#{i.record_id} {i.source_identifier ?? ""}</div>

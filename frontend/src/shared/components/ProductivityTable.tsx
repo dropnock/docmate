@@ -41,7 +41,7 @@ const baseColumns: ColumnType<Row>[] = [
     key: "inprog",
     render: (n) =>
       n > 0 ? (
-        <Tag style={{ color: "#1E40AF", background: "#EFF6FF", border: "1px solid #1E40AF" }}>{n}</Tag>
+        <Tag style={{ color: "#092B59", background: "#E8EEF6", border: "1px solid #092B59" }}>{n}</Tag>
       ) : (
         "—"
       ),

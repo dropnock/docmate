@@ -5,17 +5,23 @@
 product: DocMate
 portal: Customer Portal
 
-# Logo (SVG or PNG, path relative to this folder), shown in the manuals'
-# header, PDF cover and Word copies. Leave empty to show the product name as a
-# wordmark instead. logo.png is made from source/docmate-logo-original.png by
-# tools/make_logo_assets.py, which also writes the app's copies.
-logo: logo.png
+# Logo (path relative to this folder) for the manuals' header and PDF cover;
+# logo_raster is the PNG copy Word gets. Leave logo empty to show the product
+# name as a wordmark instead. Both are made from source/docmate-logo-source.svg
+# by tools/make_logo_assets.py, which also writes the app's and the sign-in
+# page's copies.
+logo: logo.svg
+logo_raster: logo.png
 
-# Colours mirror frontend/src/shared/theme/theme.ts.
+# Colours come from the logo and mirror frontend/src/shared/theme/theme.ts.
 colors:
-  primary: "#1E40AF"        # headings, links, header wordmark
-  primary_dark: "#1E3A8A"   # link hover
-  primary_bg: "#EFF6FF"     # call-out background, active TOC item
+  primary: "#092B59"        # logo navy ("Doc"): headings, active TOC item
+  primary_dark: "#061E40"
+  primary_bg: "#E8EEF6"
+  accent: "#078F82"         # logo teal ("Mate"): call-out bars, cover rule
+  accent_bg: "#E6F4F2"      # call-out background, TOC hover
+  link: "#06776C"           # teal darkened to pass WCAG AA as text on white
+  link_hover: "#055C54"
   text: "#0F172A"
   text_secondary: "#64748B" # captions, footer, meta text
   border: "#E2E8F0"

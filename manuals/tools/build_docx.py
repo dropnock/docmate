@@ -27,6 +27,9 @@ BLUE = _hex("primary")
 SLATE = _hex("text")
 GREY = _hex("text_secondary")
 BORDER = _hex("table_border")
+ACCENT = _hex("accent")
+LINK = _hex("link")
+ACCENT_BG = _hex("accent_bg")
 FONT = BRAND.get("docx_font", "Calibri")
 FOOTER = BRAND["footer"]
 VERSION = "dev"  # set in __main__
@@ -104,8 +107,8 @@ def make_reference(dst: Path):
                     f'<w:rPr><w:b/><w:color w:val="{BLUE}"/><w:sz w:val="48"/><w:szCs w:val="48"/></w:rPr>'),
         # Call-outs ("> ..."): shaded panel with a blue left rule.
         style_block("BlockText", "Block Text",
-                    '<w:pPr><w:pBdr><w:left w:val="single" w:sz="24" w:space="8" w:color="' + BLUE + '"/></w:pBdr>'
-                    '<w:shd w:val="clear" w:color="auto" w:fill="EFF6FF"/>'
+                    '<w:pPr><w:pBdr><w:left w:val="single" w:sz="24" w:space="8" w:color="' + ACCENT + '"/></w:pBdr>'
+                    f'<w:shd w:val="clear" w:color="auto" w:fill="{ACCENT_BG}"/>'
                     '<w:spacing w:before="60" w:after="60"/><w:ind w:left="200" w:right="200"/></w:pPr>',
                     based="BodyText"),
         style_block("SourceCode", "Source Code",
@@ -116,7 +119,7 @@ def make_reference(dst: Path):
         style_block("VerbatimChar", "Verbatim Char",
                     '<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/><w:sz w:val="20"/></w:rPr>',
                     based="DefaultParagraphFont", kind="character", extra=' w:customStyle="1"'),
-        style_block("Hyperlink", "Hyperlink", f'<w:rPr><w:color w:val="{BLUE}"/><w:u w:val="single"/></w:rPr>',
+        style_block("Hyperlink", "Hyperlink", f'<w:rPr><w:color w:val="{LINK}"/><w:u w:val="single"/></w:rPr>',
                     based="DefaultParagraphFont", kind="character"),
         style_block("ImageCaption", "Image Caption",
                     f'<w:pPr><w:spacing w:before="40" w:after="200"/><w:jc w:val="center"/></w:pPr>'
@@ -238,7 +241,7 @@ def _logo_for_word(tmpdir: Path) -> Path | None:
         return None
     from PIL import Image
 
-    im = Image.open(HERE.parent / "brand" / BRAND["logo"])
+    im = Image.open(HERE.parent / "brand" / BRAND.get("logo_raster", BRAND["logo"]))
     im.thumbnail((640, 640))  # plenty for 2 in; keeps the .docx small
     dpi = im.width / LOGO_WIDTH_IN
     path = tmpdir / "docx-logo.png"

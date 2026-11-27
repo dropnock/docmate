@@ -1,7 +1,7 @@
 import { Button, Layout, Space, Typography } from "antd";
 import { LogOut, Menu as MenuIcon, X } from "lucide-react";
 import NotificationBell from "./NotificationBell";
-import docmateLogo from "@shared/assets/docmate-logo.png";
+import docmateLogo from "@shared/assets/docmate-logo.svg";
 
 const { Header } = Layout;
 

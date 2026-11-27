@@ -27,7 +27,7 @@ code,
 }
 
 .docmate-sampled-row {
-  background: #eff6ff;
+  background: #E8EEF6;
 }
 
 .docmate-desktop-sider {
@@ -111,6 +111,6 @@ input:focus-visible,
 .ant-tag:focus-visible,
 .ant-select:focus-visible,
 .ant-select-selector:focus-visible {
-  outline: 2px solid #1e40af;
+  outline: 2px solid #092B59;
   outline-offset: 2px;
 }
