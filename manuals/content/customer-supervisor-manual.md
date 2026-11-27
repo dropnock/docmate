@@ -17,6 +17,8 @@ Reviewers have their own manual, the *Customer Portal — Reviewer User Manual*.
 > - **Search on Flagged Records** finds a flag by record, issue or anything said in its discussion ([Section 13](#13-flagged-records-guiding-the-digitization-team)).
 > - **Time per record in Staff Productivity.** Click a reviewer's name to see each record they reviewed and how long it took. Time now adds up across sittings, and time away from a record isn't counted ([Section 16](#16-staff-productivity)).
 > - AQLs of 4.0 % and 6.5 % are now available.
+> - **Help in the portal.** This manual and the training workbooks open from **Help** in the menu, and you can download a PDF copy prepared for your organisation ([Section 4](#getting-help-in-the-portal)).
+> - **A new look.** The portal and its sign-in page carry the DocMate logo and colours.
 
 ---
 
@@ -101,7 +103,7 @@ Your DocMate administrator gives you two things:
 - **Your organisation's portal address.** For Acme it is `https://acme-archive.docmate.local`. The first part of the address identifies your organisation, so there's no company selector on the sign-in page.
 - **Your username and password.** Your username is your email address.
 
-**Step 1.** Open your portal address in a web browser. Chrome, Edge, Firefox and Safari all work. The page shows **"Connecting…"** for a moment, then your organisation's sign-in page appears.
+**Step 1.** Open your portal address in a web browser. Chrome, Edge, Firefox and Safari all work. The page shows **"Connecting…"** for a moment, then your organisation's sign-in page appears: the DocMate logo, with your organisation's name under it.
 
 ![The Acme Archive Corp sign-in page](images/supervisor/01_sign_in_page.png)
 
@@ -131,7 +133,7 @@ From now on, sign in with your email address and your new password. If you forge
 
 ![The menu on the left](images/supervisor/06_navigation.png)
 
-**The menu (left).** It has seven pages:
+**The menu (left).** It has eight pages:
 
 | Menu item | What it is for |
 |---|---|
@@ -142,16 +144,29 @@ From now on, sign in with your email address and your new password. If you forge
 | **Staff Productivity** | What each reviewer has done ([Section 16](#16-staff-productivity)) |
 | **Record History** | The full audit trail of any record ([Section 17](#17-record-history)) |
 | **Flagged Records** | Questions the digitization team has asked you ([Section 13](#13-flagged-records-guiding-the-digitization-team)) |
+| **Help** | This manual, the reviewer manual and the training workbooks ([below](#getting-help-in-the-portal)) |
 
 The arrow at the bottom of the menu collapses it to icons. On a phone or narrow window, the menu is behind the **☰** button at the top left.
 
 ![The header: notifications bell and Sign Out](images/supervisor/07_header.png)
 
 **The header (top).** From left to right:
-- The DocMate version.
+- The DocMate logo, the portal's name and the DocMate version.
 - The **notifications bell**. The red number is your unread notifications.
 - Your name.
 - **Sign Out**.
+
+### Getting help in the portal
+
+**Help** in the menu opens the DocMate manuals inside the portal. You see the ones for your role: as a supervisor, this manual, the *Reviewer User Manual* and both training workbooks.
+
+![Help: a manual open in the portal](images/supervisor/07b_help.png)
+
+- **Choose a manual** in the box at the top. The contents list on the left jumps to any section.
+- **Open in new tab** shows the manual in its own browser tab, which is handy beside the screen you're working on.
+- **Download PDF** saves a copy to print or read offline. The PDF is prepared for your organisation: its name is on the cover and at the foot of every page. Keep these copies within your organisation.
+
+The manuals always match the version of DocMate you're using.
 
 ### Choosing a project
 
@@ -654,7 +669,7 @@ The example record shows its whole journey:
 - *rework_after_customer_rejection*: corrected after your reviewers rejected it.
 - *supervisor_requeue*: sent back by the team's supervisor.
 
-Compare versions to see exactly what changed. In the example, the correction changed the registered owner from *Rupert Hollis* to *Rupert Barrington*.
+Compare versions to see exactly what changed. In the example, the correction changed the registered owner from *Margaret Dunmore* to *Margaret Barrington*.
 
 ![A record's versions](images/supervisor/33_record_history_versions.png)
 

@@ -12,6 +12,8 @@ The examples use a fictitious customer, **Acme Archive Corp**, and its reviewer 
 > - **Say what was wrong with each defective field:** **Missing**, **Typo** or **Interpretation**. DocMate uses your answer to class the defect as critical, major or minor, and **Submit Review** stays greyed out until every defective field has one ([Section 7](#7-reviewing-field-by-field-iso-projects)).
 > - Fields that identify the record are tagged **Identifier** (they used to be tagged **Critical**). Any error in them is a critical defect.
 > - DocMate counts only the time you actually spend working on a record. Time away from it isn't counted ([Section 9](#9-leaving-a-review-and-coming-back-to-it)).
+> - **Help in the portal.** This manual and the reviewer workbook open from **Help** in the menu, and you can download a PDF copy ([Section 3](#getting-help-in-the-portal)).
+> - **A new look.** The portal and its sign-in page carry the DocMate logo and colours.
 
 ---
 
@@ -53,7 +55,7 @@ Your DocMate administrator gives you two things:
 - **Your organisation's portal address.** For Acme it is `https://acme-archive.docmate.local`.
 - **Your username and password.** Your username is your email address.
 
-**Step 1.** Open your portal address in a web browser. Chrome, Edge, Firefox and Safari all work. The page shows **"Connecting…"** for a moment, then your organisation's sign-in page appears.
+**Step 1.** Open your portal address in a web browser. Chrome, Edge, Firefox and Safari all work. The page shows **"Connecting…"** for a moment, then your organisation's sign-in page appears: the DocMate logo, with your organisation's name under it.
 
 ![The Acme Archive Corp sign-in page](images/reviewer/01_sign_in_page.png)
 
@@ -81,8 +83,20 @@ From now on, sign in with your email address and your new password. If you forge
 
 ![The screen layout](images/reviewer/06_header_and_menu.png)
 
-- **The menu (left)** has one item, **QC Workspace**. The arrow at the bottom collapses the menu. On a phone or narrow window, the menu is behind the **☰** button at the top left.
-- **The header (top)** shows the DocMate version, the notifications bell, your name and **Sign Out**.
+- **The menu (left)** has two items: **QC Workspace**, where you do your reviews, and **Help** (see below). The arrow at the bottom collapses the menu. On a phone or narrow window, the menu is behind the **☰** button at the top left.
+- **The header (top)** shows the DocMate logo and version, the notifications bell, your name and **Sign Out**.
+
+### Getting help in the portal
+
+**Help** in the menu opens the DocMate manuals inside the portal. You see the ones for your role: as a reviewer, this manual and the *Reviewer Training Workbook*.
+
+![Help: a manual open in the portal](images/reviewer/06b_help.png)
+
+- **Choose a manual** in the box at the top. The contents list on the left jumps to any section.
+- **Open in new tab** shows the manual in its own browser tab, which is handy beside the screen you're working on.
+- **Download PDF** saves a copy to print or read offline. The PDF is prepared for your organisation: its name is on the cover and at the foot of every page. Keep these copies within your organisation.
+
+The manuals always match the version of DocMate you're using.
 
 ---
 
@@ -180,14 +194,14 @@ Fields with a red **Identifier** tag identify the record. In the example, these 
 | Button | Use it when… | Example |
 |---|---|---|
 | **Missing** | A value on the image was left out | The card shows a caveat under *Encumbrances*, but none was entered |
-| **Typo** | The value was typed wrongly: wrong, extra or swapped characters | Folio **034** entered as **430** |
+| **Typo** | The value was typed wrongly: wrong, extra or swapped characters | Folio **726** entered as **627** |
 | **Interpretation** | The source was read or understood wrongly | A district name misread as a different district |
 
 A tag beside the buttons shows the defect's class: **Critical**, **Major** or **Minor**. You don't choose the class: it follows from what you picked and from whether the field is an identifier. If you mark an empty field as defective, **Missing** is chosen for you; change it if something else was wrong.
 
 **Step 4.** In the note box, say briefly what's wrong. The note is optional, but it helps the team fix the record quickly.
 
-In the example, the card shows folio **034** but **430** was entered. Priya marks **Folio** as defective, chooses **Typo** (a **Minor** defect on this project), and writes *"Folio on the card is 034; entered as 430"*.
+In the example, the card shows folio **726** but **627** was entered. Priya marks **Folio** as defective, chooses **Typo** (a **Minor** defect on this project), and writes *"Folio on the card is 726; entered as 627"*.
 
 **Step 5.** Click **Submit Review**. It stays greyed out until you've chosen what was wrong with every defective field.
 
@@ -232,7 +246,7 @@ Check every field against the image. If everything matches, click **Pass**. A me
 
 **Step 1.** Click **Reject**.
 
-**Step 2.** Type the **Rejection reason**. It's required: say exactly what's wrong, so the team can fix it without guessing. In the example: *"Executor on the card is Lorna Kensington, entered as Rupert Stanhope."*
+**Step 2.** Type the **Rejection reason**. It's required: say exactly what's wrong, so the team can fix it without guessing. In the example: *"Executor on the card is Lorna Kensington, entered as Henry Fairbanks."*
 
 **Step 3.** Click **Confirm Rejection**. Click **Cancel** if you change your mind.
 

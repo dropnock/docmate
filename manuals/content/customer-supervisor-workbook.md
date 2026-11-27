@@ -67,7 +67,7 @@ Each trainee needs these in the training portal:
 
 **What you'll learn**
 - Sign in for the first time and set your own password.
-- Name the seven menu pages and say what each is for.
+- Name the eight menu pages and say what each is for.
 - Choose a project, and know that DocMate remembers it.
 
 ### Exercise 1.1 — First sign-in
@@ -80,17 +80,19 @@ Each trainee needs these in the training portal:
 
 ### Exercise 1.2 — Tour the screen
 
-1. ☐ Click each of the seven menu items in turn.
+1. ☐ Click each of the eight menu items in turn.
 2. ☐ Collapse the menu with the arrow at the bottom, then expand it again.
 3. ☐ Find the DocMate version in the header and write it below.
 4. ☐ Open **Lots** and choose the training project. Then open **Project KPIs**. Check that the project is still chosen.
 5. ☐ Copy the address from the browser's address bar, open it in a new tab, and check that the same project opens.
+6. ☐ Open **Help**. Choose the *Reviewer User Manual*, then click **Download PDF** and find your organisation's name on the PDF.
 
 | Question | Your answer |
 |---|---|
 | What does the page show for a moment before the sign-in page appears? | |
 | What DocMate version does the header show? | |
 | Why is your own QC Workspace queue normally empty? | |
+| Which manuals does Help offer you? Where is your organisation named on the PDF? | |
 
 ### Check your understanding
 
@@ -244,7 +246,7 @@ The project uses the default agreement: missing data is **major**; typographic a
 
 | Defect a reviewer found | What was wrong | Class |
 |---|---|---|
-| Folio entered as 430; the card says 034 | Typo | |
+| Folio entered as 627; the card says 726 | Typo | |
 | Title number entered as LT-04127; the card says LT-04172 | Typo | |
 | A caveat on the card wasn't entered under Encumbrances | Missing | |
 | District entered as *Elmstead*; the card says *Westbury* | Interpretation | |
@@ -728,7 +730,7 @@ Remove this section before giving the workbook to trainees, or hand it out after
 
 **Module 1**
 - Ex 1.1: The page shows **"Connecting…"**.
-- Ex 1.2: A supervisor's queue holds only records assigned to them. Supervisors usually hand work to reviewers, so it's normally empty, unless they assign a batch to themselves or another supervisor assigns one to them.
+- Ex 1.2: A supervisor's queue holds only records assigned to them. Supervisors usually hand work to reviewers, so it's normally empty, unless they assign a batch to themselves or another supervisor assigns one to them. Help offers the supervisor and reviewer manuals and both training workbooks; the organisation's name is on the PDF's cover and at the foot of every page.
 - 1.1: Your email address.
 - 1.2: Lots, QC Batches, Project KPIs, Staff Productivity, Record History, Flagged Records.
 - 1.3: After about half an hour without activity you're asked to sign in again. Saved work is kept.

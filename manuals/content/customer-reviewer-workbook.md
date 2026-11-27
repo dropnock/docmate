@@ -49,7 +49,7 @@ Work through the modules in order. Allow about **2½ hours** in total.
 | A **corrected** record that customer QC rejected before, so it shows the yellow banner | Module 3 | ☐ |
 
 **Planted errors.** For the defect-finding exercises, prepare records with one each of:
-- a transposed number (for example folio **034** entered as **430**) — a **Typo**;
+- a transposed number (for example folio **726** entered as **627**) — a **Typo**;
 - a misspelt name — a **Typo**;
 - a value read as something else, or in the wrong field — an **Interpretation** error;
 - a field left empty although the card shows a value — **Missing**;
@@ -82,9 +82,10 @@ Put at least one error in an **identifier** field (a field tagged **Identifier**
 
 ### Exercise 1.2 — The screen
 
-1. ☐ Find the one item in the menu on the left.
+1. ☐ Find the two items in the menu on the left.
 2. ☐ Collapse the menu and expand it again.
 3. ☐ In the header, find the DocMate version, the notifications bell, your name and **Sign Out**.
+4. ☐ Open **Help** and find Section 7 of the *Reviewer User Manual* using the contents list on the left.
 
 | Question | Your answer |
 |---|---|
@@ -360,7 +361,7 @@ Decide each case. Write **Defective** or **Accepted**, and why. For a defect, al
 
 | # | The image shows | The team entered | Your verdict, error type and why |
 |---|---|---|---|
-| a | Folio **034** | 430 | |
+| a | Folio **726** | 627 | |
 | b | Owner **Hollis** | Hollins | |
 | c | Executor **Lorna Kensington** | *(field empty)* | |
 | d | Date **12 March 1931** in the Date field | 12 March 1931 entered in the Remarks field; Date empty | |
@@ -483,7 +484,7 @@ Remove this section before giving the workbook to trainees, or hand it out after
 
 **Module 1**
 - Ex 1.1: The page shows **"Connecting…"**.
-- Ex 1.2: One menu item, **QC Workspace**.
+- Ex 1.2: Two menu items, **QC Workspace** and **Help**.
 - 1.1: Compare each sampled record's indexed data with its image, and say whether it was entered correctly.
 - 1.2: Your supervisor, by drawing a **random sample** from each lot.
 - 1.3: Your verdicts on the sample decide whether the **whole lot** is accepted or sent back.
@@ -541,7 +542,7 @@ Remove this section before giving the workbook to trainees, or hand it out after
   - "Card reads *Hollis*, entered *Hollins*."
   - "Date on card is 12 March 1931, entered 21 March 1931."
   - "Encumbrances row 3 (mortgage to Westbank, 1934) not entered."
-  - "Folio on the card is 034; entered as 430."
+  - "Folio on the card is 726; entered as 627."
   - "Card reads *Westbury*; entered as *Elmstead*."
 - 7.1: **Missing**: a value on the image left out (an empty field, a missing list row). **Typo**: wrong, extra or swapped characters (a transposed number, a misspelt name). **Interpretation**: the source read or understood wrongly (a misread word, a value in the wrong field).
 - 7.2: The image, not your expectations.
