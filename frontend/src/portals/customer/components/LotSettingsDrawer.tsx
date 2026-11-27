@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import {
   Alert, Button, Card, Col, Descriptions, Drawer, Form, InputNumber, Row,
   Segmented, Select, Slider, Space, Spin, Table, Tag, Typography, message,
@@ -42,6 +43,7 @@ const LOT_STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
   released: "Released",
   qc_in_progress: "QC In Progress",
+  awaiting_decision: "Awaiting your decision",
   passed: "Passed",
   failed: "Failed",
   remediation: "Remediation",
@@ -51,6 +53,7 @@ const LOT_STATUS_FILLED = new Set(["passed"]);
 
 export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onClose }: Props) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [configForm] = Form.useForm<ConfigForm>();
   const [manualRate, setManualRate] = useState<number>(10);
 
@@ -152,6 +155,21 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
               </Col>
             )}
           </Row>
+
+          {lotDetail.status === "awaiting_decision" && (
+            <Alert
+              type="info"
+              style={{ marginBottom: 16 }}
+              message="Every sampled record has been reviewed. Check the defects and confirm the lot's result."
+              action={
+                isSupervisor && (
+                  <Button type="primary" size="small" onClick={() => navigate(`/lots/${lotDetail.id}/review`)}>
+                    Review &amp; decide
+                  </Button>
+                )
+              }
+            />
+          )}
 
           {lotDetail.status === "failed" && (
             <Alert

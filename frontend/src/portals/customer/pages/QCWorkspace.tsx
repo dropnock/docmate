@@ -142,7 +142,7 @@ export default function QCWorkspace() {
     mutationFn: ({ taskId, reason }: { taskId: number; reason: string }) =>
       api.post(`/tasks/${taskId}/fail`, { reason }),
     onSuccess: () => {
-      message.success("Record rejected — sent back for rework");
+      message.success("Record rejected — your QC supervisor reviews it before it goes back for rework");
       setRejectModalOpen(false);
       rejectForm.resetFields();
       setActiveTask(null);

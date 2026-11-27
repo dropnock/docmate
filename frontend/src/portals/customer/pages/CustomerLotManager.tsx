@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { Button, Empty, Modal, Spin, Table, Tooltip } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
@@ -20,6 +21,7 @@ const LOT_STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
   released: "Released",
   qc_in_progress: "QC In Progress",
+  awaiting_decision: "Awaiting your decision",
   passed: "Passed",
   failed: "Failed",
   remediation: "Remediation",
@@ -29,6 +31,7 @@ const LOT_STATUS_FILLED = new Set(["passed"]);
 
 export default function CustomerLotManager({ projectId, role }: Props) {
   const isSupervisor = role === "customer_supervisor";
+  const navigate = useNavigate();
   const [settingsLotId, setSettingsLotId] = useState<number | undefined>();
   const [assignLotId, setAssignLotId] = useState<number | undefined>();
   const [reportLotId, setReportLotId] = useState<number | undefined>();
@@ -40,7 +43,7 @@ export default function CustomerLotManager({ projectId, role }: Props) {
   });
 
   const visibleLots = lots.filter((l) =>
-    ["released", "qc_in_progress", "passed", "failed", "remediation"].includes(l.status)
+    ["released", "qc_in_progress", "awaiting_decision", "passed", "failed", "remediation"].includes(l.status)
   );
 
   const columns: ColumnType<Lot>[] = [
@@ -82,6 +85,20 @@ export default function CustomerLotManager({ projectId, role }: Props) {
           key: "action",
           render: (_: unknown, lot: Lot) => (
             <>
+              {lot.status === "awaiting_decision" ? (
+                <Button
+                  size="small"
+                  type="primary"
+                  onClick={() => navigate(`/lots/${lot.id}/review`)}
+                  style={{ marginRight: 8 }}
+                >
+                  Review &amp; decide
+                </Button>
+              ) : ["passed", "failed", "remediation"].includes(lot.status) && lot.sample_size !== null ? (
+                <Button size="small" onClick={() => navigate(`/lots/${lot.id}/review`)} style={{ marginRight: 8 }}>
+                  QC results
+                </Button>
+              ) : null}
               <Button size="small" onClick={() => setReportLotId(lot.id)} style={{ marginRight: 8 }}>
                 Inspection report
               </Button>

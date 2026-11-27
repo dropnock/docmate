@@ -1,7 +1,7 @@
 import api from "@shared/api/client";
 import type {
   AuditEvent, AvailableStaff, FieldResult, InspectionLevel, Lot, LotDetail, LotInspectionDetail,
-  LotInspectionList, LotInspectionReport, QcBatchSummary, QcFieldResultsOut,
+  LotInspectionList, LotInspectionReport, QcBatchSummary, QcFieldResultsOut, QcReview, ErrorType, QcFieldStatus,
 } from "@shared/types";
 
 /** Shared across CustomerLotManager, LotSettingsDrawer, and LotAssignQcDrawer
@@ -122,4 +122,32 @@ export function removeLotRecords(lotId: number, recordIds: number[]) {
  * outgoing inspection and a new customer QC round. */
 export function resubmitLot(lotId: number) {
   return api.post<Lot>(`/lots/${lotId}/resubmit`).then((r) => r.data);
+}
+
+// ── Customer QC supervisor's review and decision ───────────────────────────
+
+export const qcReviewKey = (lotId: number) => ["qc-review", lotId] as const;
+
+export function getQcReview(lotId: number) {
+  return api.get<QcReview>(`/lots/${lotId}/qc-review`).then((r) => r.data);
+}
+
+/** The supervisor's ruling on one field; a note is required when it differs
+ * from the reviewer's mark. Ruling the same as the reviewer clears a change. */
+export function overrideQcMark(
+  lotId: number,
+  recordId: number,
+  fieldKey: string,
+  body: { status: QcFieldStatus; error_type?: ErrorType | null; note?: string | null },
+) {
+  return api.put(`/lots/${lotId}/qc-review/${recordId}/fields/${encodeURIComponent(fieldKey)}`, body).then((r) => r.data);
+}
+
+/** Manual-rate lots: the supervisor's ruling on a whole record. */
+export function overrideRecordOutcome(lotId: number, recordId: number, passed: boolean, note?: string | null) {
+  return api.put(`/lots/${lotId}/qc-review/${recordId}/outcome`, { passed, note }).then((r) => r.data);
+}
+
+export function decideLot(lotId: number) {
+  return api.post<Lot>(`/lots/${lotId}/decide`).then((r) => r.data);
 }

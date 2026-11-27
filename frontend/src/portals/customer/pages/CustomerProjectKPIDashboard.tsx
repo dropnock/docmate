@@ -16,7 +16,7 @@ const AQL_STATUS_LABEL: Record<string, string> = {
   reduced: "Reduced",
 };
 
-const VISIBLE_LOT_STATUSES = new Set(["released", "qc_in_progress", "passed", "failed", "remediation"]);
+const VISIBLE_LOT_STATUSES = new Set(["released", "qc_in_progress", "awaiting_decision", "passed", "failed", "remediation"]);
 
 export default function CustomerProjectKPIDashboard({ projectId }: Props) {
   const { data: kpis, isLoading } = useQuery<ProjectKPIs>({
@@ -93,6 +93,8 @@ export default function CustomerProjectKPIDashboard({ projectId }: Props) {
           <Tag color="green">Passed</Tag>
         ) : s === "failed" || s === "remediation" ? (
           <Tag color="red">Failed</Tag>
+        ) : s === "awaiting_decision" ? (
+          <Tag color="blue">Awaiting decision</Tag>
         ) : (
           "—"
         ),

@@ -1085,8 +1085,12 @@ async def get_qc_review(
         classes = defect_class_service.judge(result["defects_by_class"], lot.class_plan)["classes"]
     return {
         "lot_id": lot.id,
+        "lot_name": lot.name,
+        "project_id": lot.project_id,
         "status": lot.status.value,
         "qc_round": lot.qc_round,
+        "sample_size": lot.sample_size,
+        "error_classes": await defect_class_service.project_error_classes(db, lot.project_id),
         "iso": lot.acceptance_number is not None,
         "acceptance_number": lot.acceptance_number,
         "classes": classes,

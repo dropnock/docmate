@@ -77,6 +77,9 @@ export interface Lot {
   created_by: number | null;
   /** Current customer QC round; earlier (failed) rounds are in LotDetail.qc_rounds. */
   qc_round: number;
+  /** The customer QC supervisor who confirmed the verdict, and when. */
+  decided_at?: string | null;
+  decided_by?: number | null;
 }
 
 /** A finished customer QC round of a lot that was failed and resubmitted. */
@@ -614,4 +617,62 @@ export interface OnlineUser {
   /** active: a request in the last 2 minutes; idle: older. */
   status: "active" | "idle";
   task: OnlineTask | null;
+}
+
+/** A field mark as the QC supervisor's review shows it. */
+export interface QcReviewMark {
+  status: QcFieldStatus;
+  error_type: ErrorType | null;
+  severity: Severity | null;
+  note: string | null;
+}
+
+export interface QcReviewField {
+  field_key: string;
+  is_critical: boolean;
+  /** The reviewer's own mark, never changed. */
+  reviewer: QcReviewMark;
+  /** The supervisor's change, if they made one. */
+  override: QcReviewMark | null;
+  overridden_by: string | null;
+  overridden_at: string | null;
+  /** The mark that counts: override ?? reviewer. */
+  effective: QcReviewMark;
+}
+
+export interface QcReviewRecord {
+  record_id: number;
+  source_identifier: string | null;
+  original_filename: string | null;
+  document_type_id: number | null;
+  indexed_data: Record<string, unknown>;
+  status: string;
+  qc_task_id: number | null;
+  reviewer_passed: boolean | null;
+  reviewer_name: string | null;
+  reviewed_at: string | null;
+  defect_count: number;
+  overridden: boolean;
+  fields: QcReviewField[];
+}
+
+/** GET /lots/{id}/qc-review — the customer QC supervisor's review of a lot. */
+export interface QcReview {
+  lot_id: number;
+  lot_name: string;
+  project_id: number;
+  status: string;
+  qc_round: number;
+  sample_size: number | null;
+  error_classes: ErrorClasses;
+  /** false: sampled at a manual rate (whole-record rulings, 90% accuracy rule). */
+  iso: boolean;
+  acceptance_number: number | null;
+  classes: ClassResults | null;
+  /** The verdict the plan gives on the current marks. */
+  accepted: boolean | null;
+  accuracy_rate: number | null;
+  any_critical_defect: boolean | null;
+  non_critical_defect_total: number | null;
+  records: QcReviewRecord[];
 }

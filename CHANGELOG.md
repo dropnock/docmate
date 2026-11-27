@@ -7,6 +7,31 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+### Added
+- **QC supervisor reviews defects before a lot is decided** (customer
+  portal, Lots → Review & decide). Once every sampled record has been
+  reviewed, the lot waits in a new **Awaiting your decision** status
+  instead of passing or failing on its own. The customer QC supervisor
+  goes through the records with defects, with the image beside the data:
+  - For each field they can uphold the reviewer's mark, dismiss it, give
+    it a different error type (its class follows the project's agreement;
+    identifier fields stay critical) or mark an accepted field defective.
+    A reason is required for every change. The reviewer's own mark is
+    kept, and every change is in the record's history.
+  - The defect counts and the ISO 2859-1 verdict are calculated from the
+    marks after the supervisor's changes, and update as they work.
+  - **Confirm decision** applies the verdict, counts it toward the
+    project's normal/tightened/reduced switching and sends the records
+    still rejected back to the digitizing team for rework.
+  - Lots sampled at a manual rate get the same step, with a pass/reject
+    ruling on whole records.
+  Needs migration `a7c9e1f3b5d2`.
+
+### Changed
+- A reviewer's rejection no longer sends the record back for rework
+  straight away: rework waits for the supervisor's decision, so only
+  confirmed defects are reworked.
+
 ## [0.9.4] - 2026-11-27
 
 ### Added

@@ -24,6 +24,7 @@ const CustomerStaffProductivityDashboard = lazy(() => import("./pages/CustomerSt
 const RecordHistory = lazy(() => import("../digitizing/pages/RecordHistory"));
 const QCWorkspace = lazy(() => import("./pages/QCWorkspace"));
 const CustomerLotManager = lazy(() => import("./pages/CustomerLotManager"));
+const LotQcReview = lazy(() => import("./pages/LotQcReview"));
 const CustomerFlaggedRecords = lazy(() => import("./pages/CustomerFlaggedRecords"));
 const CustomerQcBatches = lazy(() => import("./pages/CustomerQcBatches"));
 
@@ -47,6 +48,8 @@ const SUPERVISOR_ITEMS = [
 const QC_ITEMS = [{ key: "/qc", label: "QC Workspace", icon: <CheckCircle2 size={16} /> }];
 
 const FULL_BLEED_ROUTES = new Set(["/qc"]);
+// Workspace pages with a path parameter.
+const FULL_BLEED_PATTERNS = [/^\/lots\/\d+\/review$/];
 
 function getSubdomain(): string | null {
   const parts = window.location.hostname.split(".");
@@ -69,7 +72,8 @@ function AppInner() {
   const isSupervisor = user.role === "customer_supervisor";
   const navItems = [...QC_ITEMS, ...(isSupervisor ? SUPERVISOR_ITEMS : [])];
 
-  const isWorkspacePage = FULL_BLEED_ROUTES.has(location.pathname);
+  const isWorkspacePage =
+    FULL_BLEED_ROUTES.has(location.pathname) || FULL_BLEED_PATTERNS.some((re) => re.test(location.pathname));
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -135,6 +139,14 @@ function AppInner() {
                         <CustomerLotManager projectId={projectId} role={user.role} />
                       )}
                     </ProjectScopedRoute>
+                  </RequireRole>
+                }
+              />
+              <Route
+                path="/lots/:lotId/review"
+                element={
+                  <RequireRole allow={isSupervisor}>
+                    <LotQcReview />
                   </RequireRole>
                 }
               />

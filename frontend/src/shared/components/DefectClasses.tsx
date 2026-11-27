@@ -65,7 +65,7 @@ export interface FieldMark {
  * wrong (Missing / Typo / Interpretation) — its class follows from that.
  * An empty field flipped to Defective starts as Missing. */
 export function FieldMarkControl({
-  title, isIdentifier, mark, onChange, disabled, valueEmpty, errorClasses, notePlaceholder,
+  title, isIdentifier, mark, onChange, disabled, valueEmpty, errorClasses, notePlaceholder, hideNote,
 }: {
   title: string;
   isIdentifier: boolean;
@@ -75,6 +75,8 @@ export function FieldMarkControl({
   valueEmpty?: boolean;
   errorClasses?: ErrorClasses;
   notePlaceholder?: string;
+  /** Leave out the note box (the caller collects its own). */
+  hideNote?: boolean;
 }) {
   const severity = mark.status === "defective" ? classifyMark(isIdentifier, mark.error_type, errorClasses) : undefined;
   return (
@@ -126,13 +128,13 @@ export function FieldMarkControl({
               <Typography.Text type="warning">Choose what is wrong</Typography.Text>
             )}
           </Space>
-          <Input
+          {!hideNote && <Input
             disabled={disabled}
             placeholder={notePlaceholder ?? "Describe the error (optional)"}
             style={{ marginTop: 8 }}
             value={mark.note ?? ""}
             onChange={(e) => onChange({ ...mark, note: e.target.value })}
-          />
+          />}
         </div>
       )}
     </div>

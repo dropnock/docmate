@@ -30,6 +30,7 @@ const LOT_STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
   released: "Released",
   qc_in_progress: "QC In Progress",
+  awaiting_decision: "Awaiting customer decision",
   passed: "Passed",
   failed: "Failed",
   remediation: "Remediation",
