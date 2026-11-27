@@ -52,6 +52,10 @@ class AuditAction(str, enum.Enum):
     flag_comment_added = "flag_comment_added"
     # A project's details or quality settings (AQLs, agreement) were edited.
     settings_changed = "settings_changed"
+    # The customer QC supervisor changed a reviewer's mark (record entity),
+    # and confirmed a lot's verdict (lot entity).
+    qc_mark_overridden = "qc_mark_overridden"
+    qc_lot_decided = "qc_lot_decided"
 
 
 class AuditLog(Base):

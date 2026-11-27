@@ -17,7 +17,7 @@ from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
 from app.schemas.task import FieldResultIn
 from app.services import lot_service, task_service
-from tests.conftest import token
+from tests.conftest import decide, token
 
 SCHEMA = {
     "type": "object",
@@ -93,6 +93,8 @@ class TestCompleteTaskIsoMode:
         assert record.status == RecordStatus.qc_passed
 
         lot = await db.get(Lot, lot.id)
+        assert lot.status == LotStatus.awaiting_decision
+        lot = await decide(db, seed, lot)
         assert lot.status == LotStatus.passed
 
     async def test_rejects_defective_field_via_complete(self, db: AsyncSession, seed):
@@ -133,7 +135,7 @@ class TestFailTaskIsoMode:
         record = await db.get(Record, record.id)
         assert record.status == RecordStatus.qc_failed  # per-record disposition: any defect -> rework
 
-        lot = await db.get(Lot, lot.id)
+        lot = await decide(db, seed, await db.get(Lot, lot.id))
         assert lot.status == LotStatus.passed  # 1 non-critical defect <= acceptance_number(1)
 
     async def test_non_critical_defect_exceeding_acceptance_number_fails_lot(self, db: AsyncSession, seed):
@@ -147,7 +149,7 @@ class TestFailTaskIsoMode:
             ],
         )
         await db.commit()
-        lot = await db.get(Lot, lot.id)
+        lot = await decide(db, seed, await db.get(Lot, lot.id))
         assert lot.status == LotStatus.failed
 
     async def test_critical_defect_fails_lot_regardless_of_acceptance_number(self, db: AsyncSession, seed):
@@ -161,7 +163,7 @@ class TestFailTaskIsoMode:
             ],
         )
         await db.commit()
-        lot = await db.get(Lot, lot.id)
+        lot = await decide(db, seed, await db.get(Lot, lot.id))
         assert lot.status == LotStatus.failed  # critical defect -> immediate fail even with a huge acceptance_number
 
     async def test_rejects_no_defective_field_via_fail(self, db: AsyncSession, seed):
@@ -177,9 +179,9 @@ class TestFailTaskIsoMode:
             )
         assert exc_info.value.status_code == 422
 
-    async def test_still_creates_rework_batch(self, db: AsyncSession, seed):
-        """The existing rework-routing behavior (see test_qc_rejection_rework.py)
-        must be unaffected by field_results validation/persistence."""
+    async def test_rework_batch_waits_for_the_supervisors_decision(self, db: AsyncSession, seed):
+        """Rework routing (see test_qc_rejection_rework.py) happens when the
+        customer QC supervisor confirms the lot, not on the rejection."""
         task, record, lot = await _make_qc_setup(db, seed)
         await task_service.fail_task(
             db, task_id=task.id, user_id=seed["qc_agent"].id, reason="unused",
@@ -190,6 +192,9 @@ class TestFailTaskIsoMode:
             ],
         )
         await db.flush()
+        qa = select(Task).where(Task.record_id == record.id, Task.task_type == TaskType.qa)
+        assert (await db.execute(qa)).first() is None
+        await decide(db, seed, lot)
         rework_task = (await db.execute(
             select(Task).where(
                 Task.record_id == record.id, Task.task_type == TaskType.qa,

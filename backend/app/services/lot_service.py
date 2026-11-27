@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.aql import AQLStatus, GeneralLevel, SamplingMode
-from app.models.audit_log import AuditAction, AuditEntityType
+from app.models.audit_log import AuditAction, AuditEntityType, AuditLog
 from app.models.batch import Batch, BatchStatus, BatchType
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
@@ -568,6 +568,8 @@ async def resubmit_lot(
         sampled_record_ids=sorted(lr.record_id for lr in lot_records if lr.is_sampled),
         released_at=lot.released_at,
         qc_completed_at=lot.qc_completed_at,
+        decided_at=lot.decided_at,
+        decided_by=lot.decided_by,
         resubmitted_by=user_id,
     )
     db.add(archived)
@@ -596,7 +598,7 @@ async def resubmit_lot(
     for field in (
         "sample_rate", "sample_size", "acceptance_number", "class_plan", "accuracy_rate", "aql_status_snapshot",
         "qc_completed_at", "critical_defect_count", "major_defect_count", "minor_defect_count",
-        "released_at", "released_by",
+        "released_at", "released_by", "decided_at", "decided_by",
     ):
         setattr(lot, field, None)
     lot.qc_round = old_round + 1
@@ -628,90 +630,114 @@ async def list_qc_rounds(db: AsyncSession, *, lot_id: int) -> list:
     )).scalars().all())
 
 
+async def _sampled(db: AsyncSession, lot_id: int) -> list[Record]:
+    """The lot's sampled records (current round), in record id order."""
+    return list((await db.execute(
+        select(Record)
+        .join(LotRecord, LotRecord.record_id == Record.id)
+        .where(LotRecord.lot_id == lot_id, LotRecord.is_sampled == True)  # noqa: E712
+        .order_by(Record.id)
+    )).scalars().all())
+
+
+async def _current_marks(db: AsyncSession, lot: Lot, record_ids: list[int]) -> list:
+    """Every field mark of the current QC round on these records."""
+    from app.models.qc_field_result import QcFieldResult
+    if not record_ids:
+        return []
+    return list((await db.execute(
+        select(QcFieldResult).where(
+            QcFieldResult.lot_id == lot.id,
+            QcFieldResult.qc_round == lot.qc_round,
+            QcFieldResult.record_id.in_(record_ids),
+        ).order_by(QcFieldResult.id)
+    )).scalars().all())
+
+
+async def _tally(db: AsyncSession, lot: Lot) -> dict:
+    """Judge the current round's sample from its effective marks — the
+    customer QC supervisor's overrides where there are any, otherwise the
+    reviewers' marks (defect_class_service.effective). Writes nothing.
+    Returns the figures the audit trail and the review screen show, with
+    "accepted" the verdict the plan gives."""
+    sampled = await _sampled(db, lot.id)
+    passed = sum(1 for r in sampled if r.status == RecordStatus.qc_passed)
+    total = len(sampled)
+    accuracy = passed / total if total else 0.0
+    out = {
+        "passed": passed, "total": total, "accuracy_rate": accuracy,
+        "acceptance_number": lot.acceptance_number,
+        "any_critical_defect": None, "non_critical_defect_total": None, "defects_by_class": None,
+    }
+
+    # acceptance_number is only ever set (by apply_sample) for lots sampled
+    # under AQLConfig.sampling_mode="iso" — a reliable proxy for which rule
+    # this lot should be evaluated under, without a second config lookup.
+    if lot.acceptance_number is None:
+        out["accepted"] = accuracy >= 0.9
+        return out
+
+    severities = [
+        sev for status, _, sev in (
+            defect_class_service.effective(m) for m in await _current_marks(db, lot, [r.id for r in sampled])
+        ) if status == "defective"
+    ]
+    counts = defect_class_service.tally(severities)
+    non_critical = counts["major"] + counts["minor"]
+    out["any_critical_defect"] = counts["critical"] > 0
+    out["non_critical_defect_total"] = non_critical
+    out["defects_by_class"] = counts
+    if lot.class_plan:
+        # Non-conformities added up per class across the sample, each
+        # class against its own Ac (defect_class_service).
+        out["accepted"] = defect_class_service.judge(counts, lot.class_plan)["accepted"]
+    else:
+        # Lots sampled before defect classes: a single critical-field defect
+        # fails the lot outright, independent of the acceptance number; the
+        # other defects together against it.
+        out["accepted"] = counts["critical"] == 0 and non_critical <= lot.acceptance_number
+    return out
+
+
+async def _judge(db: AsyncSession, lot: Lot) -> dict:
+    """_tally, with the counts and accuracy written onto the lot."""
+    out = await _tally(db, lot)
+    lot.accuracy_rate = out["accuracy_rate"]
+    counts = out["defects_by_class"]
+    if counts is not None:
+        lot.critical_defect_count = counts["critical"]
+        if lot.class_plan:
+            lot.major_defect_count = counts["major"]
+            lot.minor_defect_count = counts["minor"]
+        else:
+            lot.minor_defect_count = out["non_critical_defect_total"]
+    if not lot.class_plan:
+        out["defects_by_class"] = None
+    return out
+
+
 async def calculate_accuracy(
     db: AsyncSession,
     *,
     lot_id: int,
     tenant_id: int,
 ) -> Lot:
-    """Called after a QC task completes or fails. Checks if all sampled records are done."""
+    """Called after a QC task completes or fails. Once every sampled record
+    has been reviewed, the lot waits for the customer QC supervisor: they
+    review the defects (override_qc_mark) and confirm the verdict
+    (decide_lot). The provisional counts are stored now so the lot list
+    shows them."""
     lot = await _get_lot(db, lot_id, tenant_id)
-    already_finalised = lot.qc_completed_at is not None
+    if lot.status != LotStatus.qc_in_progress:
+        return lot
 
-    sampled_result = await db.execute(
-        select(LotRecord).where(LotRecord.lot_id == lot_id, LotRecord.is_sampled == True)  # noqa: E712
-    )
-    sampled = list(sampled_result.scalars().all())
-
-    statuses = []
-    for lr in sampled:
-        record = await db.get(Record, lr.record_id)
-        if record:
-            statuses.append(record.status)
-
+    sampled = await _sampled(db, lot_id)
     done_statuses = {RecordStatus.qc_passed, RecordStatus.qc_failed}
-    if not all(s in done_statuses for s in statuses):
+    if not sampled or not all(r.status in done_statuses for r in sampled):
         return lot  # Not all done yet
 
-    passed = sum(1 for s in statuses if s == RecordStatus.qc_passed)
-    total = len(statuses)
-    accuracy = passed / total if total else 0.0
-    lot.accuracy_rate = accuracy
-    lot.qc_completed_at = datetime.now(timezone.utc)
-
-    # acceptance_number is only ever set (by apply_sample) for lots sampled
-    # under AQLConfig.sampling_mode="iso" — a reliable proxy for which rule
-    # this lot should be evaluated under, without a second config lookup.
-    any_critical_defect = None
-    non_critical_defect_total = None
-    if lot.acceptance_number is not None:
-        from app.models.qc_field_result import QcFieldResult, QcFieldStatus
-
-        record_ids = [lr.record_id for lr in sampled]
-        defects = (await db.execute(
-            select(QcFieldResult.is_critical, QcFieldResult.severity).where(
-                QcFieldResult.lot_id == lot_id,
-                QcFieldResult.qc_round == lot.qc_round,
-                QcFieldResult.record_id.in_(record_ids),
-                QcFieldResult.status == QcFieldStatus.defective,
-            )
-        )).all()
-        defective_rows = [is_critical for is_critical, _ in defects]
-        any_critical_defect = any(defective_rows)
-        non_critical_defect_total = sum(1 for is_critical in defective_rows if not is_critical)
-        lot.critical_defect_count = sum(1 for is_critical in defective_rows if is_critical)
-        lot.minor_defect_count = non_critical_defect_total
-
-        if lot.class_plan:
-            # Non-conformities added up per class across the sample, each
-            # class against its own Ac (defect_class_service).
-            counts = defect_class_service.tally(
-                severity or ("critical" if is_critical else "major") for is_critical, severity in defects
-            )
-            lot.critical_defect_count = counts["critical"]
-            lot.major_defect_count = counts["major"]
-            lot.minor_defect_count = counts["minor"]
-            accepted = defect_class_service.judge(counts, lot.class_plan)["accepted"]
-            lot.status = LotStatus.passed if accepted else LotStatus.failed
-        # Lots sampled before defect classes: a single critical-field defect
-        # fails the lot outright, independent of the acceptance number; the
-        # other defects together against it.
-        elif any_critical_defect:
-            lot.status = LotStatus.failed
-        else:
-            lot.status = (
-                LotStatus.passed if non_critical_defect_total <= lot.acceptance_number else LotStatus.failed
-            )
-    else:
-        lot.status = LotStatus.passed if accuracy >= 0.9 else LotStatus.failed
-
-    # ISO 2859-1 switching counts each lot once, on its original submission:
-    # a resubmitted lot's later rounds don't move the project's status.
-    if lot.qc_round == 1 and not already_finalised:
-        await aql_service.record_lot_outcome(
-            db, lot=lot, passed=lot.status == LotStatus.passed, tenant_id=tenant_id,
-        )
-
+    result = await _judge(db, lot)
+    lot.status = LotStatus.awaiting_decision
     await audit_service.write_event(
         db,
         tenant_id=tenant_id,
@@ -719,22 +745,357 @@ async def calculate_accuracy(
         entity_id=lot.id,
         action=AuditAction.status_changed,
         performed_by=None,
-        new_value={
-            "status": lot.status,
-            "accuracy_rate": accuracy,
-            "passed": passed,
-            "total": total,
-            "acceptance_number": lot.acceptance_number,
-            "any_critical_defect": any_critical_defect,
-            "non_critical_defect_total": non_critical_defect_total,
-            "defects_by_class": {
-                "critical": lot.critical_defect_count,
-                "major": lot.major_defect_count,
-                "minor": lot.minor_defect_count,
-            } if lot.class_plan else None,
+        old_value={"status": "qc_in_progress"},
+        new_value={"status": "awaiting_decision", **result},
+    )
+    return lot
+
+
+async def _review_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
+    lot = await _get_lot_for_update(db, lot_id, tenant_id)
+    if lot.status != LotStatus.awaiting_decision:
+        raise HTTPException(
+            status_code=409,
+            detail="The lot's QC results can only be reviewed while it is awaiting your decision",
+        )
+    return lot
+
+
+async def _sampled_record(db: AsyncSession, lot: Lot, record_id: int) -> Record:
+    lr = (await db.execute(
+        select(LotRecord).where(
+            LotRecord.lot_id == lot.id, LotRecord.record_id == record_id,
+            LotRecord.is_sampled == True,  # noqa: E712
+        )
+    )).scalar_one_or_none()
+    record = await db.get(Record, record_id) if lr else None
+    if record is None:
+        raise HTTPException(status_code=404, detail="Record is not in this lot's sample")
+    return record
+
+
+async def _set_record_outcome(
+    db: AsyncSession, *, record: Record, failed: bool, lot: Lot, user_id: int, tenant_id: int, note: str | None,
+) -> None:
+    new = RecordStatus.qc_failed if failed else RecordStatus.qc_passed
+    if record.status == new:
+        return
+    old = record.status
+    record.status = new
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.record,
+        entity_id=record.id,
+        action=AuditAction.status_changed,
+        performed_by=user_id,
+        old_value={"status": old.value},
+        new_value={"status": new.value},
+        metadata={"reason": "qc_supervisor_review", "lot_id": lot.id, "qc_round": lot.qc_round, "note": note},
+    )
+
+
+def _mark_out(status, error_type, severity, note=None) -> dict:
+    return {
+        "status": getattr(status, "value", status),
+        "error_type": getattr(error_type, "value", error_type),
+        "severity": getattr(severity, "value", severity),
+        "note": note,
+    }
+
+
+async def override_qc_mark(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    record_id: int,
+    field_key: str,
+    status: str,
+    error_type: str | None,
+    note: str | None,
+    user_id: int,
+    tenant_id: int,
+) -> dict:
+    """The customer QC supervisor's ruling on one field of a sampled record:
+    uphold the reviewer's mark, dismiss a defect, give it another error type
+    (and so, through the project's agreement, another class) or mark an
+    accepted field defective. The reviewer's mark is kept; the ruling is
+    stored beside it and is what the counts and the verdict use. A ruling
+    that matches the reviewer's mark clears any override. The record's
+    status follows its effective marks; rework waits for decide_lot."""
+    from app.models.defect import ErrorType
+    from app.models.qc_field_result import QcFieldStatus
+
+    lot = await _review_lot(db, lot_id, tenant_id)
+    if lot.acceptance_number is None:
+        raise HTTPException(status_code=409, detail="This lot was sampled at a manual rate; review whole records instead")
+    record = await _sampled_record(db, lot, record_id)
+    marks = await _current_marks(db, lot, [record.id])
+    mark = next((m for m in marks if m.field_key == field_key), None)
+    if mark is None:
+        raise HTTPException(status_code=404, detail=f"No QC mark for field {field_key!r} on this record")
+
+    try:
+        new_status = QcFieldStatus(status)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="status must be accepted or defective")
+    new_error_type = None
+    new_severity = None
+    if new_status == QcFieldStatus.defective:
+        if error_type is None and lot.class_plan:
+            raise HTTPException(
+                status_code=422, detail="Say what is wrong with the field (missing, typo or interpretation)",
+            )
+        if error_type is not None:
+            try:
+                new_error_type = ErrorType(error_type)
+            except ValueError:
+                raise HTTPException(status_code=422, detail=f"Unknown error type {error_type!r}")
+        error_classes = await defect_class_service.project_error_classes(db, lot.project_id)
+        new_severity = defect_class_service.classify(
+            is_identifier=mark.is_critical, error_type=new_error_type, error_classes=error_classes,
+        )
+
+    before = _mark_out(*defect_class_service.effective(mark), mark.override_note if mark.override_status else None)
+    reviewer = defect_class_service.effective(mark, overrides=False)
+    same_as_reviewer = (
+        reviewer[0] == new_status.value
+        and (new_status == QcFieldStatus.accepted or (reviewer[1] == new_error_type and reviewer[2] == new_severity))
+    )
+    note = (note or "").strip() or None
+    if not same_as_reviewer and not note:
+        raise HTTPException(status_code=422, detail="Give a reason for changing the reviewer's mark")
+
+    now = datetime.now(timezone.utc)
+    if same_as_reviewer:
+        mark.override_status = mark.override_error_type = mark.override_severity = None
+        mark.override_note = None
+        mark.overridden_by = mark.overridden_at = None
+    else:
+        mark.override_status = new_status
+        mark.override_error_type = new_error_type
+        mark.override_severity = new_severity
+        mark.override_note = note
+        mark.overridden_by = user_id
+        mark.overridden_at = now
+    after = _mark_out(new_status, new_error_type, new_severity, None if same_as_reviewer else note)
+    if before != after:
+        await audit_service.write_event(
+            db,
+            tenant_id=tenant_id,
+            entity_type=AuditEntityType.record,
+            entity_id=record.id,
+            action=AuditAction.qc_mark_overridden,
+            performed_by=user_id,
+            old_value=before,
+            new_value=after,
+            metadata={
+                "lot_id": lot.id, "qc_round": lot.qc_round, "field_key": field_key,
+                "reviewer_mark": _mark_out(*reviewer, mark.note), "reverted_to_reviewer": same_as_reviewer,
+            },
+        )
+
+    failed = any(defect_class_service.effective(m)[0] == "defective" for m in marks)
+    await _set_record_outcome(
+        db, record=record, failed=failed, lot=lot, user_id=user_id, tenant_id=tenant_id, note=note,
+    )
+    await db.flush()
+    return await _judge(db, lot)
+
+
+async def override_record_outcome(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    record_id: int,
+    passed: bool,
+    note: str | None,
+    user_id: int,
+    tenant_id: int,
+) -> dict:
+    """Manual-rate lots have no field marks: the supervisor rules on the
+    whole record — pass one a reviewer rejected, or reject one they passed.
+    A reason is needed whenever the ruling goes against the reviewer."""
+    lot = await _review_lot(db, lot_id, tenant_id)
+    if lot.acceptance_number is not None:
+        raise HTTPException(status_code=409, detail="This lot was sampled under ISO 2859-1; review its fields instead")
+    record = await _sampled_record(db, lot, record_id)
+    task = (await latest_qc_tasks(db, [record.id])).get(record.id)
+    reviewer_passed = task is not None and task.status == TaskStatus.completed
+    note = (note or "").strip() or None
+    if passed != reviewer_passed and not note:
+        raise HTTPException(status_code=422, detail="Give a reason for changing the reviewer's result")
+    if (record.status == RecordStatus.qc_passed) != passed:
+        await audit_service.write_event(
+            db,
+            tenant_id=tenant_id,
+            entity_type=AuditEntityType.record,
+            entity_id=record.id,
+            action=AuditAction.qc_mark_overridden,
+            performed_by=user_id,
+            old_value={"passed": record.status == RecordStatus.qc_passed},
+            new_value={"passed": passed, "note": note},
+            metadata={
+                "lot_id": lot.id, "qc_round": lot.qc_round,
+                "reviewer_passed": reviewer_passed, "reverted_to_reviewer": passed == reviewer_passed,
+            },
+        )
+    await _set_record_outcome(
+        db, record=record, failed=not passed, lot=lot, user_id=user_id, tenant_id=tenant_id, note=note,
+    )
+    await db.flush()
+    return await _judge(db, lot)
+
+
+async def decide_lot(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    user_id: int,
+    tenant_id: int,
+) -> Lot:
+    """The customer QC supervisor confirms the lot's verdict once they have
+    reviewed its defects. The verdict is the sampling plan's, judged on the
+    effective marks; records still rejected go back to the digitizing
+    entity for rework now, not when the reviewer rejected them."""
+    from app.models.qc_field_result import QcFieldResult
+    from app.services.task_service import route_to_rework
+
+    lot = await _review_lot(db, lot_id, tenant_id)
+    result = await _judge(db, lot)
+    now = datetime.now(timezone.utc)
+    lot.status = LotStatus.passed if result["accepted"] else LotStatus.failed
+    lot.qc_completed_at = now
+    lot.decided_at = now
+    lot.decided_by = user_id
+
+    # ISO 2859-1 switching counts each lot once, on its original submission:
+    # a resubmitted lot's later rounds don't move the project's status.
+    if lot.qc_round == 1:
+        await aql_service.record_lot_outcome(
+            db, lot=lot, passed=lot.status == LotStatus.passed, tenant_id=tenant_id,
+        )
+
+    sampled = await _sampled(db, lot.id)
+    rejected = [r for r in sampled if r.status == RecordStatus.qc_failed]
+    tasks = await latest_qc_tasks(db, [r.id for r in rejected])
+    for record in rejected:
+        await route_to_rework(db, record=record, qc_task=tasks.get(record.id), user_id=user_id)
+
+    overrides = (await db.execute(
+        select(func.count()).select_from(QcFieldResult).where(
+            QcFieldResult.lot_id == lot.id, QcFieldResult.qc_round == lot.qc_round,
+            QcFieldResult.override_status.is_not(None),
+        )
+    )).scalar_one()
+    record_overrides = (await db.execute(
+        select(func.count()).select_from(AuditLog).where(
+            AuditLog.action == AuditAction.qc_mark_overridden,
+            AuditLog.entity_type == AuditEntityType.record,
+            AuditLog.entity_id.in_([r.id for r in sampled] or [-1]),
+        )
+    )).scalar_one() if lot.acceptance_number is None else None
+
+    await audit_service.write_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type=AuditEntityType.lot,
+        entity_id=lot.id,
+        action=AuditAction.qc_lot_decided,
+        performed_by=user_id,
+        old_value={"status": "awaiting_decision"},
+        new_value={"status": lot.status.value, **result},
+        metadata={
+            "qc_round": lot.qc_round,
+            "fields_overridden": overrides,
+            "record_rulings": record_overrides,
+            "records_sent_for_rework": [r.id for r in rejected],
         },
     )
     return lot
+
+
+async def get_qc_review(
+    db: AsyncSession,
+    *,
+    lot_id: int,
+    tenant_id: int,
+) -> dict:
+    """Everything the customer QC supervisor's review screen needs: every
+    sampled record of the current round with the reviewer, their outcome,
+    and per field the reviewer's mark, the supervisor's override and the
+    mark that counts; plus the provisional verdict."""
+    from app.models.user import User
+
+    lot = await _get_lot(db, lot_id, tenant_id)
+    sampled = await _sampled(db, lot.id)
+    marks = await _current_marks(db, lot, [r.id for r in sampled])
+    tasks = await latest_qc_tasks(db, [r.id for r in sampled])
+    user_ids = {t.assigned_to for t in tasks.values() if t.assigned_to} | {
+        m.overridden_by for m in marks if m.overridden_by
+    }
+    users = {u.id: u for u in (await db.execute(select(User).where(User.id.in_(user_ids or {-1})))).scalars()}
+
+    batch_ids = {t.batch_id for t in tasks.values()}
+    doc_types = dict((await db.execute(
+        select(Batch.id, Batch.document_type_id).where(Batch.id.in_(batch_ids or {-1}))
+    )).all())
+
+    by_record: dict[int, list] = {}
+    for m in marks:
+        by_record.setdefault(m.record_id, []).append(m)
+
+    records = []
+    for r in sampled:
+        task = tasks.get(r.id)
+        fields = []
+        for m in by_record.get(r.id, []):
+            eff = defect_class_service.effective(m)
+            reviewer = defect_class_service.effective(m, overrides=False)
+            fields.append({
+                "field_key": m.field_key,
+                "is_critical": m.is_critical,
+                "reviewer": _mark_out(*reviewer, m.note),
+                "override": _mark_out(m.override_status, m.override_error_type, m.override_severity, m.override_note)
+                if m.override_status is not None else None,
+                "overridden_by": users[m.overridden_by].full_name if m.overridden_by in users else None,
+                "overridden_at": m.overridden_at,
+                "effective": _mark_out(*eff),
+            })
+        reviewer_user = users.get(task.assigned_to) if task else None
+        records.append({
+            "record_id": r.id,
+            "source_identifier": r.source_identifier,
+            "original_filename": r.original_filename,
+            "document_type_id": doc_types.get(task.batch_id) if task else None,
+            "indexed_data": r.indexed_data or {},
+            "status": r.status.value,
+            "qc_task_id": task.id if task else None,
+            "reviewer_passed": task.status == TaskStatus.completed if task else None,
+            "reviewer_name": reviewer_user.full_name if reviewer_user else None,
+            "reviewed_at": task.completed_at if task else None,
+            "defect_count": sum(1 for f in fields if f["effective"]["status"] == "defective"),
+            "overridden": any(f["override"] for f in fields),
+            "fields": fields,
+        })
+
+    result = await _tally(db, lot) if sampled else None
+    classes = None
+    if lot.class_plan and result is not None:
+        classes = defect_class_service.judge(result["defects_by_class"], lot.class_plan)["classes"]
+    return {
+        "lot_id": lot.id,
+        "status": lot.status.value,
+        "qc_round": lot.qc_round,
+        "iso": lot.acceptance_number is not None,
+        "acceptance_number": lot.acceptance_number,
+        "classes": classes,
+        "accepted": result["accepted"] if result else None,
+        "accuracy_rate": result["accuracy_rate"] if result else None,
+        "any_critical_defect": result["any_critical_defect"] if result else None,
+        "non_critical_defect_total": result["non_critical_defect_total"] if result else None,
+        "records": records,
+    }
 
 
 async def get_field_result_tabulation(
@@ -744,7 +1105,8 @@ async def get_field_result_tabulation(
     tenant_id: int,
 ) -> dict:
     """Supervisor-facing aggregate of every QC agent's per-field marks on
-    this lot — which fields were found defective, how often, by whom, and
+    this lot (the supervisor's overrides where they made one) — which
+    fields were found defective, how often, by whom, and
     whether any critical-field defect makes the lot defective outright
     regardless of the non-critical tally against acceptance_number. Mirrors
     the same critical/non-critical split calculate_accuracy uses to decide
@@ -783,12 +1145,13 @@ async def get_field_result_tabulation(
             "by_class": {"critical": 0, "major": 0, "minor": 0},
             "by_error_type": {},
         })
-        if qfr.status == QcFieldStatus.defective:
+        # The mark that counts: the customer QC supervisor's override, if any.
+        status, error_type, severity = defect_class_service.effective(qfr)
+        if status == QcFieldStatus.defective.value:
             entry["defective_count"] += 1
-            severity = qfr.severity.value if qfr.severity else ("critical" if qfr.is_critical else "major")
-            entry["by_class"][severity] += 1
-            if qfr.error_type:
-                et = qfr.error_type.value
+            entry["by_class"][severity.value] += 1
+            if error_type:
+                et = getattr(error_type, "value", error_type)
                 entry["by_error_type"][et] = entry["by_error_type"].get(et, 0) + 1
         else:
             entry["accepted_count"] += 1

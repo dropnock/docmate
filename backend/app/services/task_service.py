@@ -505,37 +505,15 @@ async def fail_task(
             action=AuditAction.qc_rejected, performed_by=user_id, metadata={"reason": reason},
         )
 
-        # Route the record back through QA for remediation. The original
-        # batch has typically already completed by the time customer QC
-        # rejects it, and assign_qa_agent only ever looks at unassigned QA
-        # tasks in a batch whose status is qa_review — so a fresh small
-        # batch is created (same convention as create_indexing_batch: new
-        # assignable work gets its own batch) to make this record
-        # immediately assignable to a QA agent via the existing UI.
-        original_batch = await db.get(Batch, task.batch_id)
-        rework_batch = Batch(
-            project_id=original_batch.project_id,
-            cabinet_id=original_batch.cabinet_id,
-            document_type_id=original_batch.document_type_id,
-            name="",
-            batch_type=BatchType.indexing,
-            status=BatchStatus.qa_review,
-        )
-        db.add(rework_batch)
+        # A sampled lot's rejections wait for the customer QC supervisor's
+        # decision (lot_service.decide_lot calls route_to_rework): they may
+        # dismiss the rejection first. A QC task outside any lot goes
+        # straight back.
         await db.flush()
-        rework_batch.name = f"QC Rework {rework_batch.id} — Record {record.id}"
-        record.batch_id = rework_batch.id
-        db.add(Task(
-            record_id=record.id,
-            batch_id=rework_batch.id,
-            task_type=TaskType.qa,
-            assigned_to=None,
-            assigned_by=user_id,
-            status=TaskStatus.pending,
-        ))
-
-        await db.flush()
-        await _maybe_finalise_lot(db, record=record, tenant_id=tenant_id)
+        if await _find_sampled_lot_record(db, record_id=record.id) is None:
+            await route_to_rework(db, record=record, qc_task=task, user_id=user_id)
+        else:
+            await _maybe_finalise_lot(db, record=record, tenant_id=tenant_id)
 
     await audit_service.write_event(
         db, tenant_id=tenant_id, entity_type=AuditEntityType.task, entity_id=task.id,
@@ -543,6 +521,42 @@ async def fail_task(
         old_value={"status": "in_progress"}, new_value={"status": "failed", "reason": reason},
     )
     return task
+
+
+async def route_to_rework(db: AsyncSession, *, record: Record, qc_task: Task | None, user_id: int) -> Batch | None:
+    """Send a record customer QC rejected back through QA for remediation.
+    Called by lot_service.decide_lot once the customer QC supervisor has
+    confirmed the lot. The original batch has typically completed long
+    before, and assign_qa_agent only ever looks at unassigned QA tasks in a
+    batch whose status is qa_review — so a fresh small batch is created
+    (same convention as create_indexing_batch: new assignable work gets its
+    own batch) to make this record immediately assignable to a QA agent."""
+    batch_id = qc_task.batch_id if qc_task else record.batch_id
+    original_batch = await db.get(Batch, batch_id) if batch_id else None
+    if original_batch is None:
+        return None  # no batch to take the project/cabinet/document type from
+    rework_batch = Batch(
+        project_id=original_batch.project_id,
+        cabinet_id=original_batch.cabinet_id,
+        document_type_id=original_batch.document_type_id,
+        name="",
+        batch_type=BatchType.indexing,
+        status=BatchStatus.qa_review,
+    )
+    db.add(rework_batch)
+    await db.flush()
+    rework_batch.name = f"QC Rework {rework_batch.id} — Record {record.id}"
+    record.batch_id = rework_batch.id
+    db.add(Task(
+        record_id=record.id,
+        batch_id=rework_batch.id,
+        task_type=TaskType.qa,
+        assigned_to=None,
+        assigned_by=user_id,
+        status=TaskStatus.pending,
+    ))
+    await db.flush()
+    return rework_batch
 
 
 SKIPPABLE_STATUSES = (

@@ -354,7 +354,7 @@ class TestCustomerQc:
         assert lot.acceptance_number == 0  # the major class's
         return lot, records
 
-    async def _review(self, db, seed, lot, defects: dict[int, list[FieldResultIn]]):
+    async def _review(self, db, seed, lot, defects: dict[int, list[FieldResultIn]], decide: bool = True):
         """QC every sampled record: record i gets defects[i] (fail) or all accepted."""
         from datetime import datetime, timezone
         from app.models.batch import Batch
@@ -391,6 +391,9 @@ class TestCustomerQc:
                 await task_service.complete_task(db, field_results=accept, **kw)
         await db.flush()
         await db.refresh(lot)
+        if decide:
+            from tests.conftest import decide as _decide
+            await _decide(db, seed, lot)
 
     @staticmethod
     def _bad(field, error_type):

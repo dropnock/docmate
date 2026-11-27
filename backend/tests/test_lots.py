@@ -9,6 +9,7 @@ from app.models.aql import AQLStatus, SamplingMode
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
+from tests.conftest import decide
 from app.services import lot_service
 
 
@@ -234,11 +235,15 @@ class TestCalculateAccuracyManualModeFallback:
     async def test_all_passed_is_accepted(self, db: AsyncSession, seed):
         lot, _ = await _make_lot_with_record(db, seed, record_status=RecordStatus.qc_passed)
         result = await lot_service.calculate_accuracy(db, lot_id=lot.id, tenant_id=seed["tenant"].id)
+        assert result.status == LotStatus.awaiting_decision
+        result = await decide(db, seed, lot)
         assert result.accuracy_rate == 1.0
         assert result.status == LotStatus.passed
 
     async def test_all_failed_is_rejected(self, db: AsyncSession, seed):
         lot, _ = await _make_lot_with_record(db, seed, record_status=RecordStatus.qc_failed)
         result = await lot_service.calculate_accuracy(db, lot_id=lot.id, tenant_id=seed["tenant"].id)
+        assert result.status == LotStatus.awaiting_decision
+        result = await decide(db, seed, lot)
         assert result.accuracy_rate == 0.0
         assert result.status == LotStatus.failed

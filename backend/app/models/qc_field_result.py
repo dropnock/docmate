@@ -1,6 +1,8 @@
 import enum
 
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -51,6 +53,22 @@ class QcFieldResult(Base, TimestampMixin):
     # The lot's customer QC round this mark belongs to (Lot.qc_round at
     # write time) — tabulation and the lot verdict only count the current one.
     qc_round: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
+    # The customer QC supervisor's correction of this mark while the lot
+    # awaits their decision (lot_service.override_qc_mark). The reviewer's
+    # own mark above is never changed; counts and the verdict use the
+    # override when there is one (defect_class_service.effective).
+    override_status: Mapped[QcFieldStatus | None] = mapped_column(
+        Enum(QcFieldStatus, native_enum=False, length=10, validate_strings=True), nullable=True,
+    )
+    override_error_type: Mapped[ErrorType | None] = mapped_column(
+        Enum(ErrorType, native_enum=False, length=20, validate_strings=True), nullable=True,
+    )
+    override_severity: Mapped[Severity | None] = mapped_column(
+        Enum(Severity, native_enum=False, length=10, validate_strings=True), nullable=True,
+    )
+    override_note: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    overridden_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    overridden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     task = relationship("Task")
     record = relationship("Record")

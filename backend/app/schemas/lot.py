@@ -37,6 +37,8 @@ class LotOut(BaseModel):
     released_by: int | None
     created_by: int | None
     qc_round: int = 1
+    decided_at: datetime | None = None
+    decided_by: int | None = None
 
 
 class ApplySampleRequest(BaseModel):
@@ -85,6 +87,21 @@ class QcFieldResultsOut(BaseModel):
     fields: list[FieldResultSummary]
 
 
+class OverrideMarkRequest(BaseModel):
+    """The customer QC supervisor's ruling on one field (see
+    lot_service.override_qc_mark). A note is required when it differs from
+    the reviewer's mark."""
+    status: Literal["accepted", "defective"]
+    error_type: Literal["missing", "typo", "interpretation"] | None = None
+    note: str | None = Field(default=None, max_length=1024)
+
+
+class RecordOutcomeRequest(BaseModel):
+    """Manual-rate lots: the supervisor's ruling on a whole record."""
+    passed: bool
+    note: str | None = Field(default=None, max_length=1024)
+
+
 class StartInspectionRequest(BaseModel):
     # The lot's ISO 2859-1 inspection level; the AQL is the project's.
     inspection_level: Literal["normal", "tightened", "reduced"]
@@ -125,4 +142,6 @@ class LotQcRoundOut(BaseModel):
     sampled_record_ids: list[int]
     released_at: datetime | None
     qc_completed_at: datetime | None
+    decided_at: datetime | None = None
+    decided_by: int | None = None
     created_at: datetime

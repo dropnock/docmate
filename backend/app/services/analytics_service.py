@@ -440,7 +440,8 @@ async def _lot_counts(db: AsyncSession, project_id: int) -> dict:
         "inspecting": stages["inspecting"],
         "ready_to_release": stages["ready"],
         "released": by_status.get(LotStatus.released, 0),
-        "in_customer_qc": by_status.get(LotStatus.qc_in_progress, 0),
+        # Still with the customer while their QC supervisor decides.
+        "in_customer_qc": by_status.get(LotStatus.qc_in_progress, 0) + by_status.get(LotStatus.awaiting_decision, 0),
         "passed": by_status.get(LotStatus.passed, 0),
         "rejected": by_status.get(LotStatus.failed, 0) + by_status.get(LotStatus.remediation, 0),
         "records_not_in_lot": not_in_lot,

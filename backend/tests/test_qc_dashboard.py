@@ -15,7 +15,7 @@ from app.models.task import Task, TaskStatus, TaskType
 from app.models.user import Portal, User, UserRole
 from app.schemas.task import FieldResultIn
 from app.services import analytics_service, lot_service, task_service
-from tests.conftest import token
+from tests.conftest import decide, token
 
 SCHEMA = {"type": "object", "properties": {"surname": {"type": "string"}, "dob": {"type": "string", "x-critical": True}}}
 
@@ -105,6 +105,9 @@ class TestCalculateAccuracyQcSummaryFields:
         await db.commit()
 
         lot = await db.get(Lot, lot.id)
+        assert lot.qc_completed_at is None  # set when the supervisor decides
+        assert lot.critical_defect_count == 0
+        lot = await decide(db, seed, lot)
         assert lot.qc_completed_at is not None
         assert lot.critical_defect_count == 0
         assert lot.minor_defect_count == 1
@@ -124,6 +127,7 @@ class TestCalculateAccuracyQcSummaryFields:
         await db.flush()
 
         result = await lot_service.calculate_accuracy(db, lot_id=lot.id, tenant_id=seed["tenant"].id)
+        result = await decide(db, seed, result)
         assert result.qc_completed_at is not None
         assert result.critical_defect_count is None
         assert result.minor_defect_count is None

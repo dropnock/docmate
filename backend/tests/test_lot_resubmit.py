@@ -36,7 +36,7 @@ async def _inspect_and_release(db, seed, lot, level="normal"):
     return inspection
 
 
-async def _customer_qc(db, seed, lot, *, fail_first: bool):
+async def _customer_qc(db, seed, lot, *, fail_first: bool, decide: bool = True):
     """Sample the whole lot, hand it to the QC agent and review every
     sampled record — failing the first one on a critical field if asked."""
     seed["aql_config"].sampling_mode = SamplingMode.manual
@@ -84,6 +84,9 @@ async def _customer_qc(db, seed, lot, *, fail_first: bool):
             )
     await db.flush()
     await db.refresh(lot)
+    if decide:
+        from tests.conftest import decide as _decide
+        await _decide(db, seed, lot)
     return sampled
 
 

@@ -97,3 +97,22 @@ def judge(counts: dict[str, int], plan_classes: dict[str, dict]) -> dict[str, An
         found = counts.get(cls, 0)
         classes[cls] = {**plan, "found": found, "accepted": found <= plan["acceptance_number"]}
     return {"accepted": all(c["accepted"] for c in classes.values()), "classes": classes}
+
+
+def effective(qfr, *, overrides: bool = True) -> tuple[str, ErrorType | None, Severity | None]:
+    """(status, error_type, severity) a QcFieldResult counts as: the customer
+    QC supervisor's override when there is one (lot_service.override_qc_mark),
+    otherwise the reviewer's own mark (overrides=False: always the
+    reviewer's). A defect with no stored class (marks made before classes
+    existed) counts as critical on an identifier field and major otherwise."""
+    if overrides and qfr.override_status is not None:
+        status = getattr(qfr.override_status, "value", qfr.override_status)
+        error_type, severity = qfr.override_error_type, qfr.override_severity
+    else:
+        status = getattr(qfr.status, "value", qfr.status)
+        error_type, severity = qfr.error_type, qfr.severity
+    if status != "defective":
+        return status, None, None
+    if severity is None:
+        severity = Severity.critical if qfr.is_critical else Severity.major
+    return status, error_type, Severity(severity)

@@ -13,8 +13,10 @@ from app.schemas.lot import (
     LotCreate,
     LotOut,
     LotQcRoundOut,
+    OverrideMarkRequest,
     QcFieldResultsOut,
     RecallLotRequest,
+    RecordOutcomeRequest,
     RemoveLotRecordsRequest,
     ReviewInspectionItemRequest,
     StartInspectionRequest,
@@ -270,6 +272,70 @@ async def send_for_remediation(
     lot = await lot_service.send_for_remediation(
         db, lot_id=lot_id, user_id=current_user.id, tenant_id=current_user._tenant_id
     )
+    await db.commit()
+    return LotOut.model_validate(lot)
+
+
+# ── Customer QC supervisor's review and decision ────────────────────────────
+# Once every sampled record has been reviewed the lot is awaiting_decision:
+# the supervisor checks the defects, may change reviewers' marks, then
+# confirms the verdict. See lot_service.override_qc_mark / decide_lot.
+
+
+@router.get("/{lot_id}/qc-review")
+async def get_qc_review(
+    lot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("customer_supervisor", "admin")),
+):
+    await _get_authorized_lot(db, lot_id, current_user)
+    return await lot_service.get_qc_review(db, lot_id=lot_id, tenant_id=current_user._tenant_id)
+
+
+@router.put("/{lot_id}/qc-review/{record_id}/fields/{field_key}")
+async def override_qc_mark(
+    lot_id: int,
+    record_id: int,
+    field_key: str,
+    body: OverrideMarkRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("customer_supervisor", "admin")),
+):
+    await _get_authorized_lot(db, lot_id, current_user)
+    result = await lot_service.override_qc_mark(
+        db, lot_id=lot_id, record_id=record_id, field_key=field_key,
+        status=body.status, error_type=body.error_type, note=body.note,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return result
+
+
+@router.put("/{lot_id}/qc-review/{record_id}/outcome")
+async def override_record_outcome(
+    lot_id: int,
+    record_id: int,
+    body: RecordOutcomeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("customer_supervisor", "admin")),
+):
+    await _get_authorized_lot(db, lot_id, current_user)
+    result = await lot_service.override_record_outcome(
+        db, lot_id=lot_id, record_id=record_id, passed=body.passed, note=body.note,
+        user_id=current_user.id, tenant_id=current_user._tenant_id,
+    )
+    await db.commit()
+    return result
+
+
+@router.post("/{lot_id}/decide")
+async def decide_lot(
+    lot_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("customer_supervisor", "admin")),
+):
+    await _get_authorized_lot(db, lot_id, current_user)
+    lot = await lot_service.decide_lot(db, lot_id=lot_id, user_id=current_user.id, tenant_id=current_user._tenant_id)
     await db.commit()
     return LotOut.model_validate(lot)
 

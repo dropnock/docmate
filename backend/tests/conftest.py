@@ -205,3 +205,17 @@ async def client(db: AsyncSession):
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
     app.dependency_overrides.pop(get_db, None)
+
+
+async def decide(db, seed, lot):
+    """The customer QC supervisor confirms a lot that is awaiting their
+    decision (lot_service.decide_lot); returns the refreshed lot."""
+    from app.models.lot import LotStatus
+    from app.services import lot_service
+    await db.flush()
+    await db.refresh(lot)
+    assert lot.status == LotStatus.awaiting_decision, lot.status
+    await lot_service.decide_lot(db, lot_id=lot.id, user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id)
+    await db.flush()
+    await db.refresh(lot)
+    return lot

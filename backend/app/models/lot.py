@@ -12,6 +12,10 @@ class LotStatus(str, enum.Enum):
     draft = "draft"
     released = "released"
     qc_in_progress = "qc_in_progress"
+    # Every sampled record has been reviewed; the customer QC supervisor
+    # reviews the defects (lot_service.override_qc_mark) and confirms the
+    # verdict (lot_service.decide_lot).
+    awaiting_decision = "awaiting_decision"
     passed = "passed"
     failed = "failed"
     remediation = "remediation"
@@ -64,10 +68,15 @@ class Lot(Base, TimestampMixin):
     qc_round: Mapped[int] = mapped_column(Integer, default=1, server_default="1", nullable=False)
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     released_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    # The customer QC supervisor who confirmed the current round's verdict
+    # (lot_service.decide_lot), and when.
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
 
     project = relationship("Project", backref="lots")
     releaser = relationship("User", foreign_keys=[released_by])
+    decider = relationship("User", foreign_keys=[decided_by])
     creator = relationship("User", foreign_keys=[created_by])
     lot_records = relationship("LotRecord", back_populates="lot", cascade="all, delete-orphan")
 
@@ -116,3 +125,5 @@ class LotQcRound(Base, TimestampMixin):
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     qc_completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resubmitted_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
