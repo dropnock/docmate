@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState, useEffect } from "react";
 import { Drawer, Layout, Menu, Spin, Result } from "antd";
-import { BarChart3, CheckCircle2, Flag, Gauge, History, Layers, List } from "lucide-react";
+import { BarChart3, BookOpen, CheckCircle2, Flag, Gauge, History, Layers, List } from "lucide-react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@shared/query/queryClient";
 import {
@@ -26,6 +26,7 @@ const QCWorkspace = lazy(() => import("./pages/QCWorkspace"));
 const CustomerLotManager = lazy(() => import("./pages/CustomerLotManager"));
 const CustomerFlaggedRecords = lazy(() => import("./pages/CustomerFlaggedRecords"));
 const CustomerQcBatches = lazy(() => import("./pages/CustomerQcBatches"));
+const Help = lazy(() => import("./pages/Help"));
 
 const { Sider, Content } = Layout;
 const queryClient = createQueryClient();
@@ -46,7 +47,10 @@ const SUPERVISOR_ITEMS = [
 
 const QC_ITEMS = [{ key: "/qc", label: "QC Workspace", icon: <CheckCircle2 size={16} /> }];
 
-const FULL_BLEED_ROUTES = new Set(["/qc"]);
+// Help is for everyone; the backend picks the manuals for the user's role.
+const HELP_ITEMS = [{ key: "/help", label: "Help", icon: <BookOpen size={16} /> }];
+
+const FULL_BLEED_ROUTES = new Set(["/qc", "/help"]);
 
 function getSubdomain(): string | null {
   const parts = window.location.hostname.split(".");
@@ -67,7 +71,7 @@ function AppInner() {
   if (userLoading || !user) return <Spin fullscreen tip="Loading profile..." />;
 
   const isSupervisor = user.role === "customer_supervisor";
-  const navItems = [...QC_ITEMS, ...(isSupervisor ? SUPERVISOR_ITEMS : [])];
+  const navItems = [...QC_ITEMS, ...(isSupervisor ? SUPERVISOR_ITEMS : []), ...HELP_ITEMS];
 
   const isWorkspacePage = FULL_BLEED_ROUTES.has(location.pathname);
 
@@ -149,6 +153,7 @@ function AppInner() {
                 }
               />
               <Route path="/qc" element={<QCWorkspace />} />
+              <Route path="/help" element={<Help />} />
               <Route
                 path="/kpis"
                 element={
