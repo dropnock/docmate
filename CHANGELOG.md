@@ -8,7 +8,7 @@ See `RELEASING.md` for how to cut a release.
 ## [Unreleased]
 
 ### Added
-- **Customer portal: search flagged records.** Flagged Records has a
+- **Search flagged records** in both portals. Flagged Records has a
   search box that finds flags by record name, identifier or ID, batch, the
   issue, the resolution, or anything said in the discussion. It searches
   the selected tab (Open, Resolved, Withdrawn) as you type. The list

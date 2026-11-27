@@ -1,9 +1,9 @@
-import { useState, type Key } from "react";
+import { useEffect, useState, type Key } from "react";
 import {
   Alert, Button, Card, Divider, Empty, Input, Popconfirm, Segmented, Space, Table, Tag, Tooltip, Typography, message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { Download, Share2 } from "lucide-react";
 import { formatApiError } from "@shared/api/errors";
@@ -27,11 +27,21 @@ export default function FlaggedRecords({ projectId }: { projectId: number }) {
   const [status, setStatus] = useState<FlagStatus>("open");
   const [resolution, setResolution] = useState("");
   const [selected, setSelected] = useState<number[]>([]);
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  // Search as you type, once typing pauses. A new search drops the selection
+  // so Share never includes flags the search has hidden.
+  useEffect(() => {
+    const t = window.setTimeout(() => setQ(search.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [search]);
+  useEffect(() => setSelected([]), [q]);
 
-  const { data: flags = [], isLoading } = useQuery({
-    queryKey: projectFlagsKey(projectId, status),
-    queryFn: () => listProjectFlags(projectId, status),
+  const { data: flags = [], isLoading, isFetching } = useQuery({
+    queryKey: projectFlagsKey(projectId, status, q),
+    queryFn: () => listProjectFlags(projectId, status, q),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
   const { reviewing, open, close } = useFlagReview(flags);
 
@@ -122,7 +132,10 @@ export default function FlaggedRecords({ projectId }: { projectId: number }) {
     },
   ];
 
-  const selectedUnshared = selected.filter((id) => !flags.find((f) => f.id === id)?.shared_at);
+  const selectedUnshared = selected.filter((id) => {
+    const f = flags.find((x) => x.id === id);
+    return f && !f.shared_at;
+  });
 
   return (
     <Card
@@ -165,6 +178,23 @@ export default function FlaggedRecords({ projectId }: { projectId: number }) {
         </Space>
       }
     >
+      <Space style={{ marginBottom: 12 }} wrap>
+        <Input.Search
+          allowClear
+          placeholder="Search record, batch, issue or discussion"
+          style={{ width: 360 }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onSearch={(v) => setQ(v.trim())}
+          loading={isFetching && !!q}
+          data-flag-search
+        />
+        {q && !isFetching && (
+          <Typography.Text type="secondary" data-flag-search-count>
+            {flags.length} {flags.length === 1 ? "match" : "matches"} in {status === "withdrawn" ? "removed" : status}
+          </Typography.Text>
+        )}
+      </Space>
       <Table
         rowKey="id"
         size="small"
@@ -177,7 +207,19 @@ export default function FlaggedRecords({ projectId }: { projectId: number }) {
             ? { selectedRowKeys: selected, onChange: (keys: Key[]) => setSelected(keys as number[]) }
             : undefined
         }
-        locale={{ emptyText: <Empty description={status === "open" ? "Nothing flagged — all clear" : "None"} /> }}
+        locale={{
+          emptyText: (
+            <Empty
+              description={
+                q
+                  ? `No flags in this tab match "${q}". Try the other tabs or a different search.`
+                  : status === "open"
+                    ? "Nothing flagged — all clear"
+                    : "None"
+              }
+            />
+          ),
+        }}
       />
 
       <RecordViewerDrawer recordId={reviewing?.record_id ?? null} onClose={close}>
