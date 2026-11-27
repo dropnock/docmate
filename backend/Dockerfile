@@ -1,6 +1,6 @@
 # The in-app manuals (repo manuals/, passed in as the "manuals" build context
 # by docker-compose.yml): Markdown + brand/brand.yaml + templates/ → HTML.
-FROM python:3.11-slim AS manuals
+FROM python:3.11-slim AS manuals-build
 RUN apt-get update && apt-get install -y --no-install-recommends pandoc \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=manuals requirements.txt /manuals/requirements.txt
@@ -22,7 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-COPY --from=manuals /manuals_dist /app/manuals_dist
+COPY --from=manuals-build /manuals_dist /app/manuals_dist
 
 # Baked in at build time (see RELEASING.md) — defaults keep everyday
 # `docker-compose up --build` unaffected when nothing is exported.
