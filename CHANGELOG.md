@@ -7,6 +7,8 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-11-27
+
 ### Added
 - **Who's Online** (Admin → Who's Online, digitizing portal, admins only).
   Lists everyone in either portal seen in the last 15 minutes, hour or 8
