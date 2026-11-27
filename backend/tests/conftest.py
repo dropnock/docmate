@@ -50,6 +50,10 @@ async def _fake_verify_token(token: str, realm_slug: str) -> dict:
 
 security_module._verify_token = _fake_verify_token
 
+# No second database for presence's own transaction: stamp in the test session.
+import app.services.presence_service as presence_service  # noqa: E402
+presence_service.USE_OWN_SESSION = False
+
 
 @pytest_asyncio.fixture
 async def db():

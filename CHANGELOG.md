@@ -7,6 +7,14 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+### Added
+- **Who's Online** (Admin → Who's Online, digitizing portal, admins only).
+  Lists everyone in either portal seen in the last 15 minutes, hour or 8
+  hours: Working (typed or clicked in a record in the last 90 seconds),
+  Online (DocMate open) or Idle, with the record they have open, when they
+  were last seen and how long they've been on. Refreshes every 30 seconds.
+  Needs migration `e7a3c5b1d9f2` (users.last_seen_at, session_started_at).
+
 ## [0.9.3] - 2026-11-26
 
 ### Added

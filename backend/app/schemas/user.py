@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from typing import Annotated
 
 from pydantic import BaseModel, field_validator
@@ -60,3 +61,27 @@ class UserOut(BaseModel):
     portal: str
     is_active: bool
     organization_id: int | None
+
+
+class OnlineTask(BaseModel):
+    id: int
+    task_type: str
+    record_id: int
+    record_name: str
+    batch_name: str
+    project_name: str
+    last_active_at: datetime | None
+    working: bool
+
+
+class OnlineUser(BaseModel):
+    id: int
+    full_name: str
+    email: str
+    role: str
+    portal: str
+    organization_name: str | None
+    last_seen_at: datetime
+    session_started_at: datetime | None
+    status: str  # active | idle
+    task: OnlineTask | None

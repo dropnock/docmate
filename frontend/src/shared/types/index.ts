@@ -588,3 +588,30 @@ export interface LotInspectionReport {
   inspection_level: InspectionLevel | null;
   inspections: LotInspectionDetail[];
 }
+
+/** GET /api/users/online — presence_service.online_users. */
+export interface OnlineTask {
+  id: number;
+  task_type: "indexing" | "qa" | "qc";
+  record_id: number;
+  record_name: string;
+  batch_name: string;
+  project_name: string;
+  last_active_at: string | null;
+  /** Input in the task within the last 90 seconds. */
+  working: boolean;
+}
+
+export interface OnlineUser {
+  id: number;
+  full_name: string;
+  email: string;
+  role: string;
+  portal: "digitizing" | "customer";
+  organization_name: string | null;
+  last_seen_at: string;
+  session_started_at: string | null;
+  /** active: a request in the last 2 minutes; idle: older. */
+  status: "active" | "idle";
+  task: OnlineTask | null;
+}

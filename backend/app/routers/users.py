@@ -1,6 +1,7 @@
 import logging
+from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,7 +9,7 @@ from app.core.database import get_db
 from app.core.security import get_current_user, require_roles
 from app.models.organization import Organization, OrgType
 from app.models.user import Portal, User, UserRole
-from app.schemas.user import UserCreate, UserOut, UserUpdate
+from app.schemas.user import OnlineUser, UserCreate, UserOut, UserUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,20 @@ async def list_users(
         select(User).where(User.tenant_id == current_user._tenant_id)
     )
     return list(result.scalars().all())
+
+
+@router.get("/online", response_model=list[OnlineUser])
+async def list_online_users(
+    within: int = Query(15, ge=1, le=1440, description="Minutes since last seen"),
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("admin")),
+):
+    """Everyone in the tenant seen in the last `within` minutes, with the
+    task they have open."""
+    from app.services import presence_service
+    return await presence_service.online_users(
+        db, tenant_id=current_user._tenant_id, within=timedelta(minutes=within)
+    )
 
 
 @router.get("/me", response_model=UserOut)

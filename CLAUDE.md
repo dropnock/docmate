@@ -89,6 +89,9 @@ Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises
 ### Audit trail (`services/audit_service.py`)
 `write_event()` is the only way to write to `audit_logs`. Call it from service methods, never from routers. It does not commit — the caller owns the transaction, keeping the audit entry atomic with the operation it records. Use the entity type of the thing the event is about (`record`, `lot`, `cabinet`, `batch`, …) with that thing's id — `get_record_history()` (one record) and `get_lot_history()` (one lot, `GET /api/lots/{id}/history`; customers see it from first release onward) filter on it, so an event filed under the wrong type leaks into the history of an unrelated record that shares the id.
 
+### Presence (`services/presence_service.py`)
+`get_current_user` calls `record_request()`, which stamps `User.last_seen_at` at most once a minute in its own committed transaction (never the request's, so the users row isn't held locked) and starts a new `session_started_at` after a 30-minute gap; it uses a Core UPDATE that leaves `updated_at` alone and never fails the request. Open tabs poll, so "seen" means DocMate is open; "working" comes from the open task's `last_active_at` (task heartbeat). `GET /api/users/online?within=<minutes>` (admin) backs the Who's Online page. Tests set `USE_OWN_SESSION = False` in conftest.
+
 ### Analytics (`services/analytics_service.py`)
 - `staff_productivity()` — per-agent metrics, filterable by shift/date
 - `project_kpis()` — completion %, projected vs proposed end date, on-track flag

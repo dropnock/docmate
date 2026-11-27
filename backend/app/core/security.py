@@ -143,6 +143,9 @@ async def get_current_user(
         )
 
     user._tenant_id = user.tenant_id
+
+    from app.services import presence_service
+    await presence_service.record_request(db, user)
     return user
 
 

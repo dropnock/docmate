@@ -14,6 +14,7 @@ import {
   User,
   CheckSquare,
   Flag,
+  Radio,
 } from "lucide-react";
 import { useQuery, QueryClientProvider } from "@tanstack/react-query";
 import { createQueryClient } from "@shared/query/queryClient";
@@ -46,6 +47,7 @@ const CabinetManager = lazy(() => import("./pages/CabinetManager"));
 const CabinetAssignment = lazy(() => import("./pages/CabinetAssignment"));
 const LotManager = lazy(() => import("./pages/LotManager"));
 const FlaggedRecords = lazy(() => import("./pages/FlaggedRecords"));
+const WhosOnline = lazy(() => import("./pages/WhosOnline"));
 
 const { Sider, Content } = Layout;
 const qc = createQueryClient();
@@ -70,6 +72,7 @@ const ADMIN_PAGES = [
   { key: "/organisations", label: "Organisations", icon: <Landmark size={16} /> },
   { key: "/shifts", label: "Shifts", icon: <Clock size={16} /> },
   { key: "/users", label: "Users", icon: <User size={16} /> },
+  { key: "/online", label: "Who's Online", icon: <Radio size={16} /> },
 ];
 
 const FULL_BLEED_ROUTES = new Set(["/my-tasks"]);
@@ -290,6 +293,15 @@ function AppInner() {
                 element={
                   <RequireRole allow={isAdmin}>
                     <UsersManager />
+                  </RequireRole>
+                }
+              />
+
+              <Route
+                path="/online"
+                element={
+                  <RequireRole allow={isAdmin}>
+                    <WhosOnline />
                   </RequireRole>
                 }
               />
