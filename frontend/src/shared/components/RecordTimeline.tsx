@@ -32,6 +32,8 @@ const ACTION_COLOR: Record<string, string> = {
   flag_shared: "gold",
   flag_unshared: "default",
   flag_comment_added: "gold",
+  qc_mark_overridden: "gold",
+  qc_lot_decided: "processing",
 };
 
 function EventDetail({ event }: { event: AuditEvent }) {
