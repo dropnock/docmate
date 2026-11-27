@@ -1,0 +1,90 @@
+<!doctype html>
+{#- One template for both outputs.
+    mode == "web":   the in-app HTML page (header, contents sidebar, footer).
+    mode == "print": the page WeasyPrint turns into a PDF (cover, running
+                     header/footer). The backend replaces PREPARED_FOR and
+                     ISSUED_ON with the downloading organisation and date. -#}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ manual.title }} · {{ brand.product }} {{ brand.portal }}</title>
+<meta name="generator" content="manuals/build.py">
+<meta name="docmate-version" content="{{ version }}">
+{% if mode == "print" %}
+<meta name="description" content="Prepared for {{ PREPARED_FOR }}">
+<meta name="author" content="{{ brand.product }}">
+{% endif %}
+<link rel="stylesheet" href="assets/brand.css">
+<link rel="stylesheet" href="assets/{{ 'print' if mode == 'print' else 'manual' }}.css">
+</head>
+<body class="kind-{{ manual.kind }} mode-{{ mode }}">
+{%- macro wordmark() -%}
+  {%- if logo_file -%}
+    <img class="logo" src="assets/{{ logo_file }}" alt="{{ brand.product }}">
+  {%- else -%}
+    <span class="wordmark">{{ brand.product }}</span>
+  {%- endif -%}
+{%- endmacro %}
+
+{% if mode == "print" %}
+<section class="cover">
+  <div class="cover-brand">{{ wordmark() }} <span class="cover-portal">{{ brand.portal }}</span></div>
+  {#- string-set (print.css) copies these into every page's header/footer. -#}
+  <h1 class="cover-title" data-run="{{ manual.title }}">{{ manual.title }}</h1>
+  {% if subtitle %}<p class="cover-subtitle">{{ subtitle }}</p>{% endif %}
+  <table class="cover-meta">
+    <tr><th>Prepared for</th>
+      <td class="prepared-for" data-run="Prepared for {{ PREPARED_FOR }} · {{ brand.product }} {{ version }}">{{ PREPARED_FOR }}</td></tr>
+    <tr><th>Issued</th><td>{{ ISSUED_ON }}</td></tr>
+    <tr><th>{{ brand.product }} version</th><td>{{ version }}</td></tr>
+  </table>
+</section>
+<main class="content">
+{{ body }}
+</main>
+
+{% else %}
+<header class="topbar">
+  <a class="brand" href="#top">{{ wordmark() }} <span class="portal">{{ brand.portal }}</span></a>
+  <span class="doc-title">{{ manual.title }}</span>
+  <span class="version">v{{ version }}</span>
+</header>
+<div class="layout" id="top">
+  <nav class="toc" aria-label="Contents">
+    <p class="toc-heading">Contents</p>
+    <ol>
+    {% for item in toc %}
+      <li><a href="#{{ item.id }}">{{ item.text }}</a></li>
+    {% endfor %}
+    </ol>
+  </nav>
+  <main class="content">
+    <h1 class="doc-h1">{{ manual.title }}</h1>
+    {% if subtitle %}<p class="subtitle">{{ subtitle }}</p>{% endif %}
+{{ body }}
+    <footer class="page-footer">
+      <span>{{ brand.footer }} · v{{ version }}</span>
+      {% if brand.support %}<span>{{ brand.support }}</span>{% endif %}
+      <span>{{ brand.copyright }}</span>
+    </footer>
+  </main>
+</div>
+<script>
+// Highlight the section being read in the contents sidebar.
+(() => {
+  const links = new Map([...document.querySelectorAll('.toc a')].map(a => [a.hash.slice(1), a]));
+  const seen = new Set();
+  const io = new IntersectionObserver(entries => {
+    for (const e of entries) e.isIntersecting ? seen.add(e.target.id) : seen.delete(e.target.id);
+    const first = [...links.keys()].find(id => seen.has(id));
+    if (!first) return;
+    links.forEach(a => a.classList.remove('active'));
+    links.get(first).classList.add('active');
+  }, { rootMargin: '0px 0px -70% 0px' });
+  links.forEach((_, id) => { const h = document.getElementById(id); if (h) io.observe(h); });
+})();
+</script>
+{% endif %}
+</body>
+</html>

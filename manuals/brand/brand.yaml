@@ -1,0 +1,46 @@
+# The one place for the manuals' branding. build.py (HTML + print/PDF) and
+# tools/build_docx.py (Word) both read this file; nothing else hard-codes a
+# colour, font or name. Change a value and rebuild to re-skin every manual.
+
+product: DocMate
+portal: Customer Portal
+
+# Optional logo (SVG or PNG, path relative to this folder). Leave empty to use
+# the product name as a wordmark in the primary colour, as the app header does.
+logo: ""
+
+# Colours mirror frontend/src/shared/theme/theme.ts.
+colors:
+  primary: "#1E40AF"        # headings, links, header wordmark
+  primary_dark: "#1E3A8A"   # link hover
+  primary_bg: "#EFF6FF"     # call-out background, active TOC item
+  text: "#0F172A"
+  text_secondary: "#64748B" # captions, footer, meta text
+  border: "#E2E8F0"
+  table_border: "#CBD5E1"
+  background: "#F8FAFC"     # page background around the content
+  surface: "#FFFFFF"
+
+font:
+  family: Inter
+  # woff2 files in fonts/, by weight. Bundled so PDFs look the same on any server.
+  files:
+    400: fonts/inter-latin-400-normal.woff2
+    600: fonts/inter-latin-600-normal.woff2
+    700: fonts/inter-latin-700-normal.woff2
+  fallback: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif"
+
+# Footer text on every HTML page and PDF page.
+footer: "DocMate Customer Portal"
+copyright: "© DocMate"
+# Shown at the foot of each HTML page; leave empty to omit.
+support: "For help, contact your DocMate project manager."
+
+# PDF page setup.
+page:
+  size: Letter
+  margin: "0.75in"
+
+# Word copies (tools/build_docx.py) use a font every Word install has, since
+# a .docx can't carry the web font reliably.
+docx_font: Calibri
