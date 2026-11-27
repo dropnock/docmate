@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Input, Radio, Segmented, Space, Table, Tag, Tooltip, Typography } from "antd";
 import type { ClassResults, ErrorClasses, ErrorType, QcFieldStatus, Severity } from "@shared/types";
 
@@ -65,7 +66,7 @@ export interface FieldMark {
  * wrong (Missing / Typo / Interpretation) — its class follows from that.
  * An empty field flipped to Defective starts as Missing. */
 export function FieldMarkControl({
-  title, isIdentifier, mark, onChange, disabled, valueEmpty, errorClasses, notePlaceholder, hideNote,
+  title, isIdentifier, mark, onChange, disabled, valueEmpty, errorClasses, notePlaceholder, hideNote, extra,
 }: {
   title: string;
   isIdentifier: boolean;
@@ -77,6 +78,8 @@ export function FieldMarkControl({
   notePlaceholder?: string;
   /** Leave out the note box (the caller collects its own). */
   hideNote?: boolean;
+  /** Shown between the field's name and the Accepted / Defective control. */
+  extra?: ReactNode;
 }) {
   const severity = mark.status === "defective" ? classifyMark(isIdentifier, mark.error_type, errorClasses) : undefined;
   return (
@@ -89,6 +92,7 @@ export function FieldMarkControl({
           </Tooltip>
         )}
       </Space>
+      {extra}
       <br />
       <Segmented
         disabled={disabled}

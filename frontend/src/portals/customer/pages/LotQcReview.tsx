@@ -169,7 +169,7 @@ export default function LotQcReview() {
       qc.invalidateQueries({ queryKey: ["customer-lots", lot.project_id] });
       if (lot.status === "passed") message.success("Lot accepted");
       else message.warning("Lot rejected — send it for remediation from the lot's settings");
-      navigate("/lots");
+      navigate(`/lots?project=${lot.project_id}`);
     },
     onError: (e: unknown) => message.error(formatApiError(e, "Couldn't confirm the decision")),
   });
@@ -217,7 +217,7 @@ export default function LotQcReview() {
           borderBottom: "1px solid #E2E8F0", background: "#FFFFFF", flexWrap: "wrap",
         }}
       >
-        <Button size="small" onClick={() => navigate("/lots")}>← Back to lots</Button>
+        <Button size="small" onClick={() => navigate(`/lots?project=${review.project_id}`)}>← Back to lots</Button>
         <Typography.Text strong>QC review: {review.lot_name}</Typography.Text>
         {review.qc_round > 1 && <Tag>Round {review.qc_round}</Tag>}
         {review.classes && counts ? (
@@ -349,23 +349,39 @@ export default function LotQcReview() {
                   </Card>
 
                   {review.iso ? (
-                    <Card size="small" title="Field review" style={{ marginTop: 16 }}>
-                      <Space direction="vertical" style={{ width: "100%" }} size={20}>
+                    <Card
+                      size="small"
+                      title={`Field review${record.reviewer_name ? ` · reviewed by ${record.reviewer_name}` : ""}`}
+                      style={{ marginTop: 16 }}
+                    >
+                      <Space direction="vertical" style={{ width: "100%" }} size={12}>
                         {fieldOrder.map((key) => {
                           const f = record.fields.find((x) => x.field_key === key)!;
                           const d = drafts[key];
                           if (!d) return null;
                           const differs = !sameMark(d.mark, f.reviewer);
+                          const flagged = f.reviewer.status === "defective" || d.mark.status === "defective" || !!f.override;
                           return (
-                            <div key={key} data-review-field={key}>
-                              <div style={{ marginBottom: 6, color: "#475569" }}>
-                                <Space size={6} wrap>
-                                  <span>Reviewer{record.reviewer_name ? ` (${record.reviewer_name})` : ""}:</span>
-                                  <MarkSummary mark={f.reviewer} />
-                                  {f.reviewer.note && <Typography.Text italic>“{f.reviewer.note}”</Typography.Text>}
-                                </Space>
-                              </div>
+                            <div
+                              key={key}
+                              data-review-field={key}
+                              style={{
+                                padding: flagged ? "10px 12px" : "4px 12px",
+                                borderRadius: 8,
+                                background: flagged ? "#FEF2F2" : undefined,
+                                border: flagged ? "1px solid #FECACA" : "1px solid transparent",
+                              }}
+                            >
                               <FieldMarkControl
+                                extra={
+                                  <div style={{ margin: "2px 0 6px", color: "#475569" }}>
+                                    <Space size={6} wrap>
+                                      <span>Reviewer:</span>
+                                      <MarkSummary mark={f.reviewer} />
+                                      {f.reviewer.note && <Typography.Text italic>“{f.reviewer.note}”</Typography.Text>}
+                                    </Space>
+                                  </div>
+                                }
                                 title={properties[key]?.title || key}
                                 isIdentifier={f.is_critical}
                                 mark={d.mark}
