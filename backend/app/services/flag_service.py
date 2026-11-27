@@ -16,7 +16,7 @@ import io
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -179,11 +179,15 @@ async def resolve_flag(db: AsyncSession, *, flag: RecordFlag, resolution: str, u
 
 async def list_flags(
     db: AsyncSession, *, project_id: int, status: str | None, shared_only: bool = False, flag_id: int | None = None,
+    q: str | None = None,
 ) -> list[dict]:
     """Flags in a project, newest first, with what a supervisor needs to
     pick one up: the record's filename, its batch, who raised/closed it,
     whether it's shared with the customer and how long its discussion is.
-    shared_only is what a customer supervisor gets."""
+    shared_only is what a customer supervisor gets. q narrows to flags whose
+    record name, identifier, batch, issue, resolution or any discussion
+    message contains it (any case); a number also matches the record or
+    flag id."""
     raiser, closer, sharer = aliased(User), aliased(User), aliased(User)
     comments = (
         select(func.count(FlagComment.id)).where(FlagComment.flag_id == RecordFlag.id).scalar_subquery()
@@ -205,6 +209,24 @@ async def list_flags(
         stmt = stmt.where(RecordFlag.shared_at.is_not(None))
     if flag_id is not None:
         stmt = stmt.where(RecordFlag.id == flag_id)
+    if q and q.strip():
+        term = q.strip()
+        escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        like = f"%{escaped}%"
+        conds = [
+            col.ilike(like, escape="\\")
+            for col in (Record.original_filename, Record.source_identifier, Batch.name,
+                        RecordFlag.reason, RecordFlag.resolution)
+        ]
+        conds.append(
+            select(FlagComment.id)
+            .where(FlagComment.flag_id == RecordFlag.id, FlagComment.body.ilike(like, escape="\\"))
+            .exists()
+        )
+        if term.lstrip("#").isdigit():
+            n = int(term.lstrip("#"))
+            conds += [RecordFlag.record_id == n, RecordFlag.id == n]
+        stmt = stmt.where(or_(*conds))
     return [
         {
             **flag_out(flag),

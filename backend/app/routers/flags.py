@@ -107,6 +107,7 @@ async def withdraw_record_flag(
 async def list_project_flags(
     project_id: int,
     status: str | None = Query(FlagStatus.open.value, description="open | resolved | withdrawn, or empty for all"),
+    q: str | None = Query(None, max_length=200, description="Search record, batch, issue, resolution and messages"),
     db: AsyncSession = Depends(get_db),
     current_user=Depends(require_roles("de_supervisor", "admin", "customer_supervisor")),
 ):
@@ -115,7 +116,7 @@ async def list_project_flags(
     if status and status not in {s.value for s in FlagStatus}:
         raise HTTPException(status_code=422, detail="Unknown flag status")
     return await flag_service.list_flags(
-        db, project_id=project_id, status=status or None, shared_only=flag_service.is_customer(current_user),
+        db, project_id=project_id, status=status or None, shared_only=flag_service.is_customer(current_user), q=q,
     )
 
 

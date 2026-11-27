@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { Alert, Button, Card, Divider, Empty, Segmented, Space, Table, Tag, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { Alert, Button, Card, Divider, Empty, Input, Segmented, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import { listProjectFlags, projectFlagsKey, type FlagStatus, type RecordFlagListItem } from "@shared/api/flags";
 import FlagDiscussion from "@shared/components/FlagDiscussion";
@@ -15,11 +15,19 @@ const when = (iso: string | null) => (iso ? dayjs(iso).format("D MMM YYYY, HH:mm
  * issue, and replies in the discussion; the team resolves the flag. */
 export default function CustomerFlaggedRecords({ projectId }: { projectId: number }) {
   const [status, setStatus] = useState<FlagStatus>("open");
+  const [search, setSearch] = useState("");
+  const [q, setQ] = useState("");
+  // Search as you type, once typing pauses.
+  useEffect(() => {
+    const t = window.setTimeout(() => setQ(search.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [search]);
 
-  const { data: flags = [], isLoading } = useQuery({
-    queryKey: projectFlagsKey(projectId, status),
-    queryFn: () => listProjectFlags(projectId, status),
+  const { data: flags = [], isLoading, isFetching } = useQuery({
+    queryKey: projectFlagsKey(projectId, status, q),
+    queryFn: () => listProjectFlags(projectId, status, q),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
   const { reviewing, open, close } = useFlagReview(flags);
 
@@ -74,6 +82,23 @@ export default function CustomerFlaggedRecords({ projectId }: { projectId: numbe
         Records the digitization team has asked for your guidance on. Open one to see the record and the issue, and
         reply in the discussion.
       </Typography.Paragraph>
+      <Space style={{ marginBottom: 12 }} wrap>
+        <Input.Search
+          allowClear
+          placeholder="Search record, issue or discussion"
+          style={{ width: 360 }}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onSearch={(v) => setQ(v.trim())}
+          loading={isFetching && !!q}
+          data-flag-search
+        />
+        {q && !isFetching && (
+          <Typography.Text type="secondary" data-flag-search-count>
+            {flags.length} {flags.length === 1 ? "match" : "matches"} in {status}
+          </Typography.Text>
+        )}
+      </Space>
       <Table
         rowKey="id"
         size="small"
@@ -81,7 +106,19 @@ export default function CustomerFlaggedRecords({ projectId }: { projectId: numbe
         dataSource={flags}
         columns={columns}
         scroll={{ x: "max-content" }}
-        locale={{ emptyText: <Empty description={status === "open" ? "Nothing needs your guidance" : "None"} /> }}
+        locale={{
+          emptyText: (
+            <Empty
+              description={
+                q
+                  ? `No ${status} flags match "${q}". Try the other tabs or a different search.`
+                  : status === "open"
+                    ? "Nothing needs your guidance"
+                    : "None"
+              }
+            />
+          ),
+        }}
       />
 
       <RecordViewerDrawer recordId={reviewing?.record_id ?? null} onClose={close}>

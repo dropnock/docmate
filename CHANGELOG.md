@@ -8,6 +8,11 @@ See `RELEASING.md` for how to cut a release.
 ## [Unreleased]
 
 ### Added
+- **Customer portal: search flagged records.** Flagged Records has a
+  search box that finds flags by record name, identifier or ID, batch, the
+  issue, the resolution, or anything said in the discussion. It searches
+  the selected tab (Open, Resolved, Withdrawn) as you type. The list
+  endpoint takes the search as `q` (`GET /projects/{id}/flags?q=`).
 - **Productivity reports: time per record.** Click an agent's name or Avg
   Time in Staff Productivity (indexing, QA) or QC Staff Productivity to see
   each record they worked on, with when it was started and finished, the

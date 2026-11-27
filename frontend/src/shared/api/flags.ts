@@ -47,7 +47,8 @@ export interface RecordFlagState {
 }
 
 export const recordFlagKey = (recordId: number) => ["record-flag", recordId] as const;
-export const projectFlagsKey = (projectId: number, status: FlagStatus) => ["project-flags", projectId, status] as const;
+export const projectFlagsKey = (projectId: number, status: FlagStatus, q?: string) =>
+  (q ? ["project-flags", projectId, status, q] : ["project-flags", projectId, status]) as readonly unknown[];
 export const flagKey = (flagId: number) => ["flag", flagId] as const;
 export const flagCommentsKey = (flagId: number) => ["flag-comments", flagId] as const;
 
@@ -64,8 +65,12 @@ export function withdrawRecordFlag(recordId: number) {
   return api.delete<RecordFlag>(`/records/${recordId}/flag`).then((r) => r.data);
 }
 
-export function listProjectFlags(projectId: number, status: FlagStatus) {
-  return api.get<RecordFlagListItem[]>(`/projects/${projectId}/flags`, { params: { status } }).then((r) => r.data);
+/** q: only flags whose record, batch, issue, resolution or discussion
+ * contains it (or whose record/flag id it is). */
+export function listProjectFlags(projectId: number, status: FlagStatus, q?: string) {
+  return api
+    .get<RecordFlagListItem[]>(`/projects/${projectId}/flags`, { params: { status, q: q || undefined } })
+    .then((r) => r.data);
 }
 
 /** Downloads the flag list (one tab: open / resolved / withdrawn) as a CSV file. */

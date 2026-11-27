@@ -240,3 +240,37 @@ class TestExportIncludesSharing:
         assert row["Shared by"] == "Supervisor"
         assert row["Shared with customer (UTC)"]
         assert "Customer Sup (customer): Use the margin folio" in row["Discussion"]
+
+
+
+class TestSearch:
+    """GET /projects/{id}/flags?q=: the customer's Flagged Records search."""
+
+    async def test_search_matches_record_issue_and_discussion(self, db: AsyncSession, seed, client):
+        p = await _people(db, seed)
+        seed["record"].original_filename = "land_title_0017.png"
+        seed["record2"].source_identifier = "CT-4471"
+        await db.commit()
+        f1 = await _flag(db, seed, client, seed["record"], "Owner name cut off")
+        f2 = await _flag(db, seed, client, seed["record2"], "Folio 50% illegible")
+        await _share(client, seed, [f1])
+
+        async def ids(q, who):
+            r = await client.get(_list_url(seed), params={"q": q}, headers=(_cust if who is p["cust"] else _de)(who))
+            assert r.status_code == 200, r.text
+            return sorted(x["id"] for x in r.json())
+
+        cust, sup = p["cust"], p["sup"]
+        assert await ids("OWNER", cust) == [f1]                 # issue, any case
+        assert await ids("title_0017", cust) == [f1]            # record name; _ is literal
+        assert await ids("title%0017", cust) == []              # % is literal, not a wildcard
+        assert await ids(str(seed["record"].id), cust) == [f1]  # record id
+        assert await ids("  ", cust) == [f1]                    # blank = no filter
+        assert await ids("nothing like this", cust) == []
+        # an unshared flag never turns up for the customer; the DE side finds it
+        assert await ids("CT-4471", cust) == []
+        assert await ids("ct-4471", sup) == [f2]
+        assert await ids("50%", sup) == [f2]
+
+        await client.post(f"/api/flags/{f1}/comments", json={"body": "See the Parish register"}, headers=_cust(cust))
+        assert await ids("parish", cust) == [f1]                # discussion message
