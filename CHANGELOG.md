@@ -7,6 +7,8 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-11-26
+
 ### Added
 - **Search flagged records** in both portals. Flagged Records has a
   search box that finds flags by record name, identifier or ID, batch, the
