@@ -246,9 +246,10 @@ export default function QCWorkspace() {
   });
 
   const startMutation = useMutation({
-    mutationFn: (taskId: number) => api.post<Task>(`/tasks/${taskId}/start`),
-    onSuccess: (res) => {
-      setActiveTask(res.data);
+    mutationFn: (task: Task) => api.post<Task>(`/tasks/${task.id}/start`),
+    // Only GET /tasks/mine fills batch_status; keep the queue's.
+    onSuccess: (res, task) => {
+      setActiveTask({ ...res.data, batch_status: task.batch_status, flagged: task.flagged });
       qc.invalidateQueries({ queryKey: ["my-tasks"] });
       qc.invalidateQueries({ queryKey: ["record", res.data.record_id] });
       qc.invalidateQueries({ queryKey: ["task-field-results", res.data.id] });
@@ -265,7 +266,7 @@ export default function QCWorkspace() {
   const openTask = (task: Task) => {
     setReopenedFrom(isReviewed(task) ? task.status : null);
     setActiveTask(task);
-    if (task.status !== "in_progress") startMutation.mutate(task.id);
+    if (task.status !== "in_progress") startMutation.mutate(task);
   };
 
   /** After a review is submitted: on to the next record of the batch still
@@ -549,7 +550,7 @@ export default function QCWorkspace() {
           <Button
             type="primary"
             loading={startMutation.isPending}
-            onClick={() => startMutation.mutate(activeTask.id)}
+            onClick={() => startMutation.mutate(activeTask)}
           >
             Start QC
           </Button>
