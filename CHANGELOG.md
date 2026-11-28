@@ -7,6 +7,29 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+### Added
+- **Help in the customer portal.** The supervisor and reviewer manuals and training
+  workbooks open inside the app (Help in the menu), each user seeing the ones for
+  their role. **Download PDF** produces a copy prepared for the user's organisation:
+  its name is on the cover and in every page footer, and each download is recorded
+  in the audit log.
+- The manuals' sources now live in the repo (`manuals/`). One brand file
+  (`manuals/brand/brand.yaml`) and one template set the look of the HTML pages, the
+  PDFs and the Word copies.
+- **The DocMate logo** in both portals' header and as the browser-tab icon, and on the
+  manuals' pages, PDF covers and Word copies.
+- **Branded sign-in pages**: the Keycloak sign-in, password-change and error pages
+  for staff and every customer show the DocMate logo and colours, with the
+  organisation's name under the logo. Existing realms switch over at startup.
+
+### Changed
+- **The app uses the logo's colours**: navy for buttons, selected menu items and
+  other primary accents, teal for links and hover highlights. The manuals follow.
+
+### Fixed
+- The Word copies of the manuals showed "v0.9.0" in their footer whatever the
+  release; they now show the version they were built for.
+
 ## [0.9.5] - 2026-11-28
 
 ### Added

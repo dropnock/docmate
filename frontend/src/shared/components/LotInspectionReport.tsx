@@ -23,7 +23,7 @@ const STATUS_LABEL: Record<LotInspectionStatus, string> = {
 };
 
 const STATUS_COLOR: Record<LotInspectionStatus, string> = {
-  in_progress: "#1E40AF",
+  in_progress: "#092B59",
   passed: "#15803D",
   failed: "#B91C1C",
   cancelled: "#64748B",

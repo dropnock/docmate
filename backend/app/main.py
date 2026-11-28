@@ -25,6 +25,7 @@ from app.routers import (
     cabinets,
     client_errors,
     flags,
+    help,
     holds,
     lots,
     notifications,
@@ -152,6 +153,16 @@ app.include_router(client_errors.router)
 app.include_router(flags.router)
 app.include_router(holds.router)
 app.include_router(notifications.router)
+app.include_router(help.router)
+
+# The built manual pages, images and styles (services/help_service.py). No
+# sign-in: they hold no customer data. check_dir=False so the API still starts
+# where the manuals haven't been built (the Help endpoints then answer 503).
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+from app.services.help_service import manuals_dir  # noqa: E402
+
+app.mount("/api/help/static", StaticFiles(directory=manuals_dir() / "web", check_dir=False), name="help-static")
 
 
 @app.get("/health")

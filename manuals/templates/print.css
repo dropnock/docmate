@@ -1,0 +1,97 @@
+/* Print (PDF) styles, rendered by WeasyPrint. Colours and font come from
+   brand.css; page size and margin are set in brand.css from brand.yaml. */
+
+/* The running footer carries the organisation the PDF was issued to, so a
+   copy that's passed around can be traced to where it came from. */
+.prepared-for { string-set: stamp attr(data-run); }
+.cover-title { string-set: doctitle attr(data-run); }
+
+@page {
+  @top-left { content: string(doctitle); font-family: var(--font); font-size: 8pt; color: var(--text-secondary); }
+  @top-right { content: var(--product-portal); font-family: var(--font); font-size: 8pt; color: var(--text-secondary); }
+  @bottom-left { content: string(stamp); font-family: var(--font); font-size: 8pt; color: var(--text-secondary); }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font-family: var(--font); font-size: 8pt; color: var(--text-secondary); }
+}
+@page cover {
+  @top-left { content: none; }
+  @top-right { content: none; }
+  @bottom-right { content: none; }
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 10.5pt;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+/* ---- Cover --------------------------------------------------------------- */
+.cover {
+  page: cover;
+  break-after: page;
+  padding-top: 2.2in;
+}
+/* Plain blocks, not flexbox: WeasyPrint's flex layout misplaces the logo. */
+.cover-brand { display: block; }
+.cover .wordmark { color: var(--primary); font-weight: 700; font-size: 28pt; }
+.cover .logo { display: block; height: 52pt; }
+.cover-portal { display: block; margin-top: 8pt; color: var(--text-secondary); font-weight: 600; font-size: 14pt; }
+.cover .wordmark + .cover-portal { display: inline; margin-left: 8pt; }
+.cover-title {
+  margin: 28pt 0 8pt; padding-top: 20pt;
+  border-top: 3pt solid var(--accent);
+  font-size: 30pt; line-height: 1.15; color: var(--text);
+}
+.cover-subtitle { margin: 0 0 0; color: var(--text-secondary); font-size: 12pt; }
+.cover-meta {
+  margin-top: 1.6in; width: auto;
+  border-collapse: collapse; border-top: .75pt solid var(--border);
+  font-size: 10pt;
+}
+.cover-meta th, .cover-meta td { border: 0; background: none; padding: 5pt 18pt 0 0; }
+.cover-meta tr:first-child th, .cover-meta tr:first-child td { padding-top: 14pt; }
+.cover-meta th { color: var(--text-secondary); font-weight: 400; }
+.cover-meta td { font-weight: 600; }
+
+/* ---- Text ---------------------------------------------------------------- */
+h2 {
+  break-before: page;
+  margin: 0 0 12pt; padding-bottom: 6pt;
+  font-size: 17pt; line-height: 1.25; color: var(--primary);
+  border-bottom: 1pt solid var(--table-border);
+}
+/* The first section follows the cover directly. */
+.content > h2:first-of-type { break-before: auto; }
+h3 { margin: 18pt 0 6pt; font-size: 13pt; }
+h4 { margin: 14pt 0 4pt; font-size: 11pt; }
+h2, h3, h4 { font-weight: 700; break-after: avoid; }
+p, li { orphans: 3; widows: 3; }
+
+a { color: var(--link); text-decoration: none; }
+hr { display: none; }
+
+blockquote {
+  margin: 12pt 0; padding: 8pt 12pt;
+  background: var(--accent-bg);
+  border-left: 3pt solid var(--accent);
+  break-inside: avoid;
+}
+blockquote > :first-child { margin-top: 0; }
+blockquote > :last-child { margin-bottom: 0; }
+
+.table-wrap { margin: 10pt 0; }
+table { border-collapse: collapse; width: 100%; font-size: 9.5pt; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; }
+th, td { border: .75pt solid var(--table-border); padding: 4pt 7pt; text-align: left; vertical-align: top; }
+th { background: var(--background); font-weight: 600; }
+.kind-workbook td:empty { height: 26pt; }
+
+figure { margin: 10pt 0 14pt; break-inside: avoid; }
+figure img, .content p > img {
+  display: block; max-width: 100%; max-height: 7.2in; height: auto;
+  margin: 0 auto;
+  border: .75pt solid var(--border);
+}
+figcaption { margin-top: 4pt; color: var(--text-secondary); font-size: 8.5pt; text-align: center; }

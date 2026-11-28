@@ -346,7 +346,7 @@ export default function CabinetManager({ projectId }: Props) {
                       style={{ padding: 16, marginBottom: 12 }}
                     >
                       <p className="ant-upload-drag-icon" style={{ margin: "4px 0" }}>
-                        <UploadCloud size={28} color="#1E40AF" />
+                        <UploadCloud size={28} color="#092B59" />
                       </p>
                       <p className="ant-upload-text">Drag images here or click to upload</p>
                       <p className="ant-upload-hint">

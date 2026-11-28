@@ -66,6 +66,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
     volumes:
       - ./keycloak/realms:/opt/keycloak/data/import:ro
+      # DocMate sign-in theme (loginTheme "docmate"; see keycloak/themes).
+      - ./keycloak/themes/docmate:/opt/keycloak/themes/docmate:ro
     ports:
       - "8180:8080"
     healthcheck:
@@ -79,6 +81,9 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      # The manuals' sources, built into the image (see manuals/build.py).
+      additional_contexts:
+        manuals: ./manuals
       args:
         # See RELEASING.md — unset (dev/unknown defaults) for everyday local use.
         APP_VERSION: ${APP_VERSION:-dev}

@@ -551,7 +551,7 @@ export default function QCWorkspace() {
         </Typography.Text>
         <Badge
           count={`v${record?.current_version ?? 1}`}
-          style={{ background: "#1E40AF" }}
+          style={{ background: "#092B59" }}
         />
         <StatusDot filled={activeTask.status === "in_progress"} label={activeTask.status} />
         <div style={{ flex: 1 }} />

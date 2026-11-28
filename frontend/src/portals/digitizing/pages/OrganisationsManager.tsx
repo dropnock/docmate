@@ -39,8 +39,8 @@ function TypeBadge({ type }: { type: string }) {
         fontSize: 12,
         fontWeight: 500,
         ...(isInternal
-          ? { background: "#1E40AF", color: "#FFFFFF" }
-          : { background: "#FFFFFF", color: "#1E40AF", border: "1px solid #1E40AF" }),
+          ? { background: "#092B59", color: "#FFFFFF" }
+          : { background: "#FFFFFF", color: "#092B59", border: "1px solid #092B59" }),
       }}
     >
       {TYPE_LABEL[type] ?? type}

@@ -34,7 +34,7 @@ function duration(iso: string | null, now: number): string {
 
 function Presence({ u }: { u: OnlineUser }) {
   const working = u.task?.working;
-  const color = u.status === "active" ? (working ? "#16A34A" : "#1E40AF") : "#94A3B8";
+  const color = u.status === "active" ? (working ? "#16A34A" : "#092B59") : "#94A3B8";
   const label = u.status === "active" ? (working ? "Working" : "Online") : "Idle";
   return (
     <Tooltip

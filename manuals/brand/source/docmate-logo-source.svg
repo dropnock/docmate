@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc">
+  <title id="title">DocMate</title>
+  <desc id="desc">DocMate document digitization and workflow automation logo</desc>
+  <rect width="1200" height="320" fill="#ffffff"/>
+  <g transform="translate(54 40)">
+    <path d="M60 8h112l66 66v148a22 22 0 0 1-22 22H60a22 22 0 0 1-22-22V30A22 22 0 0 1 60 8Z" fill="#ffffff" stroke="#092b59" stroke-width="18" stroke-linejoin="round"/>
+    <path d="M172 10v48a18 18 0 0 0 18 18h47" fill="#10c8dc" stroke="#10c8dc" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M63 111h53M63 148h53M63 185h53" fill="none" stroke="#08c7de" stroke-width="14" stroke-linecap="round"/>
+    <path d="M116 111l31 23M116 148h22M116 185l31-23" fill="none" stroke="#078f82" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M139 148h41" fill="none" stroke="#078f82" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="144" cy="148" r="20" fill="#ffffff" stroke="#078f82" stroke-width="10"/>
+    <circle cx="194" cy="148" r="39" fill="#078f82"/>
+    <path d="m176 148 12 12 25-27" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="330" y="215" font-family="Inter, Arial, Helvetica, sans-serif" font-size="174" font-weight="750" letter-spacing="-8" fill="#092b59">Doc</text>
+  <text x="635" y="215" font-family="Inter, Arial, Helvetica, sans-serif" font-size="174" font-weight="750" letter-spacing="-8" fill="#078f82">Mate</text>
+</svg>

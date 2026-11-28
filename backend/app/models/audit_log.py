@@ -15,6 +15,7 @@ class AuditEntityType(str, enum.Enum):
     user = "user"
     lot = "lot"
     cabinet = "cabinet"
+    organization = "organization"
 
 
 class AuditAction(str, enum.Enum):
@@ -52,6 +53,8 @@ class AuditAction(str, enum.Enum):
     flag_comment_added = "flag_comment_added"
     # A project's details or quality settings (AQLs, agreement) were edited.
     settings_changed = "settings_changed"
+    # A customer user downloaded a manual PDF stamped with their organisation.
+    manual_downloaded = "manual_downloaded"
     # The customer QC supervisor changed a reviewer's mark (record entity),
     # and confirmed a lot's verdict (lot entity).
     qc_mark_overridden = "qc_mark_overridden"

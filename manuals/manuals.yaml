@@ -1,0 +1,23 @@
+# The manuals the app offers, in menu order. `roles` are UserRole values
+# (backend/app/models/user.py) allowed to see the manual in Help.
+manuals:
+  - slug: supervisor-manual
+    source: content/customer-supervisor-manual.md
+    title: Supervisor User Manual
+    kind: manual
+    roles: [customer_supervisor]
+  - slug: reviewer-manual
+    source: content/customer-reviewer-manual.md
+    title: Reviewer User Manual
+    kind: manual
+    roles: [customer_supervisor, customer_qc_agent]
+  - slug: supervisor-workbook
+    source: content/customer-supervisor-workbook.md
+    title: Supervisor Training Workbook
+    kind: workbook
+    roles: [customer_supervisor]
+  - slug: reviewer-workbook
+    source: content/customer-reviewer-workbook.md
+    title: Reviewer Training Workbook
+    kind: workbook
+    roles: [customer_supervisor, customer_qc_agent]

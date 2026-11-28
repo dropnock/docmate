@@ -59,7 +59,7 @@ export default function NotificationBell() {
         renderItem={(n) => (
           <List.Item
             onClick={() => openNote(n)}
-            style={{ cursor: "pointer", background: n.read_at ? undefined : "#EFF6FF", paddingInline: 8 }}
+            style={{ cursor: "pointer", background: n.read_at ? undefined : "#E8EEF6", paddingInline: 8 }}
           >
             <Space direction="vertical" size={2} style={{ width: "100%" }}>
               <Typography.Text strong={!n.read_at}>{n.message}</Typography.Text>

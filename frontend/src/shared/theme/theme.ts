@@ -1,16 +1,18 @@
 import type { ThemeConfig } from "antd";
 
-/** DocMate brand theme — single primary (deep blue) + slate neutral scale,
- * no other brand colors. Inter for all UI text. */
+/** DocMate brand theme, from the logo (manuals/brand/source/docmate-logo-source.svg):
+ * navy primary (#092B59, "Doc"), teal for links and hover accents (#078F82,
+ * "Mate"; darkened to #06776C for text so it passes WCAG AA on white), slate
+ * neutrals. Inter for all UI text. Keep in step with manuals/brand/brand.yaml. */
 export const docmateTheme: ThemeConfig = {
   token: {
-    colorPrimary: "#1E40AF",
-    colorPrimaryHover: "#1E3A8A",
-    colorPrimaryActive: "#1E3A8A",
-    colorPrimaryBg: "#EFF6FF",
-    colorPrimaryBgHover: "#EFF6FF",
-    colorLink: "#1E40AF",
-    colorLinkHover: "#1E3A8A",
+    colorPrimary: "#092B59",
+    colorPrimaryHover: "#173F75",
+    colorPrimaryActive: "#061E40",
+    colorPrimaryBg: "#E8EEF6",
+    colorPrimaryBgHover: "#E6F4F2",
+    colorLink: "#06776C",
+    colorLinkHover: "#055C54",
 
     colorText: "#0F172A",
     colorTextSecondary: "#64748B",
@@ -34,10 +36,10 @@ export const docmateTheme: ThemeConfig = {
       bodyBg: "#F8FAFC",
     },
     Menu: {
-      itemSelectedBg: "#1E40AF",
+      itemSelectedBg: "#092B59",
       itemSelectedColor: "#FFFFFF",
-      itemHoverBg: "#EFF6FF",
-      itemHoverColor: "#1E40AF",
+      itemHoverBg: "#E6F4F2",
+      itemHoverColor: "#06776C",
       itemColor: "#0F172A",
       itemBorderRadius: 8,
       itemMarginBlock: 4,
@@ -57,8 +59,8 @@ export const docmateTheme: ThemeConfig = {
     Button: {
       borderRadius: 8,
       primaryShadow: "none",
-      defaultHoverBorderColor: "#1E40AF",
-      defaultHoverColor: "#1E40AF",
+      defaultHoverBorderColor: "#078F82",
+      defaultHoverColor: "#06776C",
     },
     Card: {
       borderRadiusLG: 12,

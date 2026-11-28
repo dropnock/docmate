@@ -207,7 +207,7 @@ export default function StaffAssignment({ projectId }: Props) {
           <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{name}</span>
           {m.has_active_work && (
             <Tag
-              style={{ marginTop: 2, color: "#1E40AF", background: "#EFF6FF", border: "1px solid #1E40AF" }}
+              style={{ marginTop: 2, color: "#092B59", background: "#E8EEF6", border: "1px solid #092B59" }}
             >
               Active task
             </Tag>
@@ -365,7 +365,7 @@ export default function StaffAssignment({ projectId }: Props) {
 
           {selectedUserIds.length > 0 && (
             <Typography.Text type="secondary">
-              <Badge count={selectedUserIds.length} color="#1E40AF" /> user{selectedUserIds.length > 1 ? "s" : ""} selected
+              <Badge count={selectedUserIds.length} color="#092B59" /> user{selectedUserIds.length > 1 ? "s" : ""} selected
             </Typography.Text>
           )}
 
