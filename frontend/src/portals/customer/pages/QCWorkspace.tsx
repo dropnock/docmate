@@ -8,18 +8,22 @@ import {
   Input,
   List,
   Modal,
+  Popconfirm,
   Space,
   Spin,
+  Tag,
+  Tooltip,
   Typography,
   message,
 } from "antd";
+import { ArrowLeft, CheckCircle2, Undo2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { aqlConfigKey, getAqlConfig } from "@shared/api/aql";
-import { completeTask, failTask } from "@shared/api/tasks";
+import { completeTask, failTask, getTaskFieldResults, submitQcBatch } from "@shared/api/tasks";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
 import { useTaskHeartbeat } from "@shared/hooks/useTaskHeartbeat";
 import type { Batch, DocRecord, DocumentType, FieldResult, Task, UserRecord } from "@shared/types";
@@ -29,12 +33,123 @@ import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
 import StatusDot from "@shared/components/StatusDot";
 
+// A QC task belongs to an open QC batch — listed, reviewable again, and
+// handed on with Submit batch — while its batch is still open (GET
+// /tasks/mine fills batch_status; an open batch is "indexing").
+const inOpenBatch = (t: Task) => t.task_type === "qc" && t.batch_status === "indexing";
+const isReviewed = (t: Task) => t.status === "completed" || t.status === "failed";
+
+const REVIEW_LABEL: Record<string, string> = {
+  pending: "Not reviewed",
+  in_progress: "In review",
+  completed: "Passed",
+  failed: "Rejected",
+};
+
+function ReviewTag({ task }: { task: Task }) {
+  if (task.status === "completed") return <Tag color="success">Passed</Tag>;
+  if (task.status === "failed") return <Tag color="error">Rejected</Tag>;
+  return <StatusDot filled={task.status === "in_progress"} label={REVIEW_LABEL[task.status] ?? task.status} />;
+}
+
+/** One open QC batch: its records with how each was reviewed, any of them
+ * reopened, and Submit batch once they're all done. */
+function QcBatchDetail({
+  batchId,
+  tasks,
+  onBack,
+  onOpen,
+  opening,
+}: {
+  batchId: number;
+  tasks: Task[];
+  onBack: () => void;
+  onOpen: (task: Task) => void;
+  opening: boolean;
+}) {
+  const qc = useQueryClient();
+  const sorted = [...tasks].sort((a, b) => a.record_id - b.record_id);
+  const remaining = tasks.filter((t) => !isReviewed(t)).length;
+  const rejected = tasks.filter((t) => t.status === "failed").length;
+
+  const submit = useMutation({
+    mutationFn: () => submitQcBatch(batchId),
+    onSuccess: async () => {
+      message.success("QC batch submitted");
+      await qc.invalidateQueries({ queryKey: ["my-tasks"] });
+      onBack();
+    },
+    onError: (e: unknown) => message.error(formatApiError(e, "Couldn't submit the batch")),
+  });
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, gap: 12, flexWrap: "wrap" }}>
+        <Space>
+          <Button icon={<ArrowLeft size={16} />} onClick={onBack}>
+            Back to queue
+          </Button>
+          <Typography.Text strong>QC Batch #{batchId}</Typography.Text>
+          <Typography.Text type="secondary">
+            {tasks.length - remaining} of {tasks.length} reviewed
+            {rejected > 0 ? ` · ${rejected} rejected` : ""}
+          </Typography.Text>
+        </Space>
+        <Tooltip
+          title={remaining > 0 ? `${remaining} record${remaining === 1 ? "" : "s"} still need${remaining === 1 ? "s" : ""} a review` : undefined}
+        >
+          <Popconfirm
+            title="Submit this QC batch?"
+            description="You can't change these reviews after submitting."
+            okText="Submit batch"
+            onConfirm={() => submit.mutate()}
+            disabled={remaining > 0}
+          >
+            <Button
+              type="primary"
+              icon={<CheckCircle2 size={16} />}
+              disabled={remaining > 0}
+              loading={submit.isPending}
+              data-testid="submit-qc-batch"
+            >
+              Submit batch
+            </Button>
+          </Popconfirm>
+        </Tooltip>
+      </div>
+      <List
+        dataSource={sorted}
+        rowKey="id"
+        renderItem={(task) => (
+          <List.Item
+            data-qc-task={task.id}
+            actions={[
+              <Button type={isReviewed(task) ? "default" : "primary"} loading={opening} onClick={() => onOpen(task)}>
+                {isReviewed(task) ? "Review again" : task.status === "in_progress" ? "Resume" : "Start QC"}
+              </Button>,
+            ]}
+          >
+            <List.Item.Meta title={`Record #${task.record_id}`} description={<ReviewTag task={task} />} />
+          </List.Item>
+        )}
+      />
+    </div>
+  );
+}
+
 export default function QCWorkspace() {
   const qc = useQueryClient();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectForm] = Form.useForm<{ reason: string }>();
   const [fieldMarks, setFieldMarks] = useState<Record<string, FieldMark>>({});
+  // The open QC batch being worked (its record list), and the records
+  // reviewed in this sitting, most recent last — what "Previous record"
+  // steps back through.
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+  const [finished, setFinished] = useState<number[]>([]);
+  // How the active record was reviewed before it was reopened, if it was.
+  const [reopenedFrom, setReopenedFrom] = useState<string | null>(null);
 
   // Fetch tasks assigned to me
   const { data: tasks, isLoading: tasksLoading } = useQuery<Task[]>({
@@ -94,18 +209,31 @@ export default function QCWorkspace() {
 
   const schemaProperties = (docType?.json_schema?.properties as Record<string, { title?: string; "x-critical"?: boolean }>) ?? {};
 
+  // A record reviewed before (and reopened) shows the marks it was given.
+  const { data: earlierMarks, isFetched: earlierMarksFetched } = useQuery({
+    queryKey: ["task-field-results", activeTask?.id],
+    queryFn: () => getTaskFieldResults(activeTask!.id),
+    enabled: !!activeTask && isIso && !!reopenedFrom,
+    staleTime: 0,
+  });
+
   // Every top-level field defaults to Accepted — the QC agent only has to
   // flip the ones they find defective, rather than affirmatively clicking
   // "accept" on every field of every record.
   useEffect(() => {
     if (!isIso || !docType) return;
+    if (reopenedFrom && !earlierMarksFetched) return;
+    const earlier = new Map((earlierMarks ?? []).map((m) => [m.field_key, m]));
     const initial: Record<string, FieldMark> = {};
     for (const key of Object.keys(schemaProperties)) {
-      initial[key] = { status: "accepted" };
+      const m = earlier.get(key);
+      initial[key] = m
+        ? { status: m.status, error_type: m.error_type ?? undefined, note: m.note ?? undefined }
+        : { status: "accepted" };
     }
     setFieldMarks(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTask?.id, isIso, docType]);
+  }, [activeTask?.id, isIso, docType, earlierMarks, earlierMarksFetched, reopenedFrom]);
 
   // Cached at the app root (App.tsx queries the same ["me"] key on load) —
   // needed to tell "locked by me" from "locked by someone else": comparing
@@ -118,22 +246,62 @@ export default function QCWorkspace() {
   });
 
   const startMutation = useMutation({
-    mutationFn: (taskId: number) => api.post(`/tasks/${taskId}/start`),
+    mutationFn: (taskId: number) => api.post<Task>(`/tasks/${taskId}/start`),
     onSuccess: (res) => {
       setActiveTask(res.data);
       qc.invalidateQueries({ queryKey: ["my-tasks"] });
-      qc.invalidateQueries({ queryKey: ["record", activeTask?.record_id] });
+      qc.invalidateQueries({ queryKey: ["record", res.data.record_id] });
+      qc.invalidateQueries({ queryKey: ["task-field-results", res.data.id] });
     },
-    onError: (err: unknown) => message.error(formatApiError(err, "Could not start task")),
+    onError: (err: unknown) => {
+      message.error(formatApiError(err, "Could not start task"));
+      setActiveTask(null);
+      setReopenedFrom(null);
+    },
   });
+
+  /** Open a record of the queue: a pending or reviewed one is (re)started,
+   * one already in progress is resumed as it is. */
+  const openTask = (task: Task) => {
+    setReopenedFrom(isReviewed(task) ? task.status : null);
+    setActiveTask(task);
+    if (task.status !== "in_progress") startMutation.mutate(task.id);
+  };
+
+  /** After a review is submitted: on to the next record of the batch still
+   * to be reviewed, or back to the batch's list to check and submit it. */
+  const advance = async () => {
+    if (!activeTask) return;
+    const done = activeTask;
+    qc.invalidateQueries({ queryKey: ["task-field-results", done.id] });
+    if (!inOpenBatch(done)) {
+      setActiveTask(null);
+      setReopenedFrom(null);
+      await qc.invalidateQueries({ queryKey: ["my-tasks"] });
+      return;
+    }
+    setFinished((ids) => [...ids.filter((id) => id !== done.id), done.id]);
+    await qc.invalidateQueries({ queryKey: ["my-tasks"] });
+    const fresh = qc.getQueryData<Task[]>(["my-tasks"]) ?? [];
+    const next = fresh
+      .filter((t) => t.batch_id === done.batch_id && t.id !== done.id && !isReviewed(t))
+      .sort((a, b) => a.record_id - b.record_id)[0];
+    if (next) {
+      openTask(next);
+    } else {
+      message.info("All records reviewed — check them and press Submit batch when ready.");
+      setSelectedBatchId(done.batch_id);
+      setActiveTask(null);
+      setReopenedFrom(null);
+    }
+  };
 
   const passMutation = useMutation({
     mutationFn: (taskId: number) =>
       api.post(`/tasks/${taskId}/complete`, { indexed_data: null }),
     onSuccess: () => {
       message.success("Record passed QC");
-      setActiveTask(null);
-      qc.invalidateQueries({ queryKey: ["my-tasks"] });
+      advance();
     },
     onError: () => message.error("Failed to complete task"),
   });
@@ -145,8 +313,7 @@ export default function QCWorkspace() {
       message.success("Record rejected — your QC supervisor reviews it before it goes back for rework");
       setRejectModalOpen(false);
       rejectForm.resetFields();
-      setActiveTask(null);
-      qc.invalidateQueries({ queryKey: ["my-tasks"] });
+      advance();
     },
     onError: (err: { response?: { data?: { detail?: string } } }) =>
       message.error(err.response?.data?.detail ?? "Rejection failed"),
@@ -180,12 +347,35 @@ export default function QCWorkspace() {
       return completeTask(activeTask.id, { field_results: fieldResults });
     },
     onSuccess: () => {
-      message.success("QC review submitted");
-      setActiveTask(null);
-      qc.invalidateQueries({ queryKey: ["my-tasks"] });
+      message.success("QC review saved");
+      advance();
     },
     onError: (err: unknown) => message.error(formatApiError(err, "Failed to submit review")),
   });
+
+  // Open QC batches (records stay listed until the batch is submitted),
+  // and any other QC task as a plain list.
+  const batchGroups = new Map<number, Task[]>();
+  for (const t of (tasks ?? []).filter(inOpenBatch)) {
+    batchGroups.set(t.batch_id, [...(batchGroups.get(t.batch_id) ?? []), t]);
+  }
+  const otherTasks = (tasks ?? []).filter((t) => !inOpenBatch(t));
+
+  // Batch view: one open QC batch's records.
+  if (!activeTask && selectedBatchId != null) {
+    return (
+      <div>
+        <Typography.Title level={4}>QC Task Queue</Typography.Title>
+        <QcBatchDetail
+          batchId={selectedBatchId}
+          tasks={batchGroups.get(selectedBatchId) ?? []}
+          onBack={() => setSelectedBatchId(null)}
+          onOpen={openTask}
+          opening={startMutation.isPending}
+        />
+      </div>
+    );
+  }
 
   // Task list panel
   if (!activeTask) {
@@ -197,44 +387,90 @@ export default function QCWorkspace() {
         ) : !tasks?.length ? (
           <Empty description="No QC tasks assigned to you" />
         ) : (
-          <List
-            dataSource={tasks}
-            rowKey="id"
-            renderItem={(task) => (
-              <List.Item
-                actions={[
-                  task.status === "pending" ? (
-                    <Button
-                      type="primary"
-                      loading={startMutation.isPending}
-                      onClick={() => {
-                        setActiveTask(task);
-                        startMutation.mutate(task.id);
-                      }}
+          <>
+            {batchGroups.size > 0 && (
+              <List
+                header={<Typography.Text type="secondary">QC batches</Typography.Text>}
+                dataSource={[...batchGroups.entries()].sort((a, b) => a[0] - b[0])}
+                rowKey={([batchId]) => batchId}
+                style={{ marginBottom: otherTasks.length > 0 ? 24 : 0 }}
+                renderItem={([batchId, batchTasks]) => {
+                  const reviewed = batchTasks.filter(isReviewed).length;
+                  const all = reviewed === batchTasks.length;
+                  return (
+                    <List.Item
+                      data-qc-batch={batchId}
+                      actions={[
+                        <Button type="primary" onClick={() => setSelectedBatchId(batchId)}>
+                          {all ? "Check & submit" : reviewed > 0 ? "Continue" : "Open"}
+                        </Button>,
+                      ]}
                     >
-                      Start QC
-                    </Button>
-                  ) : (
-                    <Button onClick={() => setActiveTask(task)}>Resume</Button>
-                  ),
-                ]}
-              >
-                <List.Item.Meta
-                  title={`Record #${task.record_id}`}
-                  description={
-                    <>
-                      Batch #{task.batch_id} ·{" "}
-                      <StatusDot filled={task.status === "in_progress"} label={task.status} />
-                    </>
-                  }
-                />
-              </List.Item>
+                      <List.Item.Meta
+                        title={<Typography.Text strong>QC Batch #{batchId}</Typography.Text>}
+                        description={
+                          <Space size={8}>
+                            <Typography.Text type="secondary">
+                              {reviewed} of {batchTasks.length} record{batchTasks.length === 1 ? "" : "s"} reviewed
+                            </Typography.Text>
+                            {all && <Tag color="processing">Ready to submit</Tag>}
+                          </Space>
+                        }
+                      />
+                    </List.Item>
+                  );
+                }}
+              />
             )}
-          />
+            {otherTasks.length > 0 && (
+              <List
+                header={batchGroups.size > 0 ? <Typography.Text type="secondary">Other records</Typography.Text> : undefined}
+                dataSource={otherTasks}
+                rowKey="id"
+                renderItem={(task) => (
+                  <List.Item
+                    actions={[
+                      <Button type="primary" loading={startMutation.isPending} onClick={() => openTask(task)}>
+                        {task.status === "pending" ? "Start QC" : "Resume"}
+                      </Button>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={`Record #${task.record_id}`}
+                      description={
+                        <>
+                          Batch #{task.batch_id} ·{" "}
+                          <StatusDot filled={task.status === "in_progress"} label={task.status} />
+                        </>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
+            )}
+          </>
         )}
       </div>
     );
   }
+
+  // "Previous record": the one reviewed just before this in this sitting,
+  // or else the one before it in the batch.
+  const inBatch = inOpenBatch(activeTask);
+  const batchTasks = inBatch ? (batchGroups.get(activeTask.batch_id) ?? []) : [];
+  const byId = new Map(batchTasks.map((t) => [t.id, t]));
+  const fromHistory = [...finished].reverse().find((id) => id !== activeTask.id && byId.has(id));
+  const previous = fromHistory != null
+    ? byId.get(fromHistory)
+    : batchTasks
+        .filter((t) => t.record_id < activeTask.record_id && isReviewed(t))
+        .sort((a, b) => b.record_id - a.record_id)[0];
+  const leave = () => {
+    setActiveTask(null);
+    setReopenedFrom(null);
+    if (inBatch) setSelectedBatchId(activeTask.batch_id);
+    qc.invalidateQueries({ queryKey: ["my-tasks"] });
+  };
 
   // Split-screen QC view
   // Guarded on `me` being loaded — comparing against undefined would flag
@@ -254,6 +490,13 @@ export default function QCWorkspace() {
       )}
       {activeTask.status === "in_progress" && !isLockedByOther && (
         <Alert type="info" message="Record locked by you for QC review." banner />
+      )}
+      {reopenedFrom && (
+        <Alert
+          type="info"
+          banner
+          message={`You reviewed this record before (${reopenedFrom === "failed" ? "rejected" : "passed"}). Change anything that's wrong and press Done again — it counts once you submit the batch.`}
+        />
       )}
       {/* Not current_version > 1: every indexed record is already at version 2. */}
       {record?.previously_sent_back && (
@@ -275,9 +518,24 @@ export default function QCWorkspace() {
           background: "#FFFFFF",
         }}
       >
-        <Button size="small" onClick={() => setActiveTask(null)}>
-          ← Back to queue
+        <Button size="small" icon={<ArrowLeft size={14} />} onClick={leave}>
+          {inBatch ? "Back to batch" : "Back to queue"}
         </Button>
+        {previous && (
+          <Tooltip title="Go back to the record before this one and review it again">
+            <Button
+              size="small"
+              icon={<Undo2 size={14} />}
+              loading={startMutation.isPending}
+              onClick={() => {
+                setFinished((ids) => ids.filter((id) => id !== previous.id));
+                openTask(previous);
+              }}
+            >
+              Previous record
+            </Button>
+          </Tooltip>
+        )}
         <Typography.Text strong>
           Record #{activeTask.record_id}
         </Typography.Text>
@@ -304,7 +562,7 @@ export default function QCWorkspace() {
             title={unclassedFields(fieldMarks).length > 0 ? "Choose what is wrong with each defective field" : undefined}
             onClick={() => submitReviewMutation.mutate()}
           >
-            Submit Review
+            Done
           </Button>
         )}
         {activeTask.status === "in_progress" && !isIso && (

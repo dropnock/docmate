@@ -236,6 +236,26 @@ async def complete_indexing_batch(
     )
 
 
+@router.post("/batches/{batch_id}/submit-qc", response_model=BatchOut)
+async def submit_qc_batch(
+    batch_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(require_roles("customer_qc_agent", "customer_supervisor", "admin")),
+):
+    """The customer QC reviewer's "Submit batch" once every record is
+    reviewed — see lot_service.submit_qc_batch."""
+    from app.services import lot_service
+
+    batch = await db.get(Batch, batch_id)
+    if not batch:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    project = await db.get(Project, batch.project_id)
+    check_project_access(project, current_user)
+    return await lot_service.submit_qc_batch(
+        db, batch=batch, user=current_user, tenant_id=current_user._tenant_id,
+    )
+
+
 @router.get("/document-types/{doc_type_id}", response_model=DocumentTypeOut)
 async def get_document_type(
     doc_type_id: int,

@@ -57,6 +57,41 @@ async def start_task(
     )
 
 
+class TaskFieldResultOut(BaseModel):
+    field_key: str
+    status: str
+    error_type: str | None
+    note: str | None
+
+
+@router.get("/{task_id}/field-results", response_model=list[TaskFieldResultOut])
+async def task_field_results(
+    task_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """The field marks the reviewer gave on this QC task — what the QC
+    workspace shows again when they go back to a record they reviewed."""
+    from app.models.qc_field_result import QcFieldResult
+
+    task = await db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.assigned_to != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your task")
+    rows = (await db.execute(
+        select(QcFieldResult).where(QcFieldResult.task_id == task.id).order_by(QcFieldResult.id)
+    )).scalars().all()
+    return [
+        TaskFieldResultOut(
+            field_key=r.field_key, status=r.status.value,
+            error_type=r.error_type.value if r.error_type is not None else None,
+            note=r.note,
+        )
+        for r in rows
+    ]
+
+
 @router.post("/{task_id}/heartbeat", status_code=204)
 async def heartbeat_task(
     task_id: int,
@@ -142,7 +177,7 @@ async def my_tasks(
     batch (batch_service.complete_indexing_batch); once the batch advances
     past indexing, its tasks drop out of this list the normal way."""
     from sqlalchemy import and_, or_, select
-    from app.models.batch import Batch, BatchStatus
+    from app.models.batch import Batch, BatchStatus, BatchType
     from app.models.task import Task, TaskStatus, TaskType
 
     result = await db.execute(
@@ -153,6 +188,12 @@ async def my_tasks(
             or_(
                 Task.status.in_([TaskStatus.pending, TaskStatus.in_progress]),
                 and_(Task.task_type == TaskType.indexing, Batch.status == BatchStatus.indexing),
+                # Likewise a customer QC reviewer's records stay listed, and
+                # can be reviewed again, until they submit the QC batch.
+                and_(
+                    Task.task_type == TaskType.qc, Batch.batch_type == BatchType.qc,
+                    Batch.status == BatchStatus.indexing,
+                ),
             ),
         )
     )

@@ -26,6 +26,17 @@ See `RELEASING.md` for how to cut a release.
   - Lots sampled at a manual rate get the same step, with a pass/reject
     ruling on whole records.
   Needs migration `a7c9e1f3b5d2`.
+- **QC reviewers submit their QC batch** (customer portal, QC Workspace).
+  Like indexers' Complete Batch, a reviewed record no longer leaves the
+  queue: the QC Workspace groups records by QC batch, shows how each was
+  reviewed, and lets the reviewer go back to any of them (**Previous
+  record**, or **Review again** from the batch's list) to change their
+  marks. After each record the next one opens. **Submit batch**, once every
+  record is reviewed, hands the batch on; a lot goes to its supervisor
+  only when all its QC batches are submitted. The QC Batches table shows
+  batches reviewed but not submitted, and the supervisor can submit one for
+  the reviewer. Migration `c3e5a7b9d1f4` closes QC batches finished before
+  this change.
 
 ### Changed
 - A reviewer's rejection no longer sends the record back for rework

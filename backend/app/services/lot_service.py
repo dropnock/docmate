@@ -735,6 +735,10 @@ async def calculate_accuracy(
     done_statuses = {RecordStatus.qc_passed, RecordStatus.qc_failed}
     if not sampled or not all(r.status in done_statuses for r in sampled):
         return lot  # Not all done yet
+    # Reviewers can still go back to records in a QC batch they haven't
+    # submitted (submit_qc_batch), so the lot waits for those too.
+    if await _open_qc_batch_ids(db, [r.id for r in sampled]):
+        return lot
 
     result = await _judge(db, lot)
     lot.status = LotStatus.awaiting_decision
@@ -749,6 +753,68 @@ async def calculate_accuracy(
         new_value={"status": "awaiting_decision", **result},
     )
     return lot
+
+
+async def _open_qc_batch_ids(db: AsyncSession, record_ids: list[int]) -> set[int]:
+    """The QC batches holding these records' QC tasks that haven't been
+    submitted yet."""
+    if not record_ids:
+        return set()
+    return set((await db.execute(
+        select(Batch.id).join(Task, Task.batch_id == Batch.id).where(
+            Task.record_id.in_(record_ids),
+            Task.task_type == TaskType.qc,
+            Batch.batch_type == BatchType.qc,
+            Batch.status == BatchStatus.indexing,
+        )
+    )).scalars().all())
+
+
+async def submit_qc_batch(db: AsyncSession, *, batch: Batch, user, tenant_id: int) -> Batch:
+    """The customer QC reviewer's "Submit batch": until now they can go back
+    to any record of the batch and review it again (task_service.start_task
+    reopens it). Every record must be reviewed first. Submitting closes the
+    batch and, once every QC batch of a lot is in, the lot moves on to the
+    customer QC supervisor (calculate_accuracy)."""
+    if batch.batch_type != BatchType.qc:
+        raise HTTPException(status_code=400, detail="Not a QC batch")
+    if batch.status != BatchStatus.indexing:
+        raise HTTPException(status_code=409, detail="This QC batch has already been submitted")
+    tasks = list((await db.execute(
+        select(Task).where(Task.batch_id == batch.id, Task.task_type == TaskType.qc)
+    )).scalars().all())
+    role = getattr(user.role, "value", user.role)
+    if role not in ("customer_supervisor", "admin") and not any(t.assigned_to == user.id for t in tasks):
+        raise HTTPException(status_code=403, detail="This QC batch isn't assigned to you")
+    open_tasks = [t for t in tasks if t.status in (TaskStatus.pending, TaskStatus.in_progress)]
+    if open_tasks:
+        n = len(open_tasks)
+        raise HTTPException(
+            status_code=400,
+            detail=f"{n} record{'' if n == 1 else 's'} still need{'s' if n == 1 else ''} a review "
+                   f"before the batch can be submitted",
+        )
+
+    batch.status = BatchStatus.complete
+    passed = sum(1 for t in tasks if t.status == TaskStatus.completed)
+    await audit_service.write_event(
+        db, tenant_id=tenant_id, entity_type=AuditEntityType.batch, entity_id=batch.id,
+        action=AuditAction.status_changed, performed_by=user.id,
+        old_value={"status": "indexing"}, new_value={"status": "complete"},
+        metadata={"qc_submitted": True, "passed": passed, "rejected": len(tasks) - passed},
+    )
+    await db.flush()
+
+    lot_ids = set((await db.execute(
+        select(LotRecord.lot_id).where(
+            LotRecord.record_id.in_([t.record_id for t in tasks]),
+            LotRecord.is_sampled == True,  # noqa: E712
+        )
+    )).scalars().all()) if tasks else set()
+    for lot_id in sorted(lot_ids):
+        await calculate_accuracy(db, lot_id=lot_id, tenant_id=tenant_id)
+    await db.flush()
+    return batch
 
 
 async def _review_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
@@ -1286,6 +1352,7 @@ async def list_qc_batches(db: AsyncSession, *, project_id: int, lot_id: int | No
                 h["open"] += 1
         out.append({
             "id": b.id, "name": b.name, "document_type_id": b.document_type_id, "created_at": b.created_at,
+            "submitted": b.status != BatchStatus.indexing,
             "lot_id": batch_lot.id if batch_lot else None, "lot_name": batch_lot.name if batch_lot else None,
             "total": len(btasks), "pending": counts["pending"], "in_progress": counts["in_progress"],
             "completed": counts["completed"], "failed": counts["failed"],

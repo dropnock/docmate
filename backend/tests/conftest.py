@@ -207,13 +207,36 @@ async def client(db: AsyncSession):
     app.dependency_overrides.pop(get_db, None)
 
 
-async def decide(db, seed, lot):
-    """The customer QC supervisor confirms a lot that is awaiting their
-    decision (lot_service.decide_lot); returns the refreshed lot."""
-    from app.models.lot import LotStatus
+async def submit_qc_batches(db, seed, lot):
+    """The reviewers submit every open QC batch of the lot
+    (lot_service.submit_qc_batch); returns the refreshed lot."""
+    from sqlalchemy import select
+    from app.models.batch import Batch
+    from app.models.lot import LotRecord
+    from app.models.task import Task, TaskType
     from app.services import lot_service
     await db.flush()
+    record_ids = select(LotRecord.record_id).where(LotRecord.lot_id == lot.id)
+    for batch_id in sorted(await lot_service._open_qc_batch_ids(db, list((await db.execute(record_ids)).scalars()))):
+        batch = await db.get(Batch, batch_id)
+        holder = (await db.execute(
+            select(Task.assigned_to).where(Task.batch_id == batch_id, Task.task_type == TaskType.qc)
+        )).scalars().first()
+        user = next((u for u in seed.values() if getattr(u, "id", None) == holder and hasattr(u, "role")), seed["admin"])
+        user._tenant_id = seed["tenant"].id
+        await lot_service.submit_qc_batch(db, batch=batch, user=user, tenant_id=seed["tenant"].id)
+    await db.flush()
     await db.refresh(lot)
+    return lot
+
+
+async def decide(db, seed, lot):
+    """The reviewers submit their QC batches and the customer QC supervisor
+    confirms the lot that is then awaiting their decision
+    (lot_service.decide_lot); returns the refreshed lot."""
+    from app.models.lot import LotStatus
+    from app.services import lot_service
+    await submit_qc_batches(db, seed, lot)
     assert lot.status == LotStatus.awaiting_decision, lot.status
     await lot_service.decide_lot(db, lot_id=lot.id, user_id=seed["supervisor"].id, tenant_id=seed["tenant"].id)
     await db.flush()

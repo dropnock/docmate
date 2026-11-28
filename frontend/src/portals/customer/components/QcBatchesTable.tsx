@@ -1,22 +1,32 @@
 import { useMemo, useState } from "react";
-import { Button, Empty, Modal, Progress, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
+import { Button, Empty, Modal, Popconfirm, Progress, Select, Space, Table, Tag, Tooltip, Typography, message } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnType } from "antd/es/table";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { getQcAgents, listQcBatches, lotDetailKey, qcBatchesKey, reassignQcBatch } from "@shared/api/lots";
+import { submitQcBatch } from "@shared/api/tasks";
 import type { QcBatchSummary, UserRecord } from "@shared/types";
 import { qcAssigneeOptions } from "./qcAssignees";
 
-type Stage = "not_started" | "in_progress" | "finished";
+type Stage = "not_started" | "in_progress" | "to_submit" | "submitted";
 const STAGE_LABEL: Record<Stage, string> = {
   not_started: "Not started",
   in_progress: "In progress",
-  finished: "Finished",
+  to_submit: "Reviewed, not submitted",
+  submitted: "Submitted",
 };
-/** Finished: nothing left open. Not started: nobody has opened a record yet. */
+/** Submitted: the reviewer has handed it in. Reviewed, not submitted: nothing
+ * left open, but the reviewer can still go back to its records. Not
+ * started: nobody has opened a record yet. */
 const stage = (b: QcBatchSummary): Stage =>
-  b.pending + b.in_progress === 0 ? "finished" : b.pending === b.total ? "not_started" : "in_progress";
+  b.submitted
+    ? "submitted"
+    : b.pending + b.in_progress === 0
+      ? "to_submit"
+      : b.pending === b.total
+        ? "not_started"
+        : "in_progress";
 
 interface Props {
   projectId: number;
@@ -56,6 +66,17 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
       setTarget(undefined);
     },
     onError: (e: unknown) => message.error(formatApiError(e, "Could not reassign the batch")),
+  });
+
+  const submit = useMutation({
+    mutationFn: (b: QcBatchSummary) => submitQcBatch(b.id),
+    onSuccess: (_: unknown, b: QcBatchSummary) => {
+      message.success(`${b.name.split(" — ")[0]} submitted`);
+      qc.invalidateQueries({ queryKey: ["qc-batches", projectId] });
+      if (b.lot_id) qc.invalidateQueries({ queryKey: lotDetailKey(b.lot_id) });
+      qc.invalidateQueries({ queryKey: ["customer-lots", projectId] });
+    },
+    onError: (e: unknown) => message.error(formatApiError(e, "Could not submit the batch")),
   });
 
   const open = (b: QcBatchSummary) => b.pending + b.in_progress;
@@ -115,6 +136,7 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
       onFilter: (value, b) => stage(b) === value,
       render: (_: unknown, b: QcBatchSummary) => {
         const done = b.completed + b.failed;
+        const st = stage(b);
         return (
           <Tooltip
             title={`${b.completed} passed · ${b.failed} rejected · ${b.in_progress} in progress · ${b.pending} not started`}
@@ -122,8 +144,14 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
             <Progress
               percent={b.total ? Math.round((done / b.total) * 100) : 0}
               size="small"
+              status={st === "submitted" ? "success" : "normal"}
               format={() => `${done}/${b.total}`}
             />
+            {(st === "to_submit" || st === "submitted") && (
+              <Tag color={st === "submitted" ? "success" : "processing"} style={{ marginTop: 2 }}>
+                {STAGE_LABEL[st]}
+              </Tag>
+            )}
           </Tooltip>
         );
       },
@@ -138,13 +166,27 @@ export default function QcBatchesTable({ projectId, lotId }: Props) {
       title: "",
       key: "action",
       width: 110,
-      render: (_: unknown, b: QcBatchSummary) => (
-        <Tooltip title={open(b) ? undefined : "Every record in this batch has been reviewed"}>
-          <Button size="small" disabled={!open(b)} onClick={() => setReassigning(b)}>
-            Reassign
-          </Button>
-        </Tooltip>
-      ),
+      render: (_: unknown, b: QcBatchSummary) =>
+        stage(b) === "to_submit" ? (
+          <Popconfirm
+            title="Submit this batch for the reviewer?"
+            description="Its records can't be reviewed again after this."
+            okText="Submit"
+            onConfirm={() => submit.mutate(b)}
+          >
+            <Tooltip title="Every record is reviewed; the reviewer hasn't submitted the batch yet">
+              <Button size="small" loading={submit.isPending && submit.variables?.id === b.id}>
+                Submit
+              </Button>
+            </Tooltip>
+          </Popconfirm>
+        ) : (
+          <Tooltip title={open(b) ? undefined : "Every record in this batch has been reviewed"}>
+            <Button size="small" disabled={!open(b)} onClick={() => setReassigning(b)}>
+              Reassign
+            </Button>
+          </Tooltip>
+        ),
     },
   ];
 

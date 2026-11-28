@@ -13,7 +13,7 @@ from app.models.qc_field_result import QcFieldResult
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskType
 from app.services import lot_service
-from tests.conftest import decide, token
+from tests.conftest import decide, submit_qc_batches, token
 from tests.test_aql_router import _make_customer_supervisor
 from tests.test_defect_classes import TestCustomerQc
 
@@ -26,6 +26,7 @@ bad = TestCustomerQc._bad
 async def _reviewed(db, seed, defects):
     lot, records = await QC._sample(db, seed)
     await QC._review(db, seed, lot, defects, decide=False)
+    await submit_qc_batches(db, seed, lot)
     sampled = await lot_service._sampled(db, lot.id)
     return lot, sampled
 
@@ -219,6 +220,7 @@ class TestManualRate:
         lot, _ = await _make_lot(db, seed, num_records=3)
         await _inspect_and_release(db, seed, lot)
         sampled = await _customer_qc(db, seed, lot, fail_first=True, decide=False)
+        await submit_qc_batches(db, seed, lot)
         lot.acceptance_number = None  # judged as a manual-rate lot
         await db.flush()
         assert lot.status == LotStatus.awaiting_decision

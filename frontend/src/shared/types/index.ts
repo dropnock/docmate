@@ -216,6 +216,8 @@ export interface QcBatchSummary {
   in_progress: number;
   completed: number;
   failed: number;
+  /** The reviewer has submitted it; until then they can still go back to its records. */
+  submitted: boolean;
   assignees: { id: number; full_name: string; role: string | null; tasks: number; open: number }[];
 }
 

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.aql import SamplingMode
@@ -75,9 +75,14 @@ async def start_task(
         # record while its batch is still in indexing (My Tasks' Review /
         # Correct and Previous record) — once the batch has moved on, QA or
         # QC may be working the record and reopening would pull it back.
+        # The same goes for a customer QC reviewer going back to a record in
+        # a QC batch they haven't submitted yet (lot_service.submit_qc_batch).
         batch = await db.get(Batch, task.batch_id)
-        if not (task.task_type == TaskType.indexing and task.status == TaskStatus.completed
-                and batch and batch.status == BatchStatus.indexing):
+        reopenable = (
+            task.task_type == TaskType.indexing and task.status == TaskStatus.completed
+            and batch is not None and batch.status == BatchStatus.indexing
+        ) or await qc_task_reopenable(db, task=task, batch=batch)
+        if not reopenable:
             raise HTTPException(
                 status_code=409,
                 detail="This task is finished and its batch has moved on, so it can't be reopened",
@@ -104,6 +109,23 @@ async def start_task(
         new_value={"status": "in_progress"},
     )
     return task
+
+
+async def qc_task_reopenable(db: AsyncSession, *, task: Task, batch: Batch | None) -> bool:
+    """A finished QC task can be reviewed again while its QC batch is still
+    open (not yet submitted) and its record is in a sampled lot that is
+    still in QC. Records outside a lot go back for rework the moment they
+    are rejected (fail_task), so those can't be reopened."""
+    if task.task_type != TaskType.qc or task.status not in (TaskStatus.completed, TaskStatus.failed):
+        return False
+    if batch is None or batch.batch_type != BatchType.qc or batch.status != BatchStatus.indexing:
+        return False
+    lr = await _find_sampled_lot_record(db, record_id=task.record_id)
+    if lr is None:
+        return False
+    from app.models.lot import Lot, LotStatus
+    lot = await db.get(Lot, lr.lot_id)
+    return lot is not None and lot.status == LotStatus.qc_in_progress
 
 
 async def heartbeat_task(db: AsyncSession, *, task_id: int, user_id: int, opened: bool = False) -> Task:
@@ -353,6 +375,9 @@ async def _persist_qc_field_results(
                 status_code=422,
                 detail=f"Say what is wrong with each defective field (missing, typo or interpretation): {unclassed}",
             )
+    # A record reviewed again (reopened before its QC batch was submitted):
+    # the new marks replace the earlier ones.
+    await db.execute(delete(QcFieldResult).where(QcFieldResult.task_id == task.id))
     error_classes = await defect_class_service.project_error_classes(db, lot.project_id)
     for fr in field_results:
         is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))
