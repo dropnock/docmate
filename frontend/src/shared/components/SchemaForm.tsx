@@ -109,7 +109,12 @@ function preprocessSchema(schema: RJSFSchema): RJSFSchema {
     return out;
   }
 
-  return walk(schema) as RJSFSchema;
+  // The form validates with its own draft-07 validator whatever the schema
+  // declares; a "$schema" URL it doesn't know (https://json-schema.org/...,
+  // a newer draft) would otherwise fail every validation — and so block
+  // Submit — with "no schema with key or ref".
+  const { $schema: _declared, ...out } = walk(schema) as Record<string, unknown>;
+  return out as RJSFSchema;
 }
 
 function initialFormData(schema: RJSFSchema, values?: Record<string, unknown>): Record<string, unknown> {
