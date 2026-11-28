@@ -8,6 +8,14 @@ See `RELEASING.md` for how to cut a release.
 ## [Unreleased]
 
 ### Added
+- **Reworked records show what they were sent back for.** The indexer and
+  the QA agent fixing a record now see, above the form, the defects it came
+  back with: from the outgoing inspection or the customer's confirmed QC,
+  each field with its error type, class and note ("Caveators 2 › Address —
+  Typographic error"), and the same note under each of those fields in the
+  form; from a QA rejection or a supervisor's requeue, their note. It shows
+  until the reworked record passes QA. Before, the banner only said the
+  record had been sent back.
 - **Each list entry's fields are reviewed separately.** Customer QC, the
   supervisor's review and the outgoing inspection used to offer one mark per
   top-level field, so a list such as a caveat's registered owners or

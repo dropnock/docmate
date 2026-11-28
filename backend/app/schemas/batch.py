@@ -97,6 +97,26 @@ class RecordVersionOut(BaseModel):
     reason: str
 
 
+class ReworkDefectField(BaseModel):
+    field_key: str
+    label: str
+    error_type: str | None = None
+    error_label: str | None = None
+    severity: str | None = None
+    note: str | None = None
+
+
+class ReworkDefectsOut(BaseModel):
+    """rework_defects.open_rework_defects: the send-back a record is being
+    reworked for."""
+    source: Literal["inspection", "customer_qc", "qa", "supervisor"]
+    title: str
+    at: datetime
+    by: str | None = None
+    note: str | None = None
+    fields: list[ReworkDefectField]
+
+
 class AuditEventOut(BaseModel):
     model_config = {"from_attributes": True}
     id: int

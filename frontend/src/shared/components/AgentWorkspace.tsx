@@ -1,14 +1,15 @@
 import { Alert, Badge, Button, Modal, Space, Spin, Typography, message } from "antd";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
 import { formatApiError } from "@shared/api/errors";
 import { useRecordImage } from "@shared/hooks/useRecordImage";
 import { useTaskHeartbeat } from "@shared/hooks/useTaskHeartbeat";
-import type { DocumentType, Task, UserRecord } from "@shared/types";
+import type { DocumentType, ReworkDefects, Task, UserRecord } from "@shared/types";
 import OpenSeadragonViewer from "./ImageViewer/OpenSeadragonViewer";
 import { RecordFlagBanner, RecordFlagButton } from "./RecordFlag";
+import { ReworkDefectsBanner, reworkFieldErrors } from "./ReworkDefects";
 import SchemaForm, { type SchemaFormHandle } from "./SchemaForm";
 import SplitWorkspace from "./SplitWorkspace";
 
@@ -42,6 +43,18 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
     queryFn: () => api.get(`/records/${task.record_id}`).then((r) => r.data),
     refetchInterval: 10_000,
   });
+
+  // What the record was sent back for (outgoing inspection, customer QC, a
+  // QA rejection or a supervisor's note) — null when it isn't being reworked.
+  const { data: reworkDefects } = useQuery<ReworkDefects | null>({
+    queryKey: ["rework-defects", task.record_id],
+    queryFn: () => api.get(`/records/${task.record_id}/rework-defects`).then((r) => r.data),
+    enabled: task.task_type === "indexing" || task.task_type === "qa",
+  });
+  const fieldNotes = useMemo(
+    () => (reworkDefects?.fields.length ? reworkFieldErrors(reworkDefects.fields) : undefined),
+    [reworkDefects],
+  );
 
   // Cached at the app root (App.tsx queries the same ["me"] key on load) —
   // needed to tell "locked by me" from "locked by someone else": comparing
@@ -216,7 +229,9 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
           already takes a record to version 2, so every QA task would read as
           rework. previously_sent_back is set only when QA or customer QC
           rejected the record, or a supervisor requeued it. */}
-      {record?.previously_sent_back ? (
+      {reworkDefects ? (
+        <ReworkDefectsBanner defects={reworkDefects} version={record?.current_version} />
+      ) : record?.previously_sent_back ? (
         <Alert
           type="warning"
           message={`Rework — this record was sent back for correction. Version ${record.current_version}; the previous data is pre-filled.`}
@@ -300,6 +315,7 @@ export default function AgentWorkspace({ task, onComplete }: Props) {
                     initialValues={record?.indexed_data ?? undefined}
                     onSubmit={(values) => completeMutation.mutate(values)}
                     formId={formId}
+                    fieldNotes={fieldNotes}
                   />
                 ) : (
                   <Spin style={{ margin: 16 }} />

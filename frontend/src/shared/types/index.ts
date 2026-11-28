@@ -683,3 +683,23 @@ export interface QcReview {
   non_critical_defect_total: number | null;
   records: QcReviewRecord[];
 }
+
+/** GET /records/{id}/rework-defects — what a record being reworked was sent
+ * back for (backend rework_defects.open_rework_defects). */
+export interface ReworkDefectField {
+  field_key: string;
+  label: string;
+  error_type: ErrorType | null;
+  error_label: string | null;
+  severity: Severity | null;
+  note: string | null;
+}
+
+export interface ReworkDefects {
+  source: "inspection" | "customer_qc" | "qa" | "supervisor";
+  title: string;
+  at: string;
+  by: string | null;
+  note: string | null;
+  fields: ReworkDefectField[];
+}

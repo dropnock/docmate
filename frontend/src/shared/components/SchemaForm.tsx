@@ -1,7 +1,7 @@
 import Form from "@rjsf/antd";
 import type RjsfForm from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
-import { getDefaultFormState, type FormValidation, type RJSFSchema } from "@rjsf/utils";
+import { getDefaultFormState, type ErrorSchema, type FormValidation, type RJSFSchema } from "@rjsf/utils";
 import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle, type KeyboardEvent } from "react";
 import { RangeArrayField, ParcelArrayField, DateTextWidget, CountryWidget, buildAutoUiSchema } from "./rjsf/CustomWidgets";
 import { WorkspaceErrorBoundary } from "./WorkspaceErrorBoundary";
@@ -27,6 +27,9 @@ interface Props {
   // field/widget automatically, and the custom widgets already read it
   // correctly (see CustomWidgets.tsx's ui:disabled handling).
   readOnly?: boolean;
+  // Notes shown under particular fields without blocking submit — the
+  // defects a reworked record was sent back for (ReworkDefects.tsx).
+  fieldNotes?: ErrorSchema;
 }
 
 function humanize(key: string): string {
@@ -180,7 +183,7 @@ function validateRequired(
 }
 
 const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
-  { schema, initialValues, onSubmit, formId, readOnly }: Props,
+  { schema, initialValues, onSubmit, formId, readOnly, fieldNotes }: Props,
   ref,
 ) {
   const processedSchema = useMemo(() => preprocessSchema(schema), [schema]);
@@ -232,6 +235,8 @@ const SchemaForm = forwardRef<SchemaFormHandle, Props>(function SchemaForm(
           showErrorList={false}
           liveValidate={false}
           disabled={readOnly}
+          extraErrors={fieldNotes}
+          extraErrorsBlockSubmit={false}
           widgets={{ DateText: DateTextWidget, Country: CountryWidget }}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           fields={{ RangeArray: RangeArrayField, ParcelArray: ParcelArrayField } as any}

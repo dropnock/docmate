@@ -13,9 +13,9 @@ from app.core.security import check_project_access, get_current_user, require_ro
 from app.models.record import Record
 from app.models.record_version import RecordVersion
 from app.schemas.batch import (
-    AuditEventOut, ExportRecordsRequest, RecordOut, RecordVersionOut, RequeueRecordsRequest,
+    AuditEventOut, ExportRecordsRequest, RecordOut, RecordVersionOut, RequeueRecordsRequest, ReworkDefectsOut,
 )
-from app.services import audit_service, flag_service, record_service, s3_service
+from app.services import audit_service, flag_service, record_service, rework_defects, s3_service
 from app.services.lock_service import release_lock
 
 
@@ -116,6 +116,21 @@ async def unlock_record(
     record = await _get_authorized_record(record_id, db, current_user)
     await release_lock(db, record=record, user_id=current_user.id, tenant_id=current_user._tenant_id)
     return record
+
+
+@router.get("/{record_id}/rework-defects", response_model=ReworkDefectsOut | None)
+async def get_rework_defects(
+    record_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """What the record was sent back for, while it is being reworked — for
+    the indexer and QA agent fixing it. Digitizing portal only: the outgoing
+    inspection's marks are the digitizing team's own."""
+    if flag_service.is_customer(current_user):
+        raise HTTPException(status_code=403, detail="Not available in the customer portal")
+    record = await _get_authorized_record(record_id, db, current_user)
+    return await rework_defects.open_rework_defects(db, record)
 
 
 @router.get("/{record_id}/versions", response_model=list[RecordVersionOut])

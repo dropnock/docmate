@@ -90,6 +90,9 @@ A digitizing supervisor shares open flags with the project's customer supervisor
 ### Record locking (`services/lock_service.py`)
 Pessimistic lock: `acquire_lock()` is called when an agent starts a task; raises `409` with `{locked_by, locked_at}` if another user holds it. `release_lock()` is called on task complete, fail, or reassign.
 
+### Rework defects (`services/rework_defects.py`)
+`GET /api/records/{id}/rework-defects` (digitizing portal only) gives the indexer/QA agent fixing a record the latest send-back: outgoing inspection marks, customer QC effective marks (only once `decide_lot` has run), a QA rejection reason (`qa_failed` audit) or a supervisor requeue note — whichever is newest, until a QA task on the record completes after it. `AgentWorkspace` shows it as the rework banner and passes the field marks to `SchemaForm` as non-blocking `extraErrors`.
+
 ### Record versioning (`services/version_service.py`)
 `create_version()` snapshots `record.indexed_data` into an immutable `RecordVersion` row and increments `record.current_version`. Called in two places only:
 1. `task_service.complete_task()` — on first indexing submission (v1) or rework (v2+)
