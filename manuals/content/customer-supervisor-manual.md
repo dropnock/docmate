@@ -10,13 +10,10 @@ The examples use a fictitious customer, **Acme Archive Corp**, and its superviso
 
 Reviewers have their own manual, the *Customer Portal — Reviewer User Manual*. It covers the QC Workspace in more depth than [Section 12](#12-the-qc-workspace) here.
 
-> **What's new since version 0.9.0**
-> - **Critical, major and minor defects, each with its own AQL.** An error in an identifier field (such as the title number) is critical. Other errors are major or minor depending on what was wrong, under an agreement you set: by default, missing data is major and typing or interpretation errors are minor. A lot is accepted only if every class stays within its own acceptance number ([Section 7](#7-lot-settings-and-the-aql-configuration), [Section 10](#10-following-qc-and-reading-the-result)).
-> - **You decide how much of the sample to hand out.** When assigning, you choose how many batches to create and how many records go in each. Anything you don't assign stays unassigned for later. Batches can go to reviewers, to other supervisors or to yourself ([Section 9](#9-assigning-the-sample-to-reviewers)).
-> - **A new QC Batches page** lists every batch, who holds it and how far it has got, and lets you **reassign** a batch's open records to someone else ([Section 9](#9-assigning-the-sample-to-reviewers)).
-> - **Search on Flagged Records** finds a flag by record, issue or anything said in its discussion ([Section 13](#13-flagged-records-guiding-the-digitization-team)).
-> - **Time per record in Staff Productivity.** Click a reviewer's name to see each record they reviewed and how long it took. Time now adds up across sittings, and time away from a record isn't counted ([Section 16](#16-staff-productivity)).
-> - AQLs of 4.0 % and 6.5 % are now available.
+> **What's new since version 0.9.4**
+> - **You confirm each lot's result.** When every sampled record has been reviewed, the lot waits for you as **Awaiting your decision** instead of passing or failing on its own. **Review & decide** shows the records with defects beside their images. You can uphold a reviewer's mark, dismiss it, or change what was wrong, giving a reason for each change, and the lot's result follows your corrected marks. Rejected records go back to the digitization team only when you confirm ([Section 10](#reviewing-the-defects-and-confirming-the-result)).
+> - **Reviewers submit their batches.** A reviewer can go back to any record in a batch and change their verdict until they submit the batch. The lot waits until every batch is submitted. On the **QC Batches** page you can see which batches are waiting to be submitted, and submit a fully reviewed batch for a reviewer ([Section 9](#the-qc-batches-page)).
+> - **Each entry in a list is checked separately.** A list such as *Encumbrances* is reviewed one part of one entry at a time ("Encumbrances 2 › Reference"), and each defective part is a defect of its own. The defect tabulation adds up the same part across entries ("Encumbrances › Reference") ([Section 10](#the-qc-field-defect-tabulation-iso-projects)).
 > - **Help in the portal.** This manual and the training workbooks open from **Help** in the menu, and you can download a PDF copy prepared for your organisation ([Section 4](#getting-help-in-the-portal)).
 > - **A new look.** The portal and its sign-in page carry the DocMate logo and colours.
 
@@ -60,6 +57,7 @@ Customer QC is your organisation's own independent check of that work, and you r
 | See every lot the team releases to you | See only the records assigned to them |
 | Choose how lots are sampled (the AQL configuration) | Compare each sampled record with its image |
 | Draw the sample and assign it to reviewers | Accept the record, mark defects, or reject it |
+| Check the defects reviewers found and confirm each lot's result | Submit each batch once it's reviewed |
 | Decide what happens when a lot fails | |
 | Answer the team's questions on flagged records | |
 | Follow the project's progress, quality and history | |
@@ -76,23 +74,23 @@ Only supervisors see the **Lots**, **QC Batches**, **Project KPIs**, **Staff Pro
  Index → QA → outgoing inspection
             │
             ▼  releases the lot
-        ┌──────────┐  Apply sample  ┌────────────────┐  all sampled   ┌────────┐
-        │ Released │ ─────────────▶ │ QC In Progress │ ─────────────▶ │ Passed │
-        └──────────┘                └────────────────┘  records done  └────────┘
-              ▲                              │
-              │                              ▼
-              │                         ┌────────┐  Send for     ┌─────────────┐
-              │                         │ Failed │ ────────────▶ │ Remediation │
-              │                         └────────┘  Remediation  └─────────────┘
-              │                                                        │
-              └────── team fixes the rejected records and resubmits ───┘
-                      (the lot comes back for QC round 2, 3, …)
+        ┌──────────┐  Apply   ┌────────────────┐  every batch  ┌────────────────────────┐  Confirm   ┌────────┐
+        │ Released │ ───────▶ │ QC In Progress │ ────────────▶ │ Awaiting your decision │ ─────────▶ │ Passed │
+        └──────────┘  sample  └────────────────┘   submitted   └────────────────────────┘  decision  └────────┘
+              ▲                                                            │
+              │                                                            ▼
+              │                                        ┌────────┐  Send for     ┌─────────────┐
+              │                                        │ Failed │ ────────────▶ │ Remediation │
+              │                                        └────────┘  Remediation  └─────────────┘
+              │                                                                       │
+              └──────────────── team fixes the rejected records and resubmits ────────┘
+                                (the lot comes back for QC round 2, 3, …)
 ```
 
 1. The digitization team **releases** a lot to you after it passes their own outgoing inspection.
 2. You **apply a sample**. DocMate picks which records will be checked, and the lot moves to **QC In Progress**.
-3. You **assign** the sampled records to reviewers in batches, and they review them.
-4. When the last sampled record has been reviewed, DocMate decides the result automatically: **Passed** or **Failed**.
+3. You **assign** the sampled records to reviewers in batches. They review them and **submit** each batch.
+4. When every batch has been submitted, the lot is **Awaiting your decision**. You check the defects the reviewers found, correct any marks you disagree with, and **confirm** the result. It follows from the marks as you leave them: **Passed** or **Failed**.
 5. If the lot failed, you **send it for remediation**. The team corrects the rejected records and resubmits the lot, and it comes back to you as a new **QC round**.
 
 ---
@@ -198,17 +196,19 @@ Each row is a lot the digitization team has released to you. Lots the team is st
 | **Status** | Where the lot is (see below) |
 | **Inspection level** | **Normal**, **Tightened** or **Reduced**: the ISO 2859‑1 level the lot is sampled at ([Section 7](#7-lot-settings-and-the-aql-configuration)). Once sampled, it's the level the sample was drawn at. |
 | **Sample** | The sample taken, as a percentage and a number of records. "—" until you apply a sample. |
-| **Accuracy** | The share of sampled records your reviewers passed. Shown once QC is complete. |
+| **Accuracy** | The share of sampled records that passed. Shown once every sampled record has been reviewed, and updated as you correct marks. |
 
 | Status | What it means | What you do next |
 |---|---|---|
 | **Released** | Handed over and waiting for you | [Apply a sample](#8-applying-the-sample) |
 | **QC In Progress** | Sampled, and reviewers are working on it | [Assign](#9-assigning-the-sample-to-reviewers) any sampled records not yet assigned, then [follow progress](#10-following-qc-and-reading-the-result) |
+| **Awaiting your decision** | Every batch has been reviewed and submitted | [Review the defects and confirm the result](#reviewing-the-defects-and-confirming-the-result) |
 | **Passed** | QC is finished and the lot met your quality standard | Nothing. The lot is accepted. |
 | **Failed** | QC is finished and the lot did not meet your standard | [Send it for remediation](#11-when-a-lot-fails-sending-it-for-remediation) |
 | **Remediation** | Sent back to the team to correct the rejected records | Wait for the team to resubmit it |
 
-Each row has three buttons:
+Each row has these buttons:
+- **Review & decide**, on a lot awaiting your decision, opens the QC review where you confirm the result ([Section 10](#reviewing-the-defects-and-confirming-the-result)). On a decided lot the same page opens as **QC results**, read-only.
 - **Inspection report** shows the digitization team's own check of the lot.
 - **Settings** opens the lot's details, the project's AQL configuration, the sample and the history.
 - **Assign to QC** hands sampled records to reviewers in batches. It's greyed out until a sample has been applied.
@@ -373,7 +373,7 @@ The new batches are listed under **QC batches for this lot**, with who holds eac
 
 > **Tips**
 > - Share a sample between two or more reviewers so no one person's judgement decides a lot.
-> - A lot's result is decided only when **every** sampled record has been reviewed, so don't leave records unassigned for long.
+> - A lot waits for your decision only when **every** sampled record has been reviewed and every batch submitted, so don't leave records unassigned for long.
 > - Only active reviewers and supervisors from your own organisation can be chosen. If someone is missing, ask your administrator to add them or reactivate their account.
 
 ### The QC Batches page
@@ -387,16 +387,18 @@ Click **QC Batches** in the menu to see every batch handed out on the project, a
 | **Batch** | The batch's name. Hover over it to see the full name. |
 | **Lot** | The lot the batch's records come from |
 | **Assigned to** | Who holds the batch. A blue name still has records open; hover over it to see how many. Supervisors are marked **· supervisor**. |
-| **Progress** | Records reviewed out of the batch's total. Hover over the bar for the breakdown: passed, rejected, in progress and not started. |
+| **Progress** | Records reviewed out of the batch's total. Hover over the bar for the breakdown: passed, rejected, in progress and not started. A fully reviewed batch is tagged **Reviewed, not submitted** until its reviewer submits it, then **Submitted**. |
 | **Created** | When the batch was handed out |
 
-To narrow the list, click the filter icon in the **Assigned to** column to pick people, or in the **Progress** column to show only batches that are **Not started**, **In progress** or **Finished**.
+To narrow the list, click the filter icon in the **Assigned to** column to pick people, or in the **Progress** column to show only batches that are **Not started**, **In progress**, **Reviewed, not submitted** or **Submitted**.
+
+**Submitting a batch for a reviewer.** Reviewers submit their own batches once they've checked them ([Section 10](#10-following-qc-and-reading-the-result)). If a reviewer has reviewed every record but can't submit, for example because they're away, click **Submit** on the batch's row and confirm. After that, its reviews can't be changed by the reviewer.
 
 ### Reassigning a batch
 
 If a reviewer is away or has too much work, move their open records to someone else.
 
-**Step 1.** Click **Reassign** on the batch's row. It's greyed out once every record in the batch has been reviewed.
+**Step 1.** Click **Reassign** on the batch's row. It's greyed out once every record in the batch has been reviewed (the row then offers **Submit** instead).
 
 ![Reassign a batch](images/supervisor/20d_qc_batches_reassign_button.png)
 
@@ -404,7 +406,7 @@ If a reviewer is away or has too much work, move their open records to someone e
 
 ![Choosing who takes over](images/supervisor/20e_reassign_modal.png)
 
-The batch's **open** records move to that person. Records already reviewed stay with whoever reviewed them. If someone had a record open, it starts again from the beginning for the new person, so anything they hadn't submitted on it is lost.
+The batch's **open** records move to that person. Records already reviewed stay with whoever reviewed them. If someone had a record open, it starts again from the beginning for the new person, so anything they hadn't recorded on it is lost.
 
 **Step 3.** A message, for example **"4 open records reassigned"**, confirms it.
 
@@ -421,12 +423,62 @@ Open the lot's **Settings** at any time to see how QC is going. In the **Records
 - **qc passed:** accepted.
 - **qc failed:** rejected.
 
-### How DocMate decides the result
+Reviewers can go back and change a verdict until they **submit** their batch, so these statuses can still change while the lot is **QC In Progress**. The **QC Batches** page shows which batches have been submitted ([Section 9](#the-qc-batches-page)).
 
-When the last sampled record has been reviewed, DocMate sets the lot to **Passed** or **Failed** straight away. Nobody has to press a button.
+### How the result is worked out
 
 - **ISO projects.** Reviewers mark each field as accepted or defective, and say what was wrong with each defective field. DocMate counts the defects in each class (critical, major and minor). The lot **fails** if any class reaches its **rejection number**. Otherwise, with every class within its acceptance number, it **passes**.
 - **Manual-rate projects.** Reviewers pass or reject whole records. The lot **passes** when at least **90 %** of the sampled records passed.
+
+DocMate works this out as the reviewers go, but nothing is final until you confirm it. When the last batch is submitted, the lot's status becomes **Awaiting your decision**, and its **Settings** show a blue banner with a **Review & decide** button.
+
+### Reviewing the defects and confirming the result
+
+Before you confirm, check the defects the reviewers found. A reviewer can misread a card too, and every defect you confirm counts against the lot and sends its record back to the digitization team.
+
+**Step 1.** Click **Review & decide** on the lot's row.
+
+![Review & decide on a lot awaiting your decision](images/supervisor/24a_review_decide_button.png)
+
+**Step 2.** The QC review opens.
+
+![The QC review](images/supervisor/24b_qc_review.png)
+
+- **The bar at the top** shows the defects found in each class against what the class allows (for example **Minor 3 / 1**: three found, one allowed), what the lot will do (**Lot will pass** or **Lot will fail**), how many records are rejected, and **Confirm decision**.
+- **The list on the left** shows the records with defects, each with how many it has and who reviewed it. Click **All** to see every sampled record.
+- **The rest of the screen** shows the selected record's image and indexed data. Scroll down to **Field review** to see the reviewer's mark on each field, with the error type, class and note.
+
+**Step 3.** Click each record in turn and compare the marked fields with the image.
+- **The reviewer is right:** leave the mark as it is.
+- **The field is in fact correct:** click **Accepted** to dismiss the defect.
+- **The field is wrong, but not as the reviewer said:** keep **Defective** and pick another error type. The class follows from the error type, as it does for reviewers.
+- **The reviewer missed an error:** click **Defective** on an accepted field and choose what was wrong.
+
+Each change asks for a **reason**: say what you saw on the card. In the example, Lena marked *Date registered* on record 89 as a typo. Dana checks the card, finds the date matches what was entered, clicks **Accepted** and writes *"Checked the card: it reads 1975-07-16, as entered."*
+
+**Step 4.** Click **Save changes**. **Discard** puts the record back as it was. Save or discard before moving to another record.
+
+![Dismissing a defect, with the reason](images/supervisor/24c_change_mark.png)
+
+A message, **"Changes saved"**, confirms it. The record is tagged **Changed**, and the counts at the top update straight away: in the example, minor defects drop from 3 to 2. The reviewer's own mark is kept beside yours, and the change is recorded in the record's history with your name and reason.
+
+**Step 5.** When you've been through the records, click **Confirm decision**.
+
+![Changes saved: confirm the decision](images/supervisor/24d_changed.png)
+
+**Step 6.** Check the summary: the result for each class, whether the lot will be accepted or rejected, how many records will go back to the digitization team, and how many records you changed. Click **Confirm — accept lot** or **Confirm — reject lot**. **Cancel** takes you back to the review.
+
+![Confirming the decision](images/supervisor/24e_confirm_decision.png)
+
+In the example, LT‑2026‑03 is still rejected after Dana's change. It was sampled at Tightened, where no major defect and one minor defect are allowed: one encumbrance on a card wasn't entered (major), and a folio was mistyped and a district misread (two minor).
+
+**Step 7.** You're returned to the Lots page, which shows the new status. An accepted lot is **Passed**. A rejected lot is **Failed**, ready to [send for remediation](#11-when-a-lot-fails-sending-it-for-remediation).
+
+![The lot decided](images/supervisor/24f_lot_decided.png)
+
+> - **You can't change the result directly.** It always follows the sampling plan applied to the marks as you leave them. To accept a lot, the marks themselves must be within the limits.
+> - **Confirming is final.** After it, the review opens read-only (as **QC results**), and records still rejected go back to the digitization team's QA for correction.
+> - **On a manual-rate project**, the review shows each record as **Passed** or **Rejected**. You can change a record's result, with a reason, in its **Record result** card.
 
 ### The QC field defect tabulation (ISO projects)
 
@@ -436,9 +488,9 @@ When the last sampled record has been reviewed, DocMate sets the lot to **Passed
 
 The first table has one row per class: its **AQL**, **acceptance (Ac)** and **rejection (Re)** numbers, the defects **found**, and the **result**: **Within limit** or **Rejects lot**.
 
-Below it, for each field, the tabulation shows:
+Below it, for each field, the tabulation shows the following. A list field's parts are counted across all entries: **Encumbrances › Reference** adds up the reference of every encumbrance on every record.
 - whether the field is an **identifier** (any error in it is critical);
-- how many times it was marked **defective**;
+- how many times it was marked **defective** (after your changes in the QC review);
 - **by class:** how many of those defects were critical, major or minor;
 - **what was wrong:** missing data, typographic or interpretation errors;
 - how many times it was **accepted**;
@@ -448,7 +500,7 @@ Use the tabulation to see which fields cause most of the errors, and what kind o
 
 ### Lot history
 
-At the bottom of the panel, **Lot history** lists everything that has happened to the lot: release, sampling, QC completion, remediation and so on. Each entry shows who did it and when. Click **Lot history** to expand it.
+At the bottom of the panel, **Lot history** lists everything that has happened to the lot: release, sampling, your decision, remediation and so on. Each entry shows who did it and when. Click **Lot history** to expand it.
 
 ![Lot history](images/supervisor/23_lot_history.png)
 
@@ -456,11 +508,11 @@ At the bottom of the panel, **Lot history** lists everything that has happened t
 
 ## 11. When a lot fails: sending it for remediation
 
-A failed lot shows a red banner at the top of its **Settings**, saying which classes failed. In the example: *"Lot failed QC — major and minor non-conformities reached the rejection number."*
+Once you've confirmed a rejection ([Section 10](#reviewing-the-defects-and-confirming-the-result)), the lot is **Failed**. A failed lot shows a red banner at the top of its **Settings**, saying which classes failed. In the example: *"Lot failed QC — major and minor non-conformities reached the rejection number."*
 
 ![A failed lot](images/supervisor/24_failed_lot.png)
 
-**Step 1.** Scroll down to the **QC field defect tabulation** to see which fields were defective. In the example, LT‑2026‑03 was sampled at Tightened, where no major defect and one minor defect are allowed. The reviewers found one major defect (an encumbrance on the card that wasn't entered) and two minor ones (a mistyped folio and a misread district), so both the major and the minor class reject the lot. Each rejected record also keeps the reviewer's note, which you can see in [Record History](#17-record-history).
+**Step 1.** Scroll down to the **QC field defect tabulation** to see which fields were defective. In the example, LT‑2026‑03 was sampled at Tightened, where no major defect and one minor defect are allowed. After Dana's review there is one major defect (an encumbrance on the card that wasn't entered) and two minor ones (a mistyped folio and a misread district), so both the major and the minor class reject the lot. Each rejected record also keeps the reviewer's note, which you can see in [Record History](#17-record-history).
 
 ![The failed lot's defects](images/supervisor/25_failed_lot_tabulation.png)
 
@@ -472,7 +524,7 @@ A failed lot shows a red banner at the top of its **Settings**, saying which cla
 
 ### What happens next
 
-1. Every record your reviewers rejected goes back to the digitization team's QA, who correct it.
+1. Every record still rejected when you confirmed the decision has already gone back to the digitization team's QA, who correct it. The team sees each defect you confirmed, with its note.
 2. When all of them are fixed, the team **resubmits** the lot. They inspect it again, and it comes back to you as **Released** on its next **QC round**.
 3. You apply a fresh sample and assign it, exactly as before ([Sections 8–9](#8-applying-the-sample)). Records that passed last time can be sampled again.
 
@@ -492,7 +544,7 @@ The lot list after these steps:
 
 As a supervisor you see the **QC Workspace** too, because it's everyone's home page. It lists the records assigned to **you**. Usually that's nothing, and it shows *"No QC tasks assigned to you"*.
 
-You can review records yourself by picking your own name (marked **(you)**) when you assign batches ([Section 9](#9-assigning-the-sample-to-reviewers)), or another supervisor can assign some to you. They then appear in your QC Workspace, and you review them exactly as a reviewer does. How reviewing works is described in the *Reviewer User Manual*.
+You can review records yourself by picking your own name (marked **(you)**) when you assign batches ([Section 9](#9-assigning-the-sample-to-reviewers)), or another supervisor can assign some to you. They then appear in your QC Workspace, and you review them exactly as a reviewer does, submitting the batch when you're done. How reviewing works is described in the *Reviewer User Manual*.
 
 ---
 
@@ -669,7 +721,7 @@ The example record shows its whole journey:
 - *rework_after_customer_rejection*: corrected after your reviewers rejected it.
 - *supervisor_requeue*: sent back by the team's supervisor.
 
-Compare versions to see exactly what changed. In the example, the correction changed the registered owner from *Margaret Dunmore* to *Margaret Barrington*.
+Compare versions to see exactly what changed. In the example, the correction changed the registered owner from *Ruth Radcliffe* to *Ruth Barrington*.
 
 ![A record's versions](images/supervisor/33_record_history_versions.png)
 
@@ -701,9 +753,12 @@ Compare versions to see exactly what changed. In the example, the correction cha
 | **"No lots released to your organisation yet"** | The digitization team hasn't released a lot on this project yet. |
 | **Assign to QC is greyed out** | Apply a sample first ([Section 8](#8-applying-the-sample)). |
 | **A reviewer is missing from the Assign to list** | Only active reviewers and supervisors from your organisation are listed. Ask your administrator. |
-| **The lot stays QC In Progress** | Some sampled records haven't been reviewed yet. Open **Assign to QC**: the form's title shows how many are still unassigned, and **Sampled records** shows each record's review status. Assign the rest, or check with whoever holds them. |
+| **The lot stays QC In Progress** | Some sampled records haven't been reviewed yet, or a batch hasn't been submitted. Open **Assign to QC**: the form's title shows how many are still unassigned, and **Sampled records** shows each record's review status. On the **QC Batches** page, look for batches tagged **Reviewed, not submitted**: ask the reviewer to submit, or submit it for them ([Section 9](#the-qc-batches-page)). |
+| **Confirm decision is greyed out** | You have unsaved changes on the record you're looking at. Click **Save changes** or **Discard**. |
+| **Save changes is greyed out** | Each change needs a reason, and each defective field needs an error type. Hover over the button to see which is missing. |
+| **The lot can't be accepted although you agree with the reviewers** | The result follows the sampling plan applied to the marks. If the marks are right and a class reaches its rejection number, the lot is rejected. |
 | **A reviewer is away with records still open** | Reassign their batch on the **QC Batches** page ([Section 9](#reassigning-a-batch)). |
-| **Reassign is greyed out** | Every record in that batch has already been reviewed, so there's nothing to move. |
+| **Reassign is greyed out** | Every record in that batch has already been reviewed, so there's nothing to move. The row offers **Submit** if the reviewer hasn't submitted it yet. |
 | **A search on Flagged Records finds nothing** | The search covers only the tab you're on. Try the **Resolved** or **Withdrawn** tab, or a shorter search. |
 | **You're asked to sign in again** | Your session ended after a period of inactivity. Sign in again; saved work is kept. |
 
@@ -714,8 +769,10 @@ Compare versions to see exactly what changed. In the example, the correction cha
 | Term | Meaning |
 |---|---|
 | **Acceptance number (Ac)** | The most defects of one class a sample can contain and still pass. Each class has its own (ISO projects). |
+| **Awaiting your decision** | A lot whose sample has been fully reviewed and submitted, waiting for you to check the defects and confirm the result |
 | **AQL** | *Acceptable Quality Level.* A quality requirement, set for each defect class. With the lot size and inspection level, it decides the sample size and acceptance number. Lower is stricter. |
-| **Batch (QC batch)** | A group of sampled records assigned to one person as a unit of work |
+| **Batch (QC batch)** | A group of sampled records assigned to one person as a unit of work. They review its records, then submit it. |
+| **Change (to a mark)** | Your correction of a reviewer's mark in the QC review: dismissing a defect, changing its error type or adding one. The reviewer's own mark is kept beside it. |
 | **Classification agreement** | The project's rule for whether each kind of error (missing data, typographic, interpretation) counts as major or minor |
 | **Defect class** | Critical, major or minor: how serious a defect is. Each class has its own AQL and acceptance number. |
 | **Error type** | What was wrong with a defective field: **Missing** data, a **Typo**, or an **Interpretation** error |
@@ -725,6 +782,7 @@ Compare versions to see exactly what changed. In the example, the correction cha
 | **Identifier field** | A field that identifies the record, such as the title number. Any error in it is a critical defect. |
 | **Indexed data** | The information typed up from a record's image |
 | **ISO 2859‑1** | The international standard for sampling inspection that DocMate follows |
+| **List entry** | One item in a list field, such as the second encumbrance. Each part of each entry is reviewed separately ("Encumbrances 2 › Reference"). |
 | **Lot** | A group of records the digitization team hands over together for QC |
 | **Non-conformity** | One defective field. Non-conformities are counted per class. |
 | **Outgoing inspection** | The digitization team's own sampling inspection, carried out before releasing a lot to you |
@@ -733,6 +791,7 @@ Compare versions to see exactly what changed. In the example, the correction cha
 | **Rejection number (Re)** | The number of defects of one class that fails the lot (ISO projects) |
 | **Remediation** | Sending a failed lot back to the digitization team to correct the rejected records |
 | **Sample** | The records picked at random from a lot for your reviewers to check |
+| **Submit (a batch)** | A reviewer hands in their reviews of a batch. After that they can't change them. |
 | **Inspection level** | Normal, Tightened or Reduced. Set for each lot by the digitization team's supervisor, usually following the level DocMate suggests from recent lot results. |
 | **Suggested level** | The inspection level ISO 2859‑1's switching rules recommend for the next lot |
 | **Version** | A saved copy of a record's data, made whenever the data is indexed or corrected |

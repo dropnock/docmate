@@ -8,10 +8,11 @@ The examples use a fictitious customer, **Acme Archive Corp**, and its reviewer 
 
 > **How to read the pictures.** A **red outline** marks the button or area to click in that step.
 
-> **What's new since version 0.9.0**
-> - **Say what was wrong with each defective field:** **Missing**, **Typo** or **Interpretation**. DocMate uses your answer to class the defect as critical, major or minor, and **Submit Review** stays greyed out until every defective field has one ([Section 7](#7-reviewing-field-by-field-iso-projects)).
-> - Fields that identify the record are tagged **Identifier** (they used to be tagged **Critical**). Any error in them is a critical defect.
-> - DocMate counts only the time you actually spend working on a record. Time away from it isn't counted ([Section 9](#9-leaving-a-review-and-coming-back-to-it)).
+> **What's new since version 0.9.4**
+> - **You work through a batch and then submit it.** Your queue lists your **QC batches**. After you finish a record, the next one in the batch opens by itself. You can go back to any record you've reviewed and change your verdict until you **submit the batch** ([Sections 4](#4-your-qc-task-queue) and [9](#9-going-back-and-submitting-your-batch)).
+> - **The button that records your verdict is now Done** (it was **Submit Review**). Your verdict is saved straight away, but it isn't final until you submit the batch.
+> - **Each entry in a list is checked separately.** A list such as *Encumbrances* shows one line per part of each entry, for example **Encumbrances 1 › Type** and **Encumbrances 1 › Reference** ([Section 7](#7-reviewing-field-by-field-iso-projects)).
+> - **Your supervisor checks rejections before they go back.** The digitization team receives a rejected record only after your supervisor has confirmed the lot's result.
 > - **Help in the portal.** This manual and the reviewer workbook open from **Help** in the menu, and you can download a PDF copy ([Section 3](#getting-help-in-the-portal)).
 > - **A new look.** The portal and its sign-in page carry the DocMate logo and colours.
 
@@ -27,7 +28,7 @@ The examples use a fictitious customer, **Acme Archive Corp**, and its reviewer 
 6. [The review screen](#6-the-review-screen)
 7. [Reviewing field by field (ISO projects)](#7-reviewing-field-by-field-iso-projects)
 8. [Passing or rejecting a record (manual-rate projects)](#8-passing-or-rejecting-a-record-manual-rate-projects)
-9. [Leaving a review and coming back to it](#9-leaving-a-review-and-coming-back-to-it)
+9. [Going back, and submitting your batch](#9-going-back-and-submitting-your-batch)
 10. [Good reviewing practice](#10-good-reviewing-practice)
 11. [Signing out](#11-signing-out)
 12. [Troubleshooting](#12-troubleshooting)
@@ -43,7 +44,7 @@ A digitization team indexes your organisation's records: they type the informati
 
 The team hands its work over in **lots**. Your supervisor picks a random **sample** from each lot and assigns those records to reviewers like you.
 
-**Your job is to compare each sampled record's indexed data with its image, and say whether it was entered correctly.** Your verdicts decide whether the whole lot is accepted or sent back to the team for correction. So one careful review matters for many records.
+**Your job is to compare each sampled record's indexed data with its image, and say whether it was entered correctly.** Your verdicts decide whether the whole lot is accepted or sent back to the team for correction. So one careful review matters for many records. Your supervisor checks the defects you find before deciding the lot.
 
 You see only the **QC Workspace**, which lists the records assigned to you. Lots, reports and project figures are managed by your supervisor.
 
@@ -102,34 +103,38 @@ The manuals always match the version of DocMate you're using.
 
 ## 4. Your QC task queue
 
-The **QC Task Queue** lists every record assigned to you, across all your organisation's projects.
+Your supervisor hands you records in **QC batches**. The **QC Task Queue** lists every batch assigned to you, across all your organisation's projects. Each batch shows how many of its records you've reviewed, for example *0 of 7 records reviewed*.
 
 ![The QC task queue](images/reviewer/05_qc_queue.png)
 
-Each entry shows:
+**Step 1.** Click **Open** on a batch. The button reads **Continue** once you've started the batch, and **Check & submit** when every record in it has been reviewed.
+
+![Open a batch](images/reviewer/05b_open_batch.png)
+
+**Step 2.** The batch opens and lists its records. At the top are **← Back to queue**, the batch's number, how many records you've reviewed and rejected, and **Submit batch** ([Section 9](#9-going-back-and-submitting-your-batch)).
+
+![A batch's records](images/reviewer/05c_batch_records.png)
+
+Each record shows:
 - **Record #:** the record's number. Quote it if you need to ask your supervisor about a record.
-- **Batch #:** the batch of work it belongs to. Your supervisor may assign you several batches, from different lots or projects.
-- **Status:** **pending** (not started) or **in_progress** (started but not finished).
+- **Its review:** **Not reviewed**, **In review** (started but not finished), **Passed** or **Rejected**.
+- **A button:** **Start QC** for a record you haven't started, **Resume** for one you've started, and **Review again** for one you've already reviewed.
 
-It also has a button:
-- **Start QC** begins reviewing a pending record.
-- **Resume** returns to one you have started.
+The queue refreshes itself every 30 seconds. New batches appear without you doing anything. When the queue is empty it shows *"No QC tasks assigned to you"*: you're up to date.
 
-The queue refreshes itself every 30 seconds. New assignments appear without you doing anything. When the queue is empty it shows *"No QC tasks assigned to you"*: you're up to date.
-
-> You can take records in any order. Working from the top down makes it easy to see what's left.
+> You can take records in any order, but working from the top of the batch down is easiest: when you finish a record, DocMate opens the next one you haven't reviewed.
 
 ---
 
 ## 5. Starting a review
 
-**Step 1.** Click **Start QC** next to the record.
+**Step 1.** In the batch, click **Start QC** next to the record.
 
 ![Start QC](images/reviewer/07_start_qc.png)
 
 **Step 2.** The review screen opens ([Section 6](#6-the-review-screen)). Starting a review **locks** the record to you, so nobody else can review it at the same time. A blue banner confirms: *"Record locked by you for QC review."*
 
-The lock is released when you submit your verdict. If you leave without submitting, the record stays locked to you until you come back ([Section 9](#9-leaving-a-review-and-coming-back-to-it)).
+The lock is released when you record your verdict. If you leave without recording it, the record stays locked to you until you come back ([Section 9](#9-going-back-and-submitting-your-batch)).
 
 ---
 
@@ -144,10 +149,11 @@ Drag the bar between the two halves to make either side bigger.
 ![The review screen](images/reviewer/08_iso_workspace.png)
 
 **The bar across the top** shows:
-- **← Back to queue**;
+- **← Back to batch**;
+- **Previous record**, once you've reviewed a record in this sitting: it reopens the record you reviewed just before this one ([Section 9](#9-going-back-and-submitting-your-batch));
 - the record's number and version (for example **v2**);
 - its status;
-- on the right, the button that records your verdict: **Submit Review**, or **Pass** and **Reject** ([Sections 7](#7-reviewing-field-by-field-iso-projects) and [8](#8-passing-or-rejecting-a-record-manual-rate-projects)).
+- on the right, the button that records your verdict: **Done**, or **Pass** and **Reject** ([Sections 7](#7-reviewing-field-by-field-iso-projects) and [8](#8-passing-or-rejecting-a-record-manual-rate-projects)).
 
 **Banners** above the bar:
 - **Blue:** *"Record locked by you for QC review."* The record is yours to review.
@@ -177,13 +183,19 @@ The right-hand side shows every field the team entered, laid out like the form t
 
 ## 7. Reviewing field by field (ISO projects)
 
-Most projects use **ISO 2859‑1** sampling. On these, you judge **each field** separately in the **Field Review** card, below the indexed data. You'll know a project uses ISO sampling because the button at the top right is **Submit Review**.
+Most projects use **ISO 2859‑1** sampling. On these, you judge **each field** separately in the **Field Review** card, below the indexed data. You'll know a project uses ISO sampling because the button at the top right is **Done**.
 
 **Step 1.** Scroll the right-hand side down to **Field Review**. Every field starts as **Accepted**, so you only need to change the ones that are wrong.
 
 ![Field Review: every field starts as Accepted](images/reviewer/10_field_review_defaults.png)
 
 Fields with a red **Identifier** tag identify the record. In the example, these are *Title number* and *Registered owner*. Any error in an identifier field is a **critical** defect, and a single critical defect usually fails the whole lot, so check those fields with particular care.
+
+**Lists are checked entry by entry.** A field that holds a list of entries, each with several parts, such as *Encumbrances* (each with a type and a reference), shows one line for each part of each entry: **Encumbrances 1 › Type**, **Encumbrances 1 › Reference**, then **Encumbrances 2 › Type**, and so on. Mark only the part that's wrong. Each defective part counts as a defect of its own.
+
+![A list checked entry by entry](images/reviewer/10c_list_entries.png)
+
+If the list is empty, it shows as a single line (**Encumbrances**). Mark that line **Defective** with **Missing** if the card has an entry that wasn't entered at all. If the list does have entries but the card shows one more that wasn't entered, there's no line for the missing entry: ask your supervisor how to record it, quoting the **Record #**.
 
 **Step 2.** Compare each field with the image. Where a field doesn't match the card, click **Defective** for that field. Three buttons and a note box appear, and the words *"Choose what is wrong"* remind you to pick one of the buttons.
 
@@ -194,35 +206,37 @@ Fields with a red **Identifier** tag identify the record. In the example, these 
 | Button | Use it when… | Example |
 |---|---|---|
 | **Missing** | A value on the image was left out | The card shows a caveat under *Encumbrances*, but none was entered |
-| **Typo** | The value was typed wrongly: wrong, extra or swapped characters | Folio **726** entered as **627** |
+| **Typo** | The value was typed wrongly: wrong, extra or swapped characters | Folio **761** entered as **167** |
 | **Interpretation** | The source was read or understood wrongly | A district name misread as a different district |
 
 A tag beside the buttons shows the defect's class: **Critical**, **Major** or **Minor**. You don't choose the class: it follows from what you picked and from whether the field is an identifier. If you mark an empty field as defective, **Missing** is chosen for you; change it if something else was wrong.
 
 **Step 4.** In the note box, say briefly what's wrong. The note is optional, but it helps the team fix the record quickly.
 
-In the example, the card shows folio **726** but **627** was entered. Priya marks **Folio** as defective, chooses **Typo** (a **Minor** defect on this project), and writes *"Folio on the card is 726; entered as 627"*.
+In the example, the card shows folio **761** but **167** was entered. Priya marks **Folio** as defective, chooses **Typo** (a **Minor** defect on this project), and writes *"Folio on the card is 761; entered as 167"*.
 
-**Step 5.** Click **Submit Review**. It stays greyed out until you've chosen what was wrong with every defective field.
+**Step 5.** Click **Done**. It stays greyed out until you've chosen what was wrong with every defective field.
 
-![Folio marked defective, ready to submit](images/reviewer/11_field_marked_defective.png)
+![Folio marked defective, ready to record](images/reviewer/11_field_marked_defective.png)
 
-**Step 6.** A message, **"QC review submitted"**, confirms it, and you're returned to your queue.
+**Step 6.** A message, **"QC review saved"**, confirms it, and the next record in the batch that you haven't reviewed opens by itself.
 
-![Back in the queue after submitting](images/reviewer/12_review_submitted.png)
+![The next record opens](images/reviewer/12_review_submitted.png)
 
 What your verdict does:
-- **Any field marked Defective:** the record is **rejected** and goes back to the digitization team for correction, with your notes.
+- **Any field marked Defective:** the record is **rejected**. Once you submit your batch, your supervisor checks the defects you found and decides the lot. Records that are still rejected then go back to the digitization team for correction, with your notes.
 - **All fields Accepted:** the record **passes**.
+
+Until you submit the batch, you can go back to the record and change your verdict ([Section 9](#9-going-back-and-submitting-your-batch)).
 
 ### When everything is correct
 
-If every field matches the image, leave them all as **Accepted** and click **Submit Review**.
+If every field matches the image, leave them all as **Accepted** and click **Done**.
 
-![All fields accepted: submit](images/reviewer/13_all_accepted_submit.png)
+![All fields accepted: Done, or Previous record to go back](images/reviewer/13_all_accepted_submit.png)
 
 > **What counts as defective?** Anything that doesn't faithfully match the image:
-> - a field left empty although the card shows a value, or an item missing from a list (**Missing**);
+> - a field left empty although the card shows a value, or an entry missing from a list (**Missing**);
 > - a wrong, missing or extra character, a transposed number or a misspelt name (**Typo**);
 > - a value read or understood wrongly, or put in the wrong field (**Interpretation**).
 >
@@ -238,7 +252,7 @@ Some projects use simple pass/reject review. You'll know because the buttons at 
 
 ### To pass a record
 
-Check every field against the image. If everything matches, click **Pass**. A message, **"Record passed QC"**, confirms it, and you're returned to your queue.
+Check every field against the image. If everything matches, click **Pass**. A message, **"Record passed QC"**, confirms it, and the next record in the batch opens.
 
 ![Record passed](images/reviewer/17_manual_passed.png)
 
@@ -246,33 +260,63 @@ Check every field against the image. If everything matches, click **Pass**. A me
 
 **Step 1.** Click **Reject**.
 
-**Step 2.** Type the **Rejection reason**. It's required: say exactly what's wrong, so the team can fix it without guessing. In the example: *"Executor on the card is Lorna Kensington, entered as Henry Fairbanks."*
+**Step 2.** Type the **Rejection reason**. It's required: say exactly what's wrong, so the team can fix it without guessing. In the example: *"Executor on the card is Lorna Kensington, entered as Olive Jessop."*
 
 **Step 3.** Click **Confirm Rejection**. Click **Cancel** if you change your mind.
 
 ![Writing the rejection reason](images/reviewer/18_reject_reason.png)
 
-**Step 4.** A message, **"Record rejected — sent back for rework"**, confirms it. The current data is kept as a version, so the change history is never lost.
+**Step 4.** A message, **"Record rejected — your QC supervisor reviews it before it goes back for rework"**, confirms it, and the next record in the batch opens. The current data is kept as a version, so the change history is never lost.
 
 ![Record rejected](images/reviewer/19_rejected.png)
 
 ---
 
-## 9. Leaving a review and coming back to it
+## 9. Going back, and submitting your batch
+
+### Leaving a record and coming back to it
 
 You don't have to finish a record in one go.
 
-**Step 1.** Click **← Back to queue**. Nothing is submitted.
+**Step 1.** Click **← Back to batch**. Nothing is recorded.
 
-![Back to queue](images/reviewer/14_back_to_queue.png)
+![Back to the batch](images/reviewer/14_back_to_queue.png)
 
-**Step 2.** The record stays in your queue as **in_progress**, still locked to you. When you're ready, click **Resume** to continue.
+**Step 2.** The record stays in the batch as **In review**, still locked to you. When you're ready, click **Resume** to continue.
 
 ![Resume a record you started](images/reviewer/15_queue_resume.png)
 
-> - **Field marks aren't saved** until you submit. If you go back to the queue, they start again from Accepted.
-> - **Don't leave records half-done for long.** A record locked to you can't be reviewed by anyone else, and the lot can't be decided until every sampled record has been reviewed. Your supervisor can move records you haven't finished to another reviewer; anything you hadn't submitted on them is then lost.
+> - **Field marks aren't saved** until you click **Done**. If you go back to the batch, they start again from Accepted.
+> - **Don't leave records half-done for long.** A record locked to you can't be reviewed by anyone else, and the lot can't be decided until every sampled record has been reviewed. Your supervisor can move records you haven't finished to another reviewer; anything you hadn't recorded on them is then lost.
 > - **Your time on a record** is counted only while you're working on it: the record is open, the window is in front, and you've clicked, typed or scrolled in the last few minutes. Time away from it isn't counted, and coming back adds to the time you'd already spent.
+
+### Changing a verdict
+
+Until you submit the batch, you can review any of its records again:
+- **Previous record**, in the bar at the top, reopens the record you reviewed just before the one you're on.
+- In the batch's list, **Review again** reopens any record you've reviewed.
+
+Your earlier marks are shown, so you change only what you need to, then click **Done** (or **Pass** / **Reject**) again. The new verdict replaces the old one: a rejection can become a pass, and a pass a rejection.
+
+### Submitting the batch
+
+When every record in the batch has been reviewed, DocMate shows the batch with the message *"All records reviewed — check them and press Submit batch when ready."*
+
+**Step 1.** Look down the list. Use **Review again** on any record you want to check again.
+
+**Step 2.** Click **Submit batch**. It stays greyed out while any record still needs a review; hover over it to see how many.
+
+![Every record reviewed: Submit batch](images/reviewer/15b_batch_ready.png)
+
+**Step 3.** DocMate asks *"Submit this QC batch? You can't change these reviews after submitting."* Click **Submit batch** to confirm.
+
+![Confirm the submission](images/reviewer/15c_submit_confirm.png)
+
+**Step 4.** A message, **"QC batch submitted"**, confirms it, and the batch leaves your queue.
+
+![The batch submitted](images/reviewer/15d_batch_submitted.png)
+
+> **Submit each batch once you're happy with it.** Your supervisor can't decide the lot until every batch from it has been submitted. If you can't finish a batch, tell your supervisor: they can move its open records to someone else, or submit a fully reviewed batch for you.
 
 ---
 
@@ -285,7 +329,9 @@ You don't have to finish a record in one go.
 - **Choose the error type carefully.** It decides whether a defect counts as major or minor. If you're not sure which one fits, ask your supervisor.
 - **Write useful notes.** Say what the image shows and what was entered: "Card reads *Hollis*, entered *Hollins*" is far more useful than "wrong name".
 - **Be consistent.** Apply the same standard to every record, whatever lot or batch it comes from.
-- **Ask when unsure.** If you can't decide, go back to the queue without submitting and ask your supervisor, quoting the **Record #**.
+- **Check every entry of a list.** Each part of each entry has its own line; mark only the part that's wrong.
+- **Check the batch before submitting it.** Once it's submitted, your reviews can't be changed.
+- **Ask when unsure.** If you can't decide, go back to the batch without clicking **Done** and ask your supervisor, quoting the **Record #**.
 
 ---
 
@@ -311,12 +357,15 @@ You don't have to finish a record in one go.
 | **"Invalid username or password"** | Retype your password, checking Caps Lock. Ask your administrator to reset it if needed. |
 | **"You need to change your password to activate your account"** | You signed in with a temporary password. Choose your own ([Section 2](#2-signing-in)). |
 | **"No QC tasks assigned to you"** | You have nothing to review. Your supervisor will assign more records; they appear automatically. |
-| **A red "Record locked by user ID …" banner** | Another person has the record open. Don't review it. Go back to the queue and tell your supervisor. |
+| **A red "Record locked by user ID …" banner** | Another person has the record open. Don't review it. Go back to the batch and tell your supervisor. |
 | **"Start the task to load the image."** | Click **Start QC**. The image loads once the review has started. |
-| **"No image available for this record."** | The scan is missing. Don't guess: go back to the queue and tell your supervisor, quoting the **Record #**. |
-| **The image is blank or slow** | Wait a few seconds; large scans take a moment to load. Then try **Fit Page**, or go back to the queue and **Resume**. |
-| **Submit Review is greyed out** | A field is marked **Defective** but you haven't said what was wrong. Look for *"Choose what is wrong"* and click **Missing**, **Typo** or **Interpretation**. |
-| **An error message when submitting** | Try again. If it keeps happening, note the message and tell your supervisor. Your verdict hasn't been recorded. |
+| **A record you reviewed is still in the batch** | That's expected. Reviewed records stay in the batch, marked **Passed** or **Rejected**, until you **submit the batch** ([Section 9](#9-going-back-and-submitting-your-batch)). |
+| **Submit batch is greyed out** | A record in the batch still needs a review. Hover over the button to see how many, and look for records marked **Not reviewed** or **In review**. |
+| **"No image available for this record."** | The scan is missing. Don't guess: go back to the batch and tell your supervisor, quoting the **Record #**. |
+| **The image is blank or slow** | Wait a few seconds; large scans take a moment to load. Then try **Fit Page**, or go back to the batch and **Resume**. |
+| **Done is greyed out** | A field is marked **Defective** but you haven't said what was wrong. Look for *"Choose what is wrong"* and click **Missing**, **Typo** or **Interpretation**. |
+| **An error message when clicking Done** | Try again. If it keeps happening, note the message and tell your supervisor. Your verdict hasn't been recorded. |
+| **A list entry is missing on the card, but the list has other entries** | There's no line for an entry that wasn't entered at all. Ask your supervisor how to record it, quoting the **Record #** ([Section 7](#7-reviewing-field-by-field-iso-projects)). |
 | **You're asked to sign in again** | Your session ended after a period of inactivity. Sign in again and **Resume** the record. |
 
 ---
@@ -325,15 +374,17 @@ You don't have to finish a record in one go.
 
 | Term | Meaning |
 |---|---|
-| **Batch** | A group of records assigned to you as a unit of work |
+| **Batch (QC batch)** | A group of records assigned to you as a unit of work. You review its records, then submit the batch. |
 | **Defect class** | Critical, major or minor: how serious a defect is. It follows from the error type and whether the field is an identifier. |
 | **Defective** | A field that doesn't match the image |
 | **Error type** | What was wrong with a defective field: **Missing** data, a **Typo**, or an **Interpretation** error |
 | **Identifier field** | A field that identifies the record, such as the title number. Any error in it is a critical defect. |
 | **Indexed data** | The information the digitization team typed up from the record's image |
 | **ISO 2859‑1** | The international standard for sampling inspection that DocMate follows |
+| **List entry** | One item in a list field, such as the first encumbrance. Each part of each entry is checked separately: **Encumbrances 1 › Reference**. |
 | **Lock** | While you review a record, it's locked to you so no one else can review it at the same time |
 | **Lot** | A group of records the digitization team hands over together for checking |
 | **QC (quality control)** | Checking that records were indexed correctly |
 | **Sample** | The records picked at random from a lot for checking |
+| **Submit (a batch)** | Hand in your reviews of a batch once every record has been reviewed. After that they can't be changed. |
 | **Version** | A saved copy of a record's data. A new version is saved whenever the data is indexed or corrected. |

@@ -14,7 +14,7 @@ Work through the modules in order. Each one builds on the one before. Allow abou
 |---|---|---|---|
 | | | | |
 
-> **Training portal only.** Do every exercise in the training portal your trainer gives you, never in your live portal. Samples, assignments and remediation **can't be undone**, so practising on real lots would affect real work.
+> **Training portal only.** Do every exercise in the training portal your trainer gives you, never in your live portal. Samples, assignments, decisions and remediation **can't be undone**, so practising on real lots would affect real work.
 
 ---
 
@@ -55,7 +55,7 @@ Each trainee needs these in the training portal:
 
 **Trainer tips**
 - Pair a supervisor trainee with a reviewer trainee. The supervisor's sample becomes the reviewer's queue, so both practise on real handovers.
-- In Module 7, ask the reviewer to accept every field on one lot (so it passes) and to mark at least one **identifier** field defective on another (a critical defect, so it fails). Module 8 needs the failed lot.
+- In Module 7, ask the reviewer to accept every field on one lot (so it passes) and to mark at least one **identifier** field defective on another (a critical defect, so it fails). On that second lot, also ask them to mark one **correct** field defective, so the trainee can practise dismissing a defect. The reviewer must **submit** each batch: the lot waits for the trainee's decision only then. Module 8 needs the failed lot.
 - Module 6 has the trainee reassign a batch. A second reviewer account (or the trainee's own supervisor account) makes this realistic.
 - Module 8 needs someone on the digitization side to correct and resubmit the failed lot. Arrange this in advance, or reach that step with a lot you've prepared.
 
@@ -111,7 +111,7 @@ Each trainee needs these in the training portal:
 
 **What you'll learn**
 - Read each column on the Lots page.
-- Name the five lot statuses and what you do at each.
+- Name the six lot statuses and what you do at each.
 - Know which button to use for each task.
 
 ### Exercise 2.1 — Read the Lots page
@@ -136,11 +136,11 @@ Without looking at the manual, put these steps in order by numbering them 1–6.
 
 | Order | Step |
 |---|---|
-| | DocMate decides the result: Passed or Failed |
+| | You check the defects and confirm the result: Passed or Failed |
 | | The digitization team releases the lot |
 | | You assign the sampled records to reviewers |
 | | You apply a sample, and the lot moves to QC In Progress |
-| | Reviewers review the sampled records |
+| | Reviewers review the sampled records and submit their batches |
 | | If it failed, you send it for remediation |
 
 ### Check your understanding
@@ -151,6 +151,7 @@ Without looking at the manual, put these steps in order by numbering them 1–6.
 | 2.2 | The team is still preparing a lot. Can you see it on the Lots page? | |
 | 2.3 | A lot is in **Remediation**. What do you do next? | |
 | 2.4 | Do you need to refresh the page to see a lot's new status? | |
+| 2.5 | Which lot status means "your turn: check the defects and confirm the result"? | |
 
 ---
 
@@ -246,7 +247,7 @@ The project uses the default agreement: missing data is **major**; typographic a
 
 | Defect a reviewer found | What was wrong | Class |
 |---|---|---|
-| Folio entered as 627; the card says 726 | Typo | |
+| Folio entered as 167; the card says 761 | Typo | |
 | Title number entered as LT-04127; the card says LT-04172 | Typo | |
 | A caveat on the card wasn't entered under Encumbrances | Missing | |
 | District entered as *Elmstead*; the card says *Westbury* | Interpretation | |
@@ -370,13 +371,13 @@ Repeat Exercise 5.1 on a second Released lot (**Lot 2**). You'll use it in Modul
 
 1. ☐ Click **QC Batches** in the menu. Find Lot 1's batches.
 2. ☐ Use the filter in the **Assigned to** column to show only one reviewer's batches, then clear it.
-3. ☐ Hover over a **Progress** bar and write down the breakdown it shows.
+3. ☐ Hover over a **Progress** bar and write down the breakdown it shows. Note any batch tagged **Reviewed, not submitted** or **Submitted**.
 
 | Batch | Assigned to | Progress breakdown (passed · rejected · in progress · not started) |
 |---|---|---|
 | | | |
 
-4. ☐ Click **Reassign** on one of Lot 1's batches that hasn't been finished. Pick another reviewer (or yourself) and click **Reassign**. Note the message.
+4. ☐ Click **Reassign** on one of Lot 1's batches that still has records to review. Pick another reviewer (or yourself) and click **Reassign**. Note the message.
 
 | Message after reassigning |
 |---|
@@ -399,33 +400,66 @@ A lot has **20** sampled records. You assign **3** batches of **4** records to P
 | 6.3 | Someone isn't in the **Assign to** list. Give two possible reasons, and say who can fix it. | |
 | 6.4 | Can you assign a batch to yourself? Where would its records appear? | |
 | 6.5 | You reassign a batch while the reviewer has one of its records open. What happens to that record and to the work they hadn't submitted? | |
-| 6.6 | When is **Reassign** greyed out? | |
+| 6.6 | When is **Reassign** greyed out, and what does the row offer instead? | |
 | 6.7 | Why shouldn't records stay unassigned for long? | |
 
 ---
 
 ## Module 7. Following QC and reading the result
 
-**Manual:** Section 10 · **Time:** 25 minutes
+**Manual:** Section 10 · **Time:** 40 minutes
 
 **What you'll learn**
-- Follow review progress record by record.
-- Explain how DocMate decides **Passed** or **Failed**.
+- Follow review progress record by record and batch by batch.
+- Explain how the result is worked out from the marks.
+- Check the defects, correct a reviewer's mark with a reason, and confirm the result.
 - Read the QC field defect tabulation and the lot history.
 
 ### Exercise 7.1 — Watch the reviews
 
-While your reviewer works, ask them to accept every field on **Lot 1**'s records, and to mark at least one **identifier** field defective (a critical defect) on one of **Lot 2**'s records.
+While your reviewer works, ask them to accept every field on **Lot 1**'s records, and to mark at least one **identifier** field defective (a critical defect) on one of **Lot 2**'s records. Ask them to **submit** each batch when they've finished it.
 
 1. ☐ Open Lot 1's **Settings**. Watch record statuses change from **qc pending** to **qc passed** or **qc failed**.
-2. ☐ When the last record is reviewed, note Lot 1's result without pressing anything.
+2. ☐ On **QC Batches**, watch Lot 1's batches go from **Reviewed, not submitted** to **Submitted**.
+3. ☐ When the last batch is submitted, note Lot 1's status and the banner in its **Settings**.
 
-| Lot | Result | Accuracy |
-|---|---|---|
-| Lot 1 | | |
-| Lot 2 | | |
+| Lot 1's status | The banner in its Settings |
+|---|---|
+| | |
 
-### Exercise 7.2 — Read the tabulation (Lot 2)
+### Exercise 7.2 — Review and decide
+
+1. ☐ On the Lots page, click **Review & decide** on **Lot 1**. Check that there are no defects, then click **Confirm decision** and **Confirm — accept lot**.
+2. ☐ Click **Review & decide** on **Lot 2** once it's waiting for you. Fill in the bar at the top.
+
+| Class | Found / allowed | Lot will… | Records rejected |
+|---|---|---|---|
+| Critical | | | |
+| Major | | | |
+| Minor | | | |
+
+3. ☐ Click each record in the list on the left. For each defect, compare the field with the image.
+
+| Record # | Field | Reviewer's mark (error type, class) | Right or wrong? |
+|---|---|---|---|
+| | | | |
+| | | | |
+| | | | |
+
+4. ☐ Find the field your reviewer marked defective although it's correct. Click **Accepted**, write a reason that says what the card shows, and click **Save changes**. What changed in the bar at the top, and on the record in the list?
+
+| What changed at the top | What changed on the record |
+|---|---|
+| | |
+
+5. ☐ Try to accept the lot by dismissing the identifier defect. Don't save: click **Discard**. Why is that the wrong way to accept a lot?
+6. ☐ Click **Confirm decision**. Read the summary, then click **Confirm — reject lot**.
+
+| How many records will go back for rework? | How many records did you change? |
+|---|---|
+| | |
+
+### Exercise 7.3 — Read the tabulation (Lot 2)
 
 Open Lot 2's **Settings** and scroll to the **QC field defect tabulation**.
 
@@ -437,7 +471,7 @@ Open Lot 2's **Settings** and scroll to the **QC field defect tabulation**.
 | Major | | | | |
 | Minor | | | | |
 
-2. ☐ Read the field table below it.
+2. ☐ Read the field table below it. Has the field you dismissed in Exercise 7.2 been counted?
 
 | Field marked defective | Identifier? | Times defective | By class | What was wrong | Marked by |
 |---|---|---|---|---|---|
@@ -453,7 +487,7 @@ Open Lot 2's **Settings** and scroll to the **QC field defect tabulation**.
 | | | |
 | | | |
 
-### Exercise 7.3 — Pass or fail?
+### Exercise 7.4 — Pass or fail?
 
 Each line is a finished ISO lot. The acceptance numbers are given as critical / major / minor. Decide the result.
 
@@ -479,6 +513,9 @@ A **manual-rate** lot has 30 sampled records. Reviewers rejected 3. Does it pass
 | 7.1 | Does anyone have to press a button to finish QC on a lot? | |
 | 7.2 | A lot stays **QC In Progress** for days. What do you check? | |
 | 7.3 | How would you use the tabulation in a meeting with the digitization team? | |
+| 7.4 | Can you accept a lot whose marks reach a class's rejection number? | |
+| 7.5 | When do rejected records go back to the digitization team? | |
+| 7.6 | A record's *Encumbrances* has two entries, and the reviewer marked **Encumbrances 2 › Reference** defective. How does the tabulation count it? | |
 
 ---
 
@@ -519,7 +556,7 @@ When the team has corrected and resubmitted Lot 2 (your trainer will tell you):
 
 | # | Question | Your answer |
 |---|---|---|
-| 8.1 | Where do the rejected records go after you send a lot for remediation? | |
+| 8.1 | When did Lot 2's rejected records go back to the digitization team, and to whom? | |
 | 8.2 | Can a record that passed in round 1 be sampled again in round 2? | |
 | 8.3 | Lot 2 failed round 1 and passed round 2. Which round counts towards the suggested inspection level? | |
 
@@ -687,7 +724,7 @@ Use the third **Released** lot (**Lot 3**). Do each step, then tick it and write
 | 4 | Apply the sample. Note the sample size and the acceptance number for each class | ☐ | |
 | 5 | Assign part of the sample to two reviewers, then the rest. Note the batch split | ☐ | |
 | 5a | On **QC Batches**, reassign one unfinished batch | ☐ | |
-| 6 | Follow QC until the result is decided. Note the result and accuracy | ☐ | |
+| 6 | Follow QC until every batch is submitted. In **Review & decide**, check each defect, then confirm. Note the result and accuracy | ☐ | |
 | 7 | If it failed: read the tabulation, send it for remediation, and explain what happens next. If it passed: explain why | ☐ | |
 | 8 | Answer one open flag with clear guidance | ☐ | |
 | 9 | Check Project KPIs: has the suggested inspection level changed? Why or why not? | ☐ | |
@@ -738,11 +775,12 @@ Remove this section before giving the workbook to trainees, or hand it out after
 
 **Module 2**
 - Ex 2.1: Assign to QC is greyed out until a sample has been applied.
-- Ex 2.2: Reading down the table, the numbers are 5, 1, 3, 2, 4, 6. That is: released → apply sample → assign → review → result → remediation if failed.
+- Ex 2.2: Reading down the table, the numbers are 5, 1, 3, 2, 4, 6. That is: released → apply sample → assign → review and submit → you confirm the result → remediation if failed.
 - 2.1: Released.
 - 2.2: No. Draft lots are hidden from the customer.
 - 2.3: Wait for the team to correct the rejected records and resubmit the lot.
 - 2.4: No. The list refreshes every few seconds.
+- 2.5: Awaiting your decision.
 
 **Module 3**
 - 3.1: Release depends on the team's own ISO 2859‑1 inspection passing.
@@ -785,11 +823,14 @@ Remove this section before giving the workbook to trainees, or hand it out after
 - 6.3: They aren't an active reviewer or supervisor in your organisation, for example deactivated, not yet added, or in another role. Your administrator can fix it.
 - 6.4: Yes. Pick your own name, marked **(you)**. The records appear in your own QC Workspace.
 - 6.5: It moves to the new person and starts again from the beginning; anything not yet submitted on it is lost. Records already reviewed stay with whoever reviewed them.
-- 6.6: When every record in the batch has been reviewed.
-- 6.7: The lot's result is decided only when every sampled record has been reviewed.
+- 6.6: When every record in the batch has been reviewed. If the reviewer hasn't submitted it, the row offers **Submit** instead, so you can submit it for them.
+- 6.7: The lot waits for your decision only when every sampled record has been reviewed and every batch submitted.
 
 **Module 7**
-- Ex 7.3:
+- Ex 7.1: **Awaiting your decision**, with the banner *"Every sampled record has been reviewed. Check the defects and confirm the lot's result."* and a **Review & decide** button.
+- Ex 7.2: After saving, the class count at the top drops by one (if the dismissed defect was the only one on the record, the rejected count drops too), and the record is tagged **Changed** (and **Passed** if it has no defects left). Dismissing a defect that's really there isn't a decision about the lot: the marks must match the cards, and the result follows from them. Every change is recorded with your name and reason.
+- Ex 7.3: No. The tabulation counts the marks as you left them.
+- Ex 7.4:
   - None: Passed.
   - 1 minor, minor Ac 1: Passed.
   - 2 minor, minor Ac 1: **Failed**: the minor class reached its rejection number (2).
@@ -797,12 +838,15 @@ Remove this section before giving the workbook to trainees, or hand it out after
   - 1 major and 2 minor, Ac 0 / 1 / 2: Passed, because each class is within its own acceptance number.
   - 2 major, major Ac 1: **Failed**, even though there are no minor defects.
   - Manual rate: 27 of 30 = 90 % passed, so it **passes**, because the threshold is at least 90 %.
-- 7.1: No. DocMate decides as soon as the last sampled record is reviewed.
+- 7.1: Yes. Reviewers **submit** their batches, then you **confirm** the decision in **Review & decide**.
 - 7.2: Open **Assign to QC**: check whether any sampled records are still unassigned, and which are still open. On **QC Batches**, check who holds them; reassign if a reviewer is stuck or away.
 - 7.3: Show which fields cause most defects, which classes they fall in and what kind of error they are, and raise those with the team.
+- 7.4: No. The result always follows the sampling plan applied to the marks. You can only correct marks that are wrong, giving a reason.
+- 7.5: When you confirm the decision. Only records still rejected after your review go back.
+- 7.6: Under **Encumbrances › Reference**, which adds up the reference of every entry on every record. It's one defect.
 
 **Module 8**
-- 8.1: Back to the digitization team's QA for correction.
+- 8.1: When you confirmed the decision (Module 7), not when you sent the lot for remediation. They went to the digitization team's QA, who see each defect you confirmed.
 - 8.2: Yes.
 - 8.3: Round 1 only.
 
@@ -827,6 +871,6 @@ Remove this section before giving the workbook to trainees, or hand it out after
 - They check the inspection report before sampling.
 - They read the sample figures before applying.
 - They check the line showing how batches will be shared before assigning, and assign every sampled record in the end.
-- They wait for DocMate to decide the result, rather than looking for a button.
+- They make sure every batch is submitted, then check every defect in **Review & decide** before confirming, giving a clear reason for each change.
 - They use the tabulation to explain a failure.
 - They know switching only uses first rounds.
