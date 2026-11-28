@@ -7,6 +7,8 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.9.5] - 2026-11-28
+
 ### Added
 - **Reworked records show what they were sent back for.** The indexer and
   the QA agent fixing a record now see, above the form, the defects it came
