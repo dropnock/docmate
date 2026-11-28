@@ -365,7 +365,7 @@ export default function QCWorkspace() {
   // Batch view: one open QC batch's records.
   if (!activeTask && selectedBatchId != null) {
     return (
-      <div>
+      <div style={{ padding: 24 }}>
         <Typography.Title level={4}>QC Task Queue</Typography.Title>
         <QcBatchDetail
           batchId={selectedBatchId}
@@ -381,7 +381,7 @@ export default function QCWorkspace() {
   // Task list panel
   if (!activeTask) {
     return (
-      <div>
+      <div style={{ padding: 24 }}>
         <Typography.Title level={4}>QC Task Queue</Typography.Title>
         {tasksLoading ? (
           <Spin />
