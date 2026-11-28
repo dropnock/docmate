@@ -8,6 +8,15 @@ See `RELEASING.md` for how to cut a release.
 ## [Unreleased]
 
 ### Added
+- **Each list entry's fields are reviewed separately.** Customer QC, the
+  supervisor's review and the outgoing inspection used to offer one mark per
+  top-level field, so a list such as a caveat's registered owners or
+  caveators (each with a name and an address) was a single mark and the
+  addresses could not be marked at all. The fields to mark now follow the
+  document type's schema and the record's data: one per plain field and one
+  per part of each list entry ("Caveators 2 › Address"). Each defective entry
+  counts as its own defect. Tables of defects per field count the same part
+  across entries together ("Caveators › Address").
 - **QC supervisor reviews defects before a lot is decided** (customer
   portal, Lots → Review & decide). Once every sampled record has been
   reviewed, the lot waits in a new **Awaiting your decision** status
@@ -37,6 +46,11 @@ See `RELEASING.md` for how to cut a release.
   batches reviewed but not submitted, and the supervisor can submit one for
   the reviewer. Migration `c3e5a7b9d1f4` closes QC batches finished before
   this change.
+
+### Fixed
+- A document type whose schema declares `"$schema": "https://json-schema.org/draft-07/schema#"`
+  (https, or any URL the form's validator doesn't know) no longer stops the
+  indexing form from submitting.
 
 ### Changed
 - A reviewer's rejection no longer sends the record back for rework
