@@ -292,7 +292,7 @@ async def get_qc_review(
     return await lot_service.get_qc_review(db, lot_id=lot_id, tenant_id=current_user._tenant_id)
 
 
-@router.put("/{lot_id}/qc-review/{record_id}/fields/{field_key}")
+@router.put("/{lot_id}/qc-review/{record_id}/fields/{field_key:path}")
 async def override_qc_mark(
     lot_id: int,
     record_id: int,

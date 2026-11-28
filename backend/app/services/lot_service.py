@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.aql import AQLStatus, GeneralLevel, SamplingMode
 from app.models.audit_log import AuditAction, AuditEntityType, AuditLog
 from app.models.batch import Batch, BatchStatus, BatchType
+from app.models.document_type import DocumentType
 from app.models.lot import Lot, LotRecord, LotStatus
 from app.models.record import Record, RecordStatus
 from app.models.task import Task, TaskStatus, TaskType
-from app.services import audit_service, aql_service, defect_class_service, lot_inspection_service
+from app.services import audit_service, aql_service, defect_class_service, lot_inspection_service, review_fields
 
 
 async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
@@ -1107,6 +1108,13 @@ async def get_qc_review(
         select(Batch.id, Batch.document_type_id).where(Batch.id.in_(batch_ids or {-1}))
     )).all())
 
+    schemas = {
+        dt.id: dt.json_schema or {}
+        for dt in (await db.execute(
+            select(DocumentType).where(DocumentType.id.in_(set(doc_types.values()) or {-1}))
+        )).scalars()
+    }
+
     by_record: dict[int, list] = {}
     for m in marks:
         by_record.setdefault(m.record_id, []).append(m)
@@ -1114,12 +1122,14 @@ async def get_qc_review(
     records = []
     for r in sampled:
         task = tasks.get(r.id)
+        schema = schemas.get(doc_types.get(task.batch_id)) if task else None
         fields = []
         for m in by_record.get(r.id, []):
             eff = defect_class_service.effective(m)
             reviewer = defect_class_service.effective(m, overrides=False)
             fields.append({
                 "field_key": m.field_key,
+                "label": review_fields.label_for(schema, m.field_key),
                 "is_critical": m.is_critical,
                 "reviewer": _mark_out(*reviewer, m.note),
                 "override": _mark_out(m.override_status, m.override_error_type, m.override_severity, m.override_note)
@@ -1187,27 +1197,33 @@ async def get_field_result_tabulation(
     lot = await _get_lot(db, lot_id, tenant_id)
 
     rows = (await db.execute(
-        select(QcFieldResult, Task.assigned_to)
+        select(QcFieldResult, Task.assigned_to, DocumentType.json_schema)
         .join(Task, Task.id == QcFieldResult.task_id)
+        .join(Batch, Batch.id == Task.batch_id)
+        .join(DocumentType, DocumentType.id == Batch.document_type_id)
         .where(QcFieldResult.lot_id == lot_id, QcFieldResult.qc_round == lot.qc_round)
     )).all()
 
-    agent_ids = {assigned_to for _, assigned_to in rows if assigned_to is not None}
+    agent_ids = {assigned_to for _, assigned_to, _ in rows if assigned_to is not None}
     agents_by_id = {}
     if agent_ids:
         agents_result = await db.execute(select(User).where(User.id.in_(agent_ids)))
         agents_by_id = {u.id: u for u in agents_result.scalars().all()}
 
     fields: dict[str, dict] = {}
-    for qfr, assigned_to in rows:
+    for qfr, assigned_to, schema in rows:
         # is_critical is snapshotted per-row (see QcFieldResult's docstring)
         # and could in theory differ across rows for the same field_key if
         # the schema's x-critical flag was edited mid-lot — first-seen value
         # wins here for a single per-field display flag; the pass/fail math
         # in calculate_accuracy always checks each row's own snapshot, not
         # this aggregate, so that decision is unaffected by this simplification.
-        entry = fields.setdefault(qfr.field_key, {
-            "field_key": qfr.field_key,
+        # One row per field across the sample: the same part of every list
+        # entry ("Caveators › Address") is counted together.
+        group = review_fields.group_key(qfr.field_key)
+        entry = fields.setdefault(group, {
+            "field_key": group,
+            "title": review_fields.group_label(schema, group),
             "is_critical": qfr.is_critical,
             "defective_count": 0,
             "accepted_count": 0,
@@ -1238,6 +1254,7 @@ async def get_field_result_tabulation(
             non_critical_defect_total += entry["defective_count"]
         field_summaries.append({
             "field_key": entry["field_key"],
+            "title": entry["title"],
             "is_critical": entry["is_critical"],
             "defective_count": entry["defective_count"],
             "accepted_count": entry["accepted_count"],

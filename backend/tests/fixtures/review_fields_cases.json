@@ -1,0 +1,356 @@
+[
+ {
+  "name": "caveat record with nested lists, $ref, dotted and slashed names",
+  "schema": {
+   "$schema": "https://json-schema.org/draft-07/schema#",
+   "type": "object",
+   "properties": {
+    "registered_titles": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "volume_number": {
+        "type": "string"
+       },
+       "folio_number": {
+        "type": "string"
+       }
+      }
+     },
+     "x-critical": true
+    },
+    "caveat_number": {
+     "type": "string",
+     "x-critical": true
+    },
+    "registered_owners": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "address": {
+        "$ref": "#/definitions/address"
+       }
+      }
+     }
+    },
+    "caveators": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "address": {
+        "$ref": "#/definitions/address",
+        "title": "Caveator address"
+       }
+      }
+     }
+    },
+    "aliases": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "agent": {
+     "type": "object",
+     "properties": {
+      "agent.name": {
+       "type": "string",
+       "title": "Agent name",
+       "x-critical": true
+      },
+      "firm/office": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "definitions": {
+    "address": {
+     "type": "object",
+     "properties": {
+      "address_line_1": {
+       "type": "string"
+      },
+      "city": {
+       "type": "string"
+      },
+      "country": {
+       "type": "string"
+      }
+     }
+    }
+   }
+  },
+  "data": {
+   "registered_titles": [
+    {
+     "volume_number": "1310",
+     "folio_number": "256"
+    }
+   ],
+   "caveat_number": "1257102",
+   "registered_owners": [
+    {
+     "name": "Pauline",
+     "address": {
+      "address_line_1": "4 Hileah Drive"
+     }
+    },
+    {
+     "name": "Stacie",
+     "address": {}
+    }
+   ],
+   "caveators": [],
+   "aliases": [
+    "x"
+   ],
+   "agent": {
+    "agent.name": "",
+    "firm/office": "Dale & Co"
+   }
+  },
+  "fields": [
+   {
+    "key": "registered_titles/0/volume_number",
+    "label": "Registered Titles 1 › Volume Number",
+    "is_critical": true,
+    "empty": false
+   },
+   {
+    "key": "registered_titles/0/folio_number",
+    "label": "Registered Titles 1 › Folio Number",
+    "is_critical": true,
+    "empty": false
+   },
+   {
+    "key": "caveat_number",
+    "label": "Caveat Number",
+    "is_critical": true,
+    "empty": false
+   },
+   {
+    "key": "registered_owners/0/name",
+    "label": "Registered Owners 1 › Name",
+    "is_critical": false,
+    "empty": false
+   },
+   {
+    "key": "registered_owners/0/address",
+    "label": "Registered Owners 1 › Address",
+    "is_critical": false,
+    "empty": false
+   },
+   {
+    "key": "registered_owners/1/name",
+    "label": "Registered Owners 2 › Name",
+    "is_critical": false,
+    "empty": false
+   },
+   {
+    "key": "registered_owners/1/address",
+    "label": "Registered Owners 2 › Address",
+    "is_critical": false,
+    "empty": true
+   },
+   {
+    "key": "caveators",
+    "label": "Caveators",
+    "is_critical": false,
+    "empty": true
+   },
+   {
+    "key": "aliases",
+    "label": "Aliases",
+    "is_critical": false,
+    "empty": false
+   },
+   {
+    "key": "agent/agent.name",
+    "label": "Agent › Agent name",
+    "is_critical": true,
+    "empty": true
+   },
+   {
+    "key": "agent/firm~1office",
+    "label": "Agent › Firm/Office",
+    "is_critical": false,
+    "empty": false
+   }
+  ],
+  "groups": {
+   "registered_owners/1/address": [
+    "registered_owners/*/address",
+    "Registered Owners › Address"
+   ],
+   "agent/firm~1office": [
+    "agent/firm~1office",
+    "Agent › Firm/Office"
+   ],
+   "caveat_number": [
+    "caveat_number",
+    "Caveat Number"
+   ]
+  }
+ },
+ {
+  "name": "no data yet: lists are one field each",
+  "schema": {
+   "$schema": "https://json-schema.org/draft-07/schema#",
+   "type": "object",
+   "properties": {
+    "registered_titles": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "volume_number": {
+        "type": "string"
+       },
+       "folio_number": {
+        "type": "string"
+       }
+      }
+     },
+     "x-critical": true
+    },
+    "caveat_number": {
+     "type": "string",
+     "x-critical": true
+    },
+    "registered_owners": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "address": {
+        "$ref": "#/definitions/address"
+       }
+      }
+     }
+    },
+    "caveators": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "address": {
+        "$ref": "#/definitions/address",
+        "title": "Caveator address"
+       }
+      }
+     }
+    },
+    "aliases": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "agent": {
+     "type": "object",
+     "properties": {
+      "agent.name": {
+       "type": "string",
+       "title": "Agent name",
+       "x-critical": true
+      },
+      "firm/office": {
+       "type": "string"
+      }
+     }
+    }
+   },
+   "definitions": {
+    "address": {
+     "type": "object",
+     "properties": {
+      "address_line_1": {
+       "type": "string"
+      },
+      "city": {
+       "type": "string"
+      },
+      "country": {
+       "type": "string"
+      }
+     }
+    }
+   }
+  },
+  "data": null,
+  "fields": [
+   {
+    "key": "registered_titles",
+    "label": "Registered Titles",
+    "is_critical": true,
+    "empty": true
+   },
+   {
+    "key": "caveat_number",
+    "label": "Caveat Number",
+    "is_critical": true,
+    "empty": true
+   },
+   {
+    "key": "registered_owners",
+    "label": "Registered Owners",
+    "is_critical": false,
+    "empty": true
+   },
+   {
+    "key": "caveators",
+    "label": "Caveators",
+    "is_critical": false,
+    "empty": true
+   },
+   {
+    "key": "aliases",
+    "label": "Aliases",
+    "is_critical": false,
+    "empty": true
+   },
+   {
+    "key": "agent/agent.name",
+    "label": "Agent › Agent name",
+    "is_critical": true,
+    "empty": true
+   },
+   {
+    "key": "agent/firm~1office",
+    "label": "Agent › Firm/Office",
+    "is_critical": false,
+    "empty": true
+   }
+  ],
+  "groups": {}
+ },
+ {
+  "name": "schema without properties",
+  "schema": {
+   "fields": [
+    {
+     "name": "title"
+    }
+   ]
+  },
+  "data": {},
+  "fields": [],
+  "groups": {}
+ }
+]

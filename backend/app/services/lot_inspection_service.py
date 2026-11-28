@@ -44,7 +44,7 @@ from app.models.qc_field_result import QcFieldStatus
 from app.models.record import Record, RecordStatus
 from app.models.user import User
 from app.schemas.task import FieldResultIn
-from app.services import aql_service, audit_service, defect_class_service, record_service
+from app.services import aql_service, audit_service, defect_class_service, record_service, review_fields
 
 
 async def _get_lot(db: AsyncSession, lot_id: int, tenant_id: int) -> Lot:
@@ -97,11 +97,11 @@ async def _lot_records(db: AsyncSession, lot_id: int) -> list[Record]:
     return list(result.scalars().all())
 
 
-async def _schema_properties(db: AsyncSession, document_type_id: int | None) -> dict:
+async def _schema(db: AsyncSession, document_type_id: int | None) -> dict:
     if document_type_id is None:
         return {}
     doc_type = await db.get(DocumentType, document_type_id)
-    return ((doc_type.json_schema or {}).get("properties", {})) if doc_type else {}
+    return (doc_type.json_schema or {}) if doc_type else {}
 
 
 async def _audit(db: AsyncSession, *, lot: Lot, user_id: int | None, old_value=None, new_value=None, action):
@@ -245,7 +245,13 @@ async def review_item(
     if item is None:
         raise HTTPException(status_code=404, detail="Record is not in this inspection's sample")
 
-    properties = await _schema_properties(db, item.document_type_id)
+    # The fields to mark follow the schema and the record's data: one per
+    # plain field, one per part of each list entry (review_fields).
+    record = await db.get(Record, item.record_id)
+    critical_by_key = {
+        f["key"]: f["is_critical"]
+        for f in review_fields.review_fields(await _schema(db, item.document_type_id), record.indexed_data)
+    }
     if inspection.class_plan:
         unclassed = [fr.field_key for fr in field_results if fr.status == "defective" and not fr.error_type]
         if unclassed:
@@ -254,12 +260,12 @@ async def review_item(
                 detail=f"Say what is wrong with each defective field (missing, typo or interpretation): {unclassed}",
             )
     submitted = {fr.field_key for fr in field_results}
-    if len(submitted) != len(field_results) or submitted != set(properties.keys()):
-        missing = sorted(set(properties.keys()) - submitted)
-        extra = sorted(submitted - set(properties.keys()))
+    if len(submitted) != len(field_results) or submitted != set(critical_by_key):
+        missing = sorted(set(critical_by_key) - submitted)
+        extra = sorted(submitted - set(critical_by_key))
         raise HTTPException(
             status_code=422,
-            detail=f"field_results must cover exactly the document type's fields once each — missing {missing}, unexpected {extra}",
+            detail=f"field_results must cover each of the record's fields once — missing {missing}, unexpected {extra}",
         )
 
     # Re-review replaces the previous marks wholesale.
@@ -272,7 +278,7 @@ async def review_item(
     lot = await db.get(Lot, lot_id)
     error_classes = await defect_class_service.project_error_classes(db, lot.project_id)
     for fr in field_results:
-        is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))
+        is_critical = critical_by_key[fr.field_key]
         error_type, severity = defect_class_service.mark_class(
             fr, is_identifier=is_critical, error_classes=error_classes,
         )
@@ -350,10 +356,13 @@ async def complete_inspection(
     # passed lot still mustn't be handed over with known errors in it, so
     # release waits for them (assert_releasable) without a re-inspection.
     defects_by_record: dict[int, list[str]] = {}
+    doc_type_by_record = {i.record_id: i.document_type_id for i in items}
+    schemas = {dt: await _schema(db, dt) for dt in set(doc_type_by_record.values())}
     for record_id, fr in defects:
         what = defect_class_service.ERROR_TYPE_LABELS.get(fr.error_type.value) if fr.error_type else None
         detail = "; ".join(x for x in (what, fr.note) if x)
-        label = fr.field_key + (f" ({detail})" if detail else "")
+        field = review_fields.label_for(schemas.get(doc_type_by_record.get(record_id)), fr.field_key)
+        label = field + (f" ({detail})" if detail else "")
         defects_by_record.setdefault(record_id, []).append(label)
     for item in defective_items:
         await record_service.requeue_record(
@@ -535,7 +544,7 @@ async def _serialize(
     items_by_inspection: dict[int, list[LotInspectionItem]] = {i.id: [] for i in inspections}
     results_by_item: dict[int, list[LotInspectionFieldResult]] = {}
     records: dict[int, Record] = {}
-    titles_by_doc_type: dict[int, dict[str, str]] = {}
+    schema_by_doc_type: dict[int, dict] = {}
     if include_items:
         items = (await db.execute(
             select(LotInspectionItem)
@@ -557,10 +566,7 @@ async def _serialize(
                 r.id: r for r in (await db.execute(select(Record).where(Record.id.in_(record_ids)))).scalars().all()
             }
             for dt_id in {i.document_type_id for i in items if i.document_type_id is not None}:
-                props = await _schema_properties(db, dt_id)
-                titles_by_doc_type[dt_id] = {
-                    k: (v.get("title") if isinstance(v, dict) else None) or k for k, v in props.items()
-                }
+                schema_by_doc_type[dt_id] = await _schema(db, dt_id)
 
     out = []
     for inspection in inspections:
@@ -600,13 +606,13 @@ async def _serialize(
                     reviewed += 1
                 elif not include_pending_items:
                     continue
-                titles = titles_by_doc_type.get(item.document_type_id, {})
+                schema = schema_by_doc_type.get(item.document_type_id, {})
                 record = records.get(item.record_id)
                 field_rows = []
                 for fr in results_by_item.get(item.id, []):
                     field_rows.append({
                         "field_key": fr.field_key,
-                        "title": titles.get(fr.field_key, fr.field_key),
+                        "title": review_fields.label_for(schema, fr.field_key),
                         "status": fr.status.value,
                         "is_critical": fr.is_critical,
                         "error_type": fr.error_type.value if fr.error_type else None,
@@ -614,9 +620,13 @@ async def _serialize(
                         "note": fr.note,
                     })
                     if fr.status == QcFieldStatus.defective:
-                        t = tally.setdefault(fr.field_key, {
-                            "field_key": fr.field_key,
-                            "title": titles.get(fr.field_key, fr.field_key),
+                        # One row per field across the sample: the same part
+                        # of every list entry ("Caveators › Address") counts
+                        # together.
+                        group = review_fields.group_key(fr.field_key)
+                        t = tally.setdefault(group, {
+                            "field_key": group,
+                            "title": review_fields.group_label(schema, group),
                             "is_critical": fr.is_critical,
                             "defective_count": 0,
                             "critical": 0, "major": 0, "minor": 0,

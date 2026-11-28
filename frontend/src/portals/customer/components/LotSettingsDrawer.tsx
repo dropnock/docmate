@@ -436,7 +436,7 @@ export default function LotSettingsDrawer({ lotId, projectId, isSupervisor, onCl
                     dataSource={fieldResults.fields}
                     pagination={false}
                     columns={[
-                      { title: "Field", dataIndex: "field_key" },
+                      { title: "Field", dataIndex: "title" },
                       {
                         title: fieldResults.classes ? "Identifier" : "Critical",
                         dataIndex: "is_critical",

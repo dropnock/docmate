@@ -14,9 +14,10 @@ import { useRecordImage } from "@shared/hooks/useRecordImage";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
+import { reviewFields } from "@shared/reviewFields";
 import { INSPECTION_LEVEL } from "@shared/components/InspectionLevelTag";
 import {
-  ClassResultsTable, ClassTally, FieldMarkControl, classesAccepted, countBySeverity, isEmptyValue, unclassedFields,
+  ClassResultsTable, ClassTally, FieldMarkControl, classesAccepted, countBySeverity, unclassedFields,
   type FieldMark,
 } from "@shared/components/DefectClasses";
 import type { ClassResults, DocRecord, DocumentType, FieldResult, InspectionItem } from "@shared/types";
@@ -77,23 +78,30 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
     data: viewData, isLoading: viewLoading, page, setPage, pageCount,
   } = useRecordImage(selectedId, selectedId !== undefined);
 
-  const schemaProperties = useMemo(
-    () => (docType?.json_schema?.properties as Record<string, { title?: string; "x-critical"?: boolean }>) ?? {},
-    [docType],
+  // The fields to mark follow the schema and this record's data: one per
+  // plain field, one per part of each list entry (shared/reviewFields.ts).
+  const reviewFieldList = useMemo(
+    () => (docType && record ? reviewFields(docType.json_schema, record.indexed_data) : []),
+    [docType, record],
   );
+  const reviewFieldsKey = reviewFieldList.map((f) => f.key).join("\u0000");
 
   // Previous marks if this record was already reviewed, otherwise every
-  // field defaults to Accepted so only the faulty ones need flipping.
+  // field defaults to Accepted so only the faulty ones need flipping. A
+  // previous mark on a field the record no longer has is left out.
   useEffect(() => {
     if (!item) return;
+    const earlier = new Map(item.field_results.map((fr) => [fr.field_key, fr]));
     const initial: Marks = {};
-    for (const key of Object.keys(schemaProperties)) initial[key] = { status: "accepted" };
-    for (const fr of item.field_results) {
-      initial[fr.field_key] = { status: fr.status, note: fr.note ?? undefined, error_type: fr.error_type ?? undefined };
+    for (const { key } of reviewFieldList) {
+      const fr = earlier.get(key);
+      initial[key] = fr
+        ? { status: fr.status, note: fr.note ?? undefined, error_type: fr.error_type ?? undefined }
+        : { status: "accepted" };
     }
     setMarks(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.record_id, item?.reviewed_at, schemaProperties]);
+  }, [item?.record_id, item?.reviewed_at, reviewFieldsKey]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: lotInspectionKey(lotId, inspectionId) });
@@ -295,18 +303,18 @@ export default function LotInspectionWorkspace({ lotId, inspectionId, onClose }:
                       <Spin style={{ margin: 16 }} />
                     ) : (
                       <Space direction="vertical" style={{ width: "100%" }} size={16}>
-                        {Object.keys(schemaProperties).length === 0 && (
+                        {reviewFieldList.length === 0 && (
                           <Typography.Text type="secondary">This document type has no fields to review.</Typography.Text>
                         )}
-                        {Object.entries(schemaProperties).map(([key, field]) => (
+                        {reviewFieldList.map((field) => (
                           <FieldMarkControl
-                            key={key}
-                            title={field.title || key}
-                            isIdentifier={!!field["x-critical"]}
-                            mark={marks[key] ?? { status: "accepted" }}
-                            onChange={(m) => setMarks((prev) => ({ ...prev, [key]: m }))}
+                            key={field.key}
+                            title={field.label}
+                            isIdentifier={field.is_critical}
+                            mark={marks[field.key] ?? { status: "accepted" }}
+                            onChange={(m) => setMarks((prev) => ({ ...prev, [field.key]: m }))}
                             disabled={!inProgress}
-                            valueEmpty={isEmptyValue((record?.indexed_data as Record<string, unknown> | undefined)?.[key])}
+                            valueEmpty={field.empty}
                             errorClasses={inspection.error_classes}
                             notePlaceholder="Describe the error (shown on the inspection report)"
                           />

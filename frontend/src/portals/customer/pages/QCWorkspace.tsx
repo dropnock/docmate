@@ -17,7 +17,7 @@ import {
   message,
 } from "antd";
 import { ArrowLeft, CheckCircle2, Undo2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { RJSFSchema } from "@rjsf/utils";
 import api from "@shared/api/client";
@@ -27,7 +27,8 @@ import { completeTask, failTask, getTaskFieldResults, submitQcBatch } from "@sha
 import { useRecordImage } from "@shared/hooks/useRecordImage";
 import { useTaskHeartbeat } from "@shared/hooks/useTaskHeartbeat";
 import type { Batch, DocRecord, DocumentType, FieldResult, Task, UserRecord } from "@shared/types";
-import { FieldMarkControl, isEmptyValue, unclassedFields, type FieldMark } from "@shared/components/DefectClasses";
+import { FieldMarkControl, unclassedFields, type FieldMark } from "@shared/components/DefectClasses";
+import { reviewFields } from "@shared/reviewFields";
 import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonViewer";
 import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
@@ -207,7 +208,13 @@ export default function QCWorkspace() {
   });
   const isIso = aqlConfig?.sampling_mode === "iso";
 
-  const schemaProperties = (docType?.json_schema?.properties as Record<string, { title?: string; "x-critical"?: boolean }>) ?? {};
+  // The fields to mark follow the schema and this record's data: one per
+  // plain field, one per part of each list entry (shared/reviewFields.ts).
+  const reviewFieldList = useMemo(
+    () => (docType && record ? reviewFields(docType.json_schema, record.indexed_data) : []),
+    [docType, record],
+  );
+  const reviewFieldsKey = reviewFieldList.map((f) => f.key).join("\u0000");
 
   // A record reviewed before (and reopened) shows the marks it was given.
   const { data: earlierMarks, isFetched: earlierMarksFetched } = useQuery({
@@ -217,15 +224,16 @@ export default function QCWorkspace() {
     staleTime: 0,
   });
 
-  // Every top-level field defaults to Accepted — the QC agent only has to
-  // flip the ones they find defective, rather than affirmatively clicking
-  // "accept" on every field of every record.
+  // Every field defaults to Accepted — the QC agent only has to flip the
+  // ones they find defective, rather than affirmatively clicking "accept" on
+  // every field of every record. Keyed on the field list, so the record's
+  // periodic refetch doesn't wipe marks already made.
   useEffect(() => {
-    if (!isIso || !docType) return;
+    if (!isIso || !docType || !record) return;
     if (reopenedFrom && !earlierMarksFetched) return;
     const earlier = new Map((earlierMarks ?? []).map((m) => [m.field_key, m]));
     const initial: Record<string, FieldMark> = {};
-    for (const key of Object.keys(schemaProperties)) {
+    for (const { key } of reviewFieldList) {
       const m = earlier.get(key);
       initial[key] = m
         ? { status: m.status, error_type: m.error_type ?? undefined, note: m.note ?? undefined }
@@ -233,7 +241,7 @@ export default function QCWorkspace() {
     }
     setFieldMarks(initial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTask?.id, isIso, docType, earlierMarks, earlierMarksFetched, reopenedFrom]);
+  }, [activeTask?.id, isIso, docType, reviewFieldsKey, earlierMarks, earlierMarksFetched, reopenedFrom]);
 
   // Cached at the app root (App.tsx queries the same ["me"] key on load) —
   // needed to tell "locked by me" from "locked by someone else": comparing
@@ -342,7 +350,8 @@ export default function QCWorkspace() {
       }));
       const defective = fieldResults.filter((f) => f.status === "defective");
       if (defective.length > 0) {
-        const reason = `${defective.length} field(s) marked defective: ${defective.map((f) => f.field_key).join(", ")}`;
+        const labels = new Map(reviewFieldList.map((f) => [f.key, f.label]));
+        const reason = `${defective.length} field(s) marked defective: ${defective.map((f) => labels.get(f.field_key) ?? f.field_key).join(", ")}`;
         return failTask(activeTask.id, { reason, field_results: fieldResults });
       }
       return completeTask(activeTask.id, { field_results: fieldResults });
@@ -639,18 +648,18 @@ export default function QCWorkspace() {
                 <Card size="small" title="Field Review" style={{ marginTop: 16 }}>
                   {!docType ? (
                     <Spin style={{ margin: 16 }} />
-                  ) : Object.keys(schemaProperties).length === 0 ? (
+                  ) : reviewFieldList.length === 0 ? (
                     <Typography.Text type="secondary">This document type has no fields to review.</Typography.Text>
                   ) : (
                     <Space direction="vertical" style={{ width: "100%" }} size={16}>
-                      {Object.entries(schemaProperties).map(([key, field]) => (
+                      {reviewFieldList.map((field) => (
                         <FieldMarkControl
-                          key={key}
-                          title={field.title || key}
-                          isIdentifier={!!field["x-critical"]}
-                          mark={fieldMarks[key] ?? { status: "accepted" }}
-                          onChange={(m) => setFieldMarks((prev) => ({ ...prev, [key]: m }))}
-                          valueEmpty={isEmptyValue((record?.indexed_data as Record<string, unknown> | undefined)?.[key])}
+                          key={field.key}
+                          title={field.label}
+                          isIdentifier={field.is_critical}
+                          mark={fieldMarks[field.key] ?? { status: "accepted" }}
+                          onChange={(m) => setFieldMarks((prev) => ({ ...prev, [field.key]: m }))}
+                          valueEmpty={field.empty}
                           errorClasses={aqlConfig && "error_classes" in aqlConfig ? aqlConfig.error_classes : undefined}
                           notePlaceholder="Note (optional)"
                         />

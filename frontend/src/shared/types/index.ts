@@ -164,7 +164,10 @@ export interface ContributingAgent {
 }
 
 export interface FieldResultSummary {
+  /** The field across list entries: "caveators", "*", "address" joined by slashes. */
   field_key: string;
+  /** "Caveators › Address". */
+  title: string;
   is_critical: boolean;
   defective_count: number;
   accepted_count: number;
@@ -631,6 +634,8 @@ export interface QcReviewMark {
 
 export interface QcReviewField {
   field_key: string;
+  /** "Caveators 2 › Address" — from the schema (review_fields.label_for). */
+  label: string;
   is_critical: boolean;
   /** The reviewer's own mark, never changed. */
   reviewer: QcReviewMark;

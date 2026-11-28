@@ -15,6 +15,7 @@ from app.schemas.task import FieldResultIn
 from app.services import (
     aql_service, audit_service, hold_service, required_fields, staff_assignment_service, task_timing,
 )
+from app.services import review_fields
 from app.services.lock_service import acquire_lock, release_lock
 
 
@@ -337,16 +338,20 @@ async def _persist_qc_field_results(
         return
 
     doc_type = await db.get(DocumentType, batch.document_type_id)
-    properties = (doc_type.json_schema or {}).get("properties", {})
-    schema_fields = set(properties.keys())
+    # The fields to mark follow the schema and this record's data: one per
+    # plain field, one per part of each list entry (review_fields).
+    critical_by_key = {
+        f["key"]: f["is_critical"] for f in review_fields.review_fields(doc_type.json_schema, record.indexed_data)
+    }
+    schema_fields = set(critical_by_key)
     field_results = field_results or []
     submitted_fields = {fr.field_key for fr in field_results}
-    if submitted_fields != schema_fields:
+    if submitted_fields != schema_fields or len(submitted_fields) != len(field_results):
         missing = sorted(schema_fields - submitted_fields)
         extra = sorted(submitted_fields - schema_fields)
         raise HTTPException(
             status_code=422,
-            detail=f"field_results must cover exactly the document type's fields — missing {missing}, unexpected {extra}",
+            detail=f"field_results must cover each of the record's fields once — missing {missing}, unexpected {extra}",
         )
 
     if not field_results:
@@ -380,7 +385,7 @@ async def _persist_qc_field_results(
     await db.execute(delete(QcFieldResult).where(QcFieldResult.task_id == task.id))
     error_classes = await defect_class_service.project_error_classes(db, lot.project_id)
     for fr in field_results:
-        is_critical = bool(properties.get(fr.field_key, {}).get("x-critical", False))
+        is_critical = critical_by_key[fr.field_key]
         error_type, severity = defect_class_service.mark_class(
             fr, is_identifier=is_critical, error_classes=error_classes,
         )

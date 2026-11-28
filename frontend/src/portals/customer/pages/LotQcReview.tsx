@@ -15,8 +15,9 @@ import OpenSeadragonViewer from "@shared/components/ImageViewer/OpenSeadragonVie
 import SchemaForm from "@shared/components/SchemaForm";
 import SplitWorkspace from "@shared/components/SplitWorkspace";
 import {
-  ClassResultsTable, ClassTally, ERROR_TYPE_LABEL, FieldMarkControl, SeverityTag, isEmptyValue, type FieldMark,
+  ClassResultsTable, ClassTally, ERROR_TYPE_LABEL, FieldMarkControl, SeverityTag, type FieldMark,
 } from "@shared/components/DefectClasses";
+import { labelFor, reviewFields } from "@shared/reviewFields";
 import type { DocumentType, QcReviewField, QcReviewMark, QcReviewRecord, Severity } from "@shared/types";
 
 /** A field's ruling being edited: the mark plus the reason for changing it. */
@@ -87,9 +88,11 @@ export default function LotQcReview() {
     data: viewData, isLoading: viewLoading, page, setPage, pageCount,
   } = useRecordImage(selectedId, selectedId !== undefined);
 
-  const properties = useMemo(
-    () => (docType?.json_schema?.properties as Record<string, { title?: string; "x-critical"?: boolean }>) ?? {},
-    [docType],
+  // The record's fields in form order (shared/reviewFields.ts): one per
+  // plain field, one per part of each list entry.
+  const derivedFields = useMemo(
+    () => (docType && record ? reviewFields(docType.json_schema, record.indexed_data) : []),
+    [docType, record],
   );
 
   // Start each record's drafts from the marks that count now.
@@ -205,9 +208,13 @@ export default function LotQcReview() {
     : null;
   const verdict = review.accepted ? "pass" : "fail";
 
-  const fieldOrder = Object.keys(properties).length
-    ? Object.keys(properties).filter((k) => record?.fields.some((f) => f.field_key === k))
-    : (record?.fields ?? []).map((f) => f.field_key);
+  // Form order first; any mark on a field the record no longer has (its data
+  // changed, or it was marked as a whole list before fields were split per
+  // entry) follows.
+  const markedKeys = new Set((record?.fields ?? []).map((f) => f.field_key));
+  const derivedKeys = derivedFields.map((f) => f.key).filter((k) => markedKeys.has(k));
+  const fieldOrder = [...derivedKeys, ...[...markedKeys].filter((k) => !derivedKeys.includes(k))];
+  const emptyByKey = new Map(derivedFields.map((f) => [f.key, f.empty]));
 
   return (
     <div style={{ height: "calc(100vh - 64px)", display: "flex", flexDirection: "column" }}>
@@ -382,12 +389,12 @@ export default function LotQcReview() {
                                     </Space>
                                   </div>
                                 }
-                                title={properties[key]?.title || key}
+                                title={f.label || labelFor(docType?.json_schema, key)}
                                 isIdentifier={f.is_critical}
                                 mark={d.mark}
                                 onChange={(m) => setDrafts((prev) => ({ ...prev, [key]: { ...prev[key], mark: m } }))}
                                 disabled={!awaiting}
-                                valueEmpty={isEmptyValue(record.indexed_data?.[key])}
+                                valueEmpty={emptyByKey.get(key) ?? true}
                                 errorClasses={review.error_classes}
                                 hideNote
                               />

@@ -69,7 +69,9 @@ class ContributingAgent(BaseModel):
 
 
 class FieldResultSummary(BaseModel):
+    # field_key is the field's group across list entries ("caveators/*/address").
     field_key: str
+    title: str
     is_critical: bool
     defective_count: int
     accepted_count: int

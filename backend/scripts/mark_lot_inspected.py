@@ -45,7 +45,7 @@ from app.models.project import Project
 from app.models.record import Record, RecordStatus
 from app.models.user import User, UserRole
 from app.schemas.task import FieldResultIn
-from app.services import aql_service, lot_inspection_service
+from app.services import aql_service, lot_inspection_service, review_fields
 
 DEFAULT_NOTE = "Marked inspected by scripts.mark_lot_inspected: every sampled field accepted, none actually reviewed."
 INSPECTOR_ROLES = (UserRole.de_supervisor, UserRole.admin)
@@ -69,8 +69,12 @@ async def _items(db: AsyncSession, inspection_id: int) -> list[LotInspectionItem
 
 
 async def _accept_all(db: AsyncSession, item: LotInspectionItem) -> list[FieldResultIn]:
-    properties = await lot_inspection_service._schema_properties(db, item.document_type_id)
-    return [FieldResultIn(field_key=key, status="accepted") for key in properties]
+    schema = await lot_inspection_service._schema(db, item.document_type_id)
+    record = await db.get(Record, item.record_id)
+    return [
+        FieldResultIn(field_key=f["key"], status="accepted")
+        for f in review_fields.review_fields(schema, record.indexed_data)
+    ]
 
 
 async def plan(db: AsyncSession, lot: Lot, *, restart: bool) -> dict:
