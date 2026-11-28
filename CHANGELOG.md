@@ -7,6 +7,8 @@ See `RELEASING.md` for how to cut a release.
 
 ## [Unreleased]
 
+## [0.9.6] - 2026-11-28
+
 ### Added
 - **Help in the customer portal.** The supervisor and reviewer manuals and training
   workbooks open inside the app (Help in the menu), each user seeing the ones for
@@ -25,6 +27,12 @@ See `RELEASING.md` for how to cut a release.
 ### Changed
 - **The app uses the logo's colours**: navy for buttons, selected menu items and
   other primary accents, teal for links and hover highlights. The manuals follow.
+- **The manuals and workbooks cover the 0.9.5 QC changes**: the supervisor's
+  Review & decide step (lots awaiting a decision, correcting a reviewer's mark
+  with a reason, confirming the result), reviewers' QC batches (Done, the next
+  record opening by itself, going back, Submit batch), submitting a batch for a
+  reviewer on QC Batches, and lists checked entry by entry. Every screenshot is
+  retaken at 0.9.6.
 
 ### Fixed
 - The Word copies of the manuals showed "v0.9.0" in their footer whatever the
